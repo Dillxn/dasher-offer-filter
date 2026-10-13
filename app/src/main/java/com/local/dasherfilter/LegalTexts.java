@@ -365,6 +365,11 @@ final class LegalTexts {
             and why), and a few masked lines read from the offer. This history has no age-based expiry: entries \
             remain until newer decisions replace them or you clear history or uninstall. Aggregate outcome counts \
             are kept separately until you clear history or uninstall.
+            - "Same store" notes (from 0.6.9): when a single-store offer comes from the store of an offer declined \
+            in the last 30 minutes, both offers' lines in the decision history note how many minutes apart they came \
+            and the other offer's pay. The store's name is read from Dasher's screen and kept only in the app's \
+            memory for 30 minutes, never written to the phone's storage or put in a report; the lines keep only the \
+            minutes and pay.
             - Up to 200 numeric wait-estimate records in a rolling 24-hour window, pruned when used: the \
             observation time, positively observed waiting duration and any observed offer's pay, miles, minutes, \
             stops and item count/applicability, used for the wait estimate and by Autopilot to estimate how often \

@@ -379,11 +379,29 @@ public class BundledNotesTest {
     }
 
     /**
+     * 0.6.9 (the owner, 13 October 2026: "yeah I want all its recommendations"): the came-back note, said as what the
+     * tickets show, never as a promise of the same order or of more pay.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.9", Updater.version(RuntimeEnvironment.getApplication()));
+        List<String> lines = BundledNotes.whatsNew("0.6.9");
+        assertEquals(lines.toString(), 2, lines.size());
+        String release = String.join(" ", lines);
+        for (String fact : new String[] {"same store", "last half hour", "both tickets say so", "how much later",
+                "readable over the offer's outline", "which end is latest"}) {
+            assertTrue(fact, release.contains(fact));
+        }
+        for (String wrong : new String[] {"same order", "earn more", "more pay", "you'll make", "guarantee",
+                "better offers", "skip"}) {
+            assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
+        }
+    }
+
+    /**
      * 0.6.8 (the owner, 13 October 2026: "calmer homepage update didnt look like mockup you did"): the homepage as the
      * mockup drew it, said as what a user sees.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.8", Updater.version(RuntimeEnvironment.getApplication()));
+    @Test public void release068SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.8");
         assertEquals(lines.toString(), 2, lines.size());
         String release = String.join(" ", lines);

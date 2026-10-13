@@ -8994,6 +8994,8 @@ public final class OfferFilterService extends AccessibilityService {
         FoldedTag folded = new FoldedTag();
         lastFolded = folded;
         recordRead(entry, OfferEvidence.secondsLeft(scan.text), true, freshInstance, folded);
+        // After the history took it (the same queue): "Same store 9 min later" on both tickets (0.6.9).
+        onMain(() -> CameBack.note(this, entry, labels));
         return entry;
     }
 

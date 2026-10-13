@@ -139,6 +139,8 @@ final class MinimumsStarView extends View {
     private static final int EDGE_FADE_DP = 28;
     private final Ui ui;
     private final TextPaint axisText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    /** {@link #axisText}'s halo, drawn under it. */
+    private final TextPaint axisHalo = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final RectF[] axisLabels = new RectF[AreaScore.AXES];
     /** How much of each spoke's name is there (1: wholly, 0: gone; {@link #placeAxisLabels}). */
     private final float[] axisShown = new float[AreaScore.AXES];
@@ -1011,6 +1013,16 @@ final class MinimumsStarView extends View {
         for (int i = 0; i < axisLabels.length; i++) {
             RectF box = axisLabels[i];
             if (box.isEmpty()) continue;
+            // Over the offer's outline, a halo of the sky round each letter keeps the value whole (0.6.9: the line
+            // runs under it, as under the rings' dollars, rather than the value moving off its one place).
+            axisHalo.set(axisText);
+            axisHalo.clearShadowLayer();
+            axisHalo.setStyle(Paint.Style.STROKE);
+            axisHalo.setStrokeJoin(Paint.Join.ROUND);
+            axisHalo.setStrokeWidth(ui.dp(4));
+            axisHalo.setColor(ui.dark ? 0xFF0D1428 : 0xFFE7EEF2);
+            axisHalo.setAlpha(Math.round(0xD0 * axisShown[i]));
+            canvas.drawText(axisLabelText(i), box.left, box.top - axisText.ascent(), axisHalo);
             axisText.setAlpha(Math.round(alpha * axisShown[i]));
             canvas.drawText(axisLabelText(i), box.left, box.top - axisText.ascent(), axisText);
         }

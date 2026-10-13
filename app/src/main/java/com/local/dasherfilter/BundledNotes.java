@@ -198,6 +198,10 @@ final class BundledNotes {
                         + "buttons beside the latest offer.",
                 "The latest offer's pay is bigger, your acceptance rate shows as a bar even with Autopilot off, and "
                         + "each minimum sits by its knob.");
+        release("0.6.9",
+                "When an offer comes from the same store as one declined in the last half hour, both tickets say so, "
+                        + "with how much later and for how much.",
+                "Each minimum's value now stays readable over the offer's outline, and the chart says which end is latest.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

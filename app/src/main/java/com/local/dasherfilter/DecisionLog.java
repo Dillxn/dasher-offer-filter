@@ -138,7 +138,15 @@ final class DecisionLog {
          * Dasher's decline question said declining this offer does not lower the acceptance rate: the offer leaves
          * the acceptance-rate count. A mark only: it changes no outcome, tally or total.
          */
-        AR_EXEMPT("Dasher said declining it does not lower your acceptance rate");
+        AR_EXEMPT("Dasher said declining it does not lower your acceptance rate"),
+        /**
+         * "Came back?" (0.6.9): a standalone offer from the same store came within 30 minutes of this declined one;
+         * its detail is minutes and pay only ("9 min later, $10.80 (+$2.10)"), never the store ({@link CameBack}). A
+         * mark only: it changes no outcome, tally or total.
+         */
+        SAME_STORE_LATER("Same store"),
+        /** The other side of {@link #SAME_STORE_LATER}, on the later offer ("declined 9 min earlier at $8.70"). */
+        SAME_STORE_EARLIER("Same store");
 
         final String label;
 
@@ -850,6 +858,7 @@ final class DecisionLog {
 
     static void clear(Context context) {
         FilterStore.clearLearningHistory(context);
+        CameBack.clear();
         synchronized (LOCK) {
             entries = new ArrayList<>();
             writeTotals(context, new int[Tally.values().length]);

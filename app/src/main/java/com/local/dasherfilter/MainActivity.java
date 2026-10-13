@@ -2369,6 +2369,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
             below.setPadding(0, ui.dp(6), 0, 0);
             ticket.addView(below);
         }
+        // "Came back?" (0.6.9): the same store's offer within 30 minutes, either way round.
+        for (DecisionLog.Step step : entry.steps) {
+            if (!sameStore(step)) continue;
+            TextView again = ui.text(step.text(), 14, ui.ink, true);
+            again.setPadding(0, ui.dp(6), 0, 0);
+            ticket.addView(again);
+        }
         boolean exempt = DecisionLog.hasStep(entry, DecisionLog.StepKind.AR_EXEMPT);
         if (exempt) {
             TextView free = ui.text(AutopilotText.TICKET_EXEMPT, 13, ui.inkSecondary, false);
@@ -2387,7 +2394,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (!entry.steps.isEmpty()) {
             List<String> steps = new java.util.ArrayList<>();
             for (DecisionLog.Step step : entry.steps) {
-                if (step != outcomeStep && step.kind != DecisionLog.StepKind.AR_EXEMPT) steps.add(step.text());
+                if (step != outcomeStep && step.kind != DecisionLog.StepKind.AR_EXEMPT && !sameStore(step)) {
+                    steps.add(step.text());
+                }
             }
             if (!steps.isEmpty()) {
                 TextView followed = ui.text(String.join("\n", steps), 13, ui.inkSecondary, false);
@@ -2435,6 +2444,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
             });
         }
         ui.addButton(ticket, "Report this offer", false, () -> reportOffer(entry));
+    }
+
+    /** A "Same store" mark ({@link CameBack}), shown on its own line rather than among what followed. */
+    private static boolean sameStore(DecisionLog.Step step) {
+        return step.kind == DecisionLog.StepKind.SAME_STORE_LATER
+                || step.kind == DecisionLog.StepKind.SAME_STORE_EARLIER;
     }
 
     /**

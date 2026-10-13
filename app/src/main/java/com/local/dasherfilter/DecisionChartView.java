@@ -159,14 +159,20 @@ final class DecisionChartView extends View {
         label.setTextSize(Math.min(ui.sp(14), ui.dp(17)));
         float badge = keyBadge();
         float count = badge * 2 + ui.dp(5) + label.measureText("88");
-        // "latest →" at the row's end (0.6.8, the owner's mockup) where the counts leave it room.
+        // The counts as they read now ("–" before any, "3", "12"), for whether "latest →" fits beside them.
+        boolean none = keyLabel.startsWith("No");
+        float widest = label.measureText("–");
+        for (int k = 0; k < 3 && !none; k++) widest = Math.max(widest, label.measureText(Integer.toString(keyCounts[k])));
+        float shownCount = badge * 2 + ui.dp(5) + widest;
+        // "latest →" at the row's end (0.6.8, the owner's mockup) where the counts leave it room (0.6.9: the counts
+        // as they read, not as wide as "88", so a narrow chart beside Dasher shows it too).
         label.setTextSize(Math.min(ui.sp(11), ui.dp(14)));
         float latest = label.measureText(LATEST) + ui.dp(8);
         label.setTextSize(Math.min(ui.sp(14), ui.dp(17)));
-        latestShown = right - left - headingWide - latest >= 3 * (count + ui.dp(8));
+        latestShown = (right - left - headingWide - latest) / 3f >= shownCount + ui.dp(4);
         float room = right - left - (latestShown ? latest : 0);
         float column = Math.max(0, (room - headingWide) / 3f);
-        boolean roomForHeading = column >= count;
+        boolean roomForHeading = column >= (latestShown ? shownCount : count);
         float start = left + (roomForHeading ? headingWide : 0);
         if (!roomForHeading) column = room / 3f;
         // The counts side by side as a key, not spread across the street.
@@ -406,10 +412,32 @@ final class DecisionChartView extends View {
         label.setTypeface(Ui.MEDIUM);
         label.setTextSize(Math.min(ui.sp(10), ui.dp(13)));
         label.setColor(ui.inkMuted);
-        canvas.drawText("100%", right - ui.dp(2), hundredY() - ui.dp(3) - label.descent(), label);
+        float baseline = hundredY() - ui.dp(3) - label.descent();
+        float wide = label.measureText("100%");
+        float textLeft = right - ui.dp(2) - wide;
+        // A bar risen through the label (0.6.9): the label keeps a backdrop of the page so it stays readable.
+        if (barReaches(textLeft - ui.dp(3), right, baseline + label.descent())) {
+            fill.setColor((ui.page & 0x00FFFFFF) | 0xE0000000);
+            float pad = ui.dp(3);
+            canvas.drawRoundRect(textLeft - pad, baseline + label.ascent() - ui.dp(1), right - ui.dp(2) + pad,
+                    baseline + label.descent() + ui.dp(1), pad * 2, pad * 2, fill);
+        }
+        canvas.drawText("100%", right - ui.dp(2), baseline, label);
         label.setTextAlign(Paint.Align.CENTER);
         label.setTypeface(null);
         label.setTextSize(ui.sp(11));
+    }
+
+    /** Whether a bar standing between {@code from} and {@code to} across rises above {@code y}. */
+    private boolean barReaches(float from, float to, float y) {
+        if (entries.isEmpty()) return false;
+        float slot = slotWidth();
+        float half = buildingWidth(slot) / 2f;
+        for (int i = 0; i < entries.size(); i++) {
+            float center = buildingCenter(i, slot);
+            if (center + half >= from && center - half <= to && roofAt(i) < y) return true;
+        }
+        return false;
     }
 
     /** The minimums' line: 100% on the scale. */
