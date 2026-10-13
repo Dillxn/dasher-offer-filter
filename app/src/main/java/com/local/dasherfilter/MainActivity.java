@@ -2162,7 +2162,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
         shownHistoryVersion = version;
         List<DecisionLog.Entry> recent = DecisionLog.recent(this, DecisionLog.MAX_ENTRIES);
         recentEntries = recent;
+        long seenBefore = seenOfferAt;
         noteNewOffer(recent);
+        // A new offer brings the skyline back to the newest, and with it the offer clock in the caption's row, unless an
+        // older offer's ticket is open (0.6.12; the owner, 13 October 2026, with an older bar still picked: "not seeing
+        // time chart anymore").
+        if (seenBefore >= 0 && seenOfferAt > seenBefore && !followNewest && !ticketOpen) {
+            followNewest = true;
+            countTicket = null;
+            if (minimums != null) minimums.emphasize(null);
+        }
         chart.setEntries(recent);
         boolean empty = recent.isEmpty();
         if (empty) {
