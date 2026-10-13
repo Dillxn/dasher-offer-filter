@@ -180,6 +180,10 @@ final class BundledNotes {
                         + "Where a phone won't split, recent apps open at once.",
                 "If Android stops this app reading Dasher mid-dash, one notification says so; notification access "
                         + "reconnects itself when it stays down.");
+        release("0.6.5",
+                "In Earn by Time, when Dasher says another decline would end your dash, the offer is left to you and "
+                        + "auto-decline pauses until you resume it.",
+                "It pauses too if Dasher ends the dash right after a decline.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

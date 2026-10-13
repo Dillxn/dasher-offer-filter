@@ -363,8 +363,7 @@ public class BundledNotesTest {
      * 0.6.4 (the owner, 12 October 2026: "split screen button didnt work"): Split fixed by the split pane, recent apps at
      * once where a phone won't split, and the 11:06 stop's notice and listener reconnect, with no promise of offers.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.4", Updater.version(RuntimeEnvironment.getApplication()));
+    @Test public void release064SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.4");
         assertEquals(lines.toString(), 2, lines.size());
         String release = String.join(" ", lines);
@@ -375,6 +374,25 @@ public class BundledNotesTest {
         }
         for (String wrong : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers",
                 "track", "identifier", "location"}) {
+            assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
+        }
+    }
+
+    /**
+     * 0.6.5 (the owner, 13 October 2026, on #DeclineNow's recommendations: "yeah I want all its recommendations"): the
+     * Earn by Time guard, said as what it does, with no promise about the dash or pay.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.5", Updater.version(RuntimeEnvironment.getApplication()));
+        List<String> lines = BundledNotes.whatsNew("0.6.5");
+        assertEquals(lines.toString(), 2, lines.size());
+        String release = String.join(" ", lines);
+        for (String fact : new String[] {"Earn by Time", "another decline would end your dash", "left to you",
+                "auto-decline pauses until you resume it", "ends the dash right after a decline"}) {
+            assertTrue(fact, release.contains(fact));
+        }
+        for (String wrong : new String[] {"earn more", "more pay", "you'll make", "guarantee", "better offers",
+                "never ends", "protects your dash"}) {
             assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
         }
     }

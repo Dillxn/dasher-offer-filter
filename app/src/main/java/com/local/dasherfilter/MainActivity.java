@@ -1786,8 +1786,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // The status line beside the chip: the start with no rule; with Autopilot on, its status in every state of
         // the spec's (auto-decline paused among them: the sleeping mascot resumes); with Autopilot off, paused, that
         // nothing is declined (a tap resumes), else the wait, or that auto-decline is on.
+        String guarded = TimeModeGuard.line(this);
         if (!saved.hasAnyRule()) {
             showSlot(SLOT_START, START_LINE, null, ui.link);
+        } else if (!saved.enabled && guarded != null) {
+            // Paused by the Earn by Time guard (TimeModeGuard): its line, whether or not Autopilot is on.
+            showSlot(SLOT_PAUSED, guarded, guarded + ": nothing is declined. Resume auto-decline", ui.ink);
         } else if (saved.autopilot) {
             showSlot(SLOT_AUTOPILOT, AutopilotText.statusLine(status), AutopilotText.chipDescription(status),
                     ui.inkSecondary);
@@ -2733,6 +2737,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             return;
         }
         FilterStore.save(this, saved, saved.withEnabled(true));
+        TimeModeGuard.resumed(this);
         // Autopilot's plans are for the rules with their switch: a plan made while paused says nothing now, so one is
         // asked for, for display. Never AutopilotRuntime.rulesChanged: resuming changes no minimum (and makes no jump).
         AutopilotRuntime.requestPlan(this, AutopilotRuntime.Trigger.USER);

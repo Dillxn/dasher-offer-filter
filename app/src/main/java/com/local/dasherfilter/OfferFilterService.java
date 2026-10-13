@@ -305,6 +305,8 @@ public final class OfferFilterService extends AccessibilityService {
     private volatile boolean dashOnScreen;
     /** The offer the user took over by touching the screen: nothing automatic happens to it again. */
     private volatile Takeover takeover = Takeover.NONE;
+    /** When the app last tapped Dasher's decline question's Decline (uptime), {@link #NEVER} before. */
+    private volatile long lastConfirmedAt = NEVER;
     /** The offer whose decline is under way (the touch watch is wanted), else null. */
     private volatile OfferSnapshot decliningOffer;
     /** Every action of the user's up to this count has been handed back; written after the takeover is published. */
@@ -4088,7 +4090,9 @@ public final class OfferFilterService extends AccessibilityService {
         /** A screen-off or lock boundary invalidated the visible offer and its pending taps. */
         SCREEN_OFF,
         /** Dasher explicitly reported a failed request; no later idle frame can upgrade it optimistically. */
-        DASHER_ERROR
+        DASHER_ERROR,
+        /** Dasher's question said another decline ends the dash (Earn by Time, {@link TimeModeGuard}): never confirmed. */
+        DASH_WOULD_END
     }
 
     /**
@@ -4100,13 +4104,14 @@ public final class OfferFilterService extends AccessibilityService {
      */
     private void handBack(HandBack why, String detail, long now) {
         boolean alreadyConfirmed = declineState.confirmationTapped();
-        boolean givenUp = why == HandBack.NOT_TAPPED || why == HandBack.DASHER_ERROR;
+        boolean givenUp = why == HandBack.NOT_TAPPED || why == HandBack.DASHER_ERROR || why == HandBack.DASH_WOULD_END;
         takeover = new Takeover(declinedOffer, now, givenUp
                 ? DecisionLog.Action.CONFIRMATION_NOT_TAPPED : DecisionLog.Action.USER_TOOK_OVER);
         RestartSuppression.remember(this, declinedOffer, previousCountdown);
         takeoverGeneration = OfferNotificationService.generation();
         takeoverDisplayEligible = why != HandBack.NOT_TAPPED && why != HandBack.MINIMUMS_CHANGED
-                && why != HandBack.SCREEN_OFF && why != HandBack.DASHER_ERROR && declinedEntry != null
+                && why != HandBack.SCREEN_OFF && why != HandBack.DASHER_ERROR && why != HandBack.DASH_WOULD_END
+                && declinedEntry != null
                 && !declinedEntry.addOn && !declinedDuringRoute;
         takeoverDisplayUntil = now + 60_000;
         takeoverTeaches = takeoverDisplayEligible && !alreadyConfirmed && acceptedTracker.waitedFor(declinedOffer);
@@ -4171,6 +4176,14 @@ public final class OfferFilterService extends AccessibilityService {
                 status("Dasher reported an error; this decline is unconfirmed and left to you.");
                 toast = "Dasher reported a decline error; offer left to you";
                 break;
+            case DASH_WOULD_END:
+                DiagnosticLog.log(this, "confirm", "confirmation not tapped: Dasher's question says another decline "
+                        + "ends the dash (" + detail + "); the offer is left to you, auto-decline paused");
+                status("Dasher said another decline would end this dash, so this offer is yours and auto-decline is "
+                        + "paused.");
+                toast = "Dasher said another decline would end this dash. Offer left to you; auto-decline paused";
+                TimeModeGuard.pause(this, TimeModeGuard.WOULD_END_LINE);
+                break;
             case SCREEN_OFF:
                 DiagnosticLog.log(this, "accessibility", "screen off or locked" + halted);
                 status("Screen off or locked; this earlier offer is left to you.");
@@ -4192,6 +4205,7 @@ public final class OfferFilterService extends AccessibilityService {
                 : why == HandBack.BACK_TO_OFFER ? "you went back to the offer from Dasher's question"
                 : why == HandBack.MINIMUMS_CHANGED ? "the bar changed"
                 : why == HandBack.DASHER_ERROR ? "Dasher reported a decline error"
+                : why == HandBack.DASH_WOULD_END ? "Dasher said another decline would end the dash"
                 : "Dasher's question was not confirmed"), Peek.Outcome.LEFT_WITH_USER);
     }
 
@@ -7559,6 +7573,11 @@ public final class OfferFilterService extends AccessibilityService {
             handBack(HandBack.NOT_TAPPED, "its question ran out to 0:00 without a confirmation", now);
             return false;
         }
+        if (TimeModeGuard.endsDash(confirmation.text) && !episode.wasConfirmed()) {
+            // Earn by Time: another decline would end the dash. Never confirmed (TimeModeGuard; wording guessed).
+            handBack(HandBack.DASH_WOULD_END, "found in " + confirmation.where, now);
+            return false;
+        }
         int selected = DeclineConfirmation.select(confirmation.text, confirmation.declineLabels);
         logIfStuck(confirmation, now);
         long at = SystemClock.uptimeMillis();
@@ -7623,6 +7642,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (tap == Tap.TAPPED) {
             declineState.readDuration(tappedAt - currentReadStartedAt);
             declineState.confirmationSent(tappedAt);
+            lastConfirmedAt = tappedAt;
             episode.confirmed();
             // The peeked offer's decline is fully requested: the next read without it takes the user back.
             if (peek.phase() == Peek.Phase.DECLINING && peek.owns(declinedOffer)) peek.confirmed();
@@ -7871,6 +7891,7 @@ public final class OfferFilterService extends AccessibilityService {
         // A stale wait/home label drawn with pickup/delivery evidence is contradictory, not route completion.
         // Use the same no-route guard for lifecycle effects as for clearing the stored route above.
         if (noRoute && OfferEvidence.isDashOver(scan.text)) {
+            endedRightAfterDecline(now);
             Dashing.ended(this);
         } else if (noRoute && OfferEvidence.isPaused(scan.text)) {
             Dashing.paused(this);
@@ -8040,6 +8061,21 @@ public final class OfferFilterService extends AccessibilityService {
      * and an update waiting for the dash's end may install). A lifecycle step only: nothing is read, tapped or counted
      * for it.
      */
+    /**
+     * Dasher's own words ended the dash within {@link TimeModeGuard#ENDED_AFTER_DECLINE_MS} of the app's confirmed
+     * decline (Earn by Time's second decline, say): auto-decline is paused, once, with its homepage line.
+     */
+    private void endedRightAfterDecline(long now) {
+        long confirmed = lastConfirmedAt;
+        if (confirmed == NEVER || now - confirmed < 0 || now - confirmed > TimeModeGuard.ENDED_AFTER_DECLINE_MS) return;
+        lastConfirmedAt = NEVER;
+        if (!FilterStore.load(this).enabled) return;
+        DiagnosticLog.log(this, "dash", "ended " + (now - confirmed) + " ms after a confirmed decline: pausing");
+        TimeModeGuard.pause(this, TimeModeGuard.ENDED_LINE);
+        onMain(() -> Toast.makeText(this, "Dasher ended the dash right after a decline; auto-decline paused",
+                Toast.LENGTH_LONG).show());
+    }
+
     private void userEndedDash(String how) {
         forgetEndQuestion();
         DiagnosticLog.log(this, "dash", "ended: " + how);

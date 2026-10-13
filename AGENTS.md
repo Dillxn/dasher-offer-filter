@@ -2,6 +2,11 @@
 
 - "you never for any project need approval if you're using best judgment": make the call with best judgment, do it, and say what was decided and why (release notes, the commit, a line to the owner). Every "needs a new owner decision", "not approved" or "ask the owner" below is a decision to make on best judgment in that way. Still ask only when the choice is genuinely the owner's own (their money, accounts or identity, or a product direction they have not set), and never weaken the safety rules below (taps only on the declined offer's own controls, the user's touch always wins, local-only signing, privacy, consent).
 
+# 0.6.5 (13 October 2026): the Earn by Time guard — from #DeclineNow; the owner: "yeah I want all its recommendations"
+
+- In Earn by Time a second decline in an hour ends the dash. Dasher's decline question whose words say the dash will end, or that declines are limited per hour (TimeModeGuard.endsDash), is never confirmed: the offer is handed back (HandBack.DASH_WOULD_END, history "not confirmed") and auto-decline paused with the homepage line "Paused: Dasher said another decline would end this dash", shown even with Autopilot on, until the user resumes. Dasher's own words ending the dash within 10 s of the app's confirmed decline pause it the same way. Both only remove taps.
+- The wording is a guess until a report from a time-mode dash shows Dasher's real question; replace it then. Never detect the mode from Dasher's dash-start chooser, which names both modes.
+
 # 0.6.4 (13 October 2026): Split by the split pane, and the 11:06 stop — supersedes the 0.6.3 section's Split parts
 
 - The owner, 12 October 7:37 PM (0.6.3, Samsung, Android 16): "split screen button didnt work". 0.6.3's "Dasher first" opened Dasher full screen and the screen reader's launch-adjacent start of this app never split the screen (twice); 0.6.2's launch-adjacent start from the homepage had split it 214 ms after the tap. Inferred, not established: One UI honours FLAG_ACTIVITY_LAUNCH_ADJACENT only from an activity in front.
