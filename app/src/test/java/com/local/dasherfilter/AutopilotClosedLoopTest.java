@@ -52,6 +52,10 @@ public final class AutopilotClosedLoopTest {
         private static final double Z10 = -1.2815515655446004;
         private static final double SPREAD_LOW = StrictMath.log(5.85 / 2.2) / -Z10;
         private static final double SPREAD_HIGH = StrictMath.log(12.2 / 5.85) / -Z10;
+        /** How closely stacking follows the trip's length, and the normal quantiles of 68% and 83%. */
+        private static final double STACK_RHO = 0.75;
+        private static final double Z68 = 0.4676988;
+        private static final double Z83 = 0.9541653;
         private final Random random;
 
         Market(long seed) {
@@ -67,8 +71,12 @@ public final class AutopilotClosedLoopTest {
             double payNoise = RHO * timeNoise + StrictMath.sqrt(1 - RHO * RHO) * random.nextGaussian();
             double dollars = (BASE + K * miles) * StrictMath.exp(S_PAY * payNoise - 0.5 * S_PAY * S_PAY);
             int cents = (int) Math.max(200, Math.round(dollars * 100 / 5) * 5);
-            double u = random.nextDouble();
-            return new OfferSnapshot(cents, miles, minutes, u < 0.68 ? 2 : u < 0.83 ? 3 : 4);
+            // Stops: 68% two (a single order), 15% three, 17% four, as before, but the stacked ones are the longer trips
+            // (0.6.12, once pay counts per stop: in the owner's captured offers of 12 October 2026 every 3- and 4-stop
+            // offer ran 6.4 to 14.8 mi, every 2-stop one but one under 7 mi); drawn independently of the trip they
+            // asked a stacked offer's pay of a single order's trip.
+            double stacking = STACK_RHO * z + StrictMath.sqrt(1 - STACK_RHO * STACK_RHO) * random.nextGaussian();
+            return new OfferSnapshot(cents, miles, minutes, stacking < Z68 ? 2 : stacking < Z83 ? 3 : 4);
         }
     }
 

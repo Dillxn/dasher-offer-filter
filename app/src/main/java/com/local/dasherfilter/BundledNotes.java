@@ -237,7 +237,8 @@ final class BundledNotes {
                 "Minimum pay is now pay per stop: each stop after the first pickup counts, so a 3-stop offer asks "
                         + "twice your number.",
                 "Single orders are judged exactly as before; your number didn't change.",
-                "Learning keeps your best pay per stop.");
+                "Learning keeps your best pay per stop.",
+                "Fewer empty gaps on the homepage, and the time-of-day chart comes back after each new offer.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

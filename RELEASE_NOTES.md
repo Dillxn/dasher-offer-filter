@@ -7,9 +7,11 @@ Version 0.6.12 (code 104) answers the owner's ask of 13 October 2026: "we also n
 - **Learning keeps your best pay per stop.** An accept you make teaches pay only when its stops were read; the learned ask scales with the offer's stops, and Adopt sets pay per stop to that best (rounded up). A best stored before counts as one stop.
 - **Words.** The knob reads "$4.00/stop" ("Pay / stop" while unset); "Below your pay per stop"; the ticket's details show "Pay per stop — set $26.00 (3 stops: 2 × $13.00, the first pickup not counted)". Reports name the field payPerStopCents. Lines decided before 0.6.12 keep their own words and are explained under the current rules.
 - **Once, at the update.** "Minimums since" moves to now when a money minimum or learned pay best is set, so Autopilot's growth starts its evidence over; nothing else changes (one line in the log).
+- **Fewer gaps on the homepage** (the owner: "still awkward negative space gaps in 5.11 layout"). On a full screen the Autopilot/acceptance row keeps its whole width until the buttons rise beside it (so the meter's whole label fits at 411 dp), and buttons on a row of their own spread across it. Beside Dasher nothing moved.
+- **The time chart comes back** (the owner: "not seeing time chart anymore"). An older bar picked on the skyline used to stay picked through later offers, holding the offer clock's row; a new offer now returns the skyline to the newest (unless that offer's ticket is open).
 - Notice 23.
 
-Evidence boundaries: the unit and Robolectric suites ran here on one SDK: 2446 tests, 2 failing, both in AutopilotClosedLoopTest's simulated market (Autopilot's bar turns back within 30 minutes of a commit once stacked offers ask pay per stop); Autopilot's own logic is unchanged and that is open. No phone has run this build.
+Evidence boundaries: Autopilot's closed-loop simulation drew stops independently of the trip; with pay per stop that asked stacked offers far more than any real one pays and Autopilot's bar turned back within 30 minutes of a commit. Its market now draws stacked offers as the longer trips, as every 3- and 4-stop offer in the owner's captured screens was (shares unchanged); Autopilot's logic is unchanged and its simulations pass. No phone has run this build.
 
 ## 0.6.11 — Autopilot follows your accepts; more room for the map in split screen; the acceptance meter on one line
 
