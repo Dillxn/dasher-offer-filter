@@ -19,8 +19,9 @@ def usesDevCache = gradle.startParameter.projectCacheDir?.canonicalFile == devCa
 if (devChecks != usesDevCache) {
     throw new GradleException('Use tools/test-dev.sh: -PdevChecks and --project-cache-dir .gradle/dev-checks belong together.')
 }
-// Source-contract tests inspect these bytes directly, including comments and the repository's legal documents.
-def inspectedSources = fileTree('src/main') { include '**/*.java', '**/*.xml' }
+// Source-contract tests inspect these bytes directly, including comments and the repository's legal documents, and
+// ArtSpritesTest the pictures' own headers.
+def inspectedSources = fileTree('src/main') { include '**/*.java', '**/*.xml', 'res/drawable-nodpi/art_*.webp' }
 def inspectedLegalTexts = rootProject.files('TERMS.md', 'PRIVACY.md', 'LICENSE')
 
 android {
@@ -30,8 +31,8 @@ android {
         applicationId 'com.local.dasherfilter'
         minSdk 35
         targetSdk 35
-        versionCode 107
-        versionName '0.6.15'
+        versionCode 108
+        versionName '0.6.16'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

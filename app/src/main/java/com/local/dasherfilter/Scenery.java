@@ -17,7 +17,9 @@ import android.os.SystemClock;
  * stars in dark mode) behind the page title; {@link Part#GROUND} puts rolling hills, houses, trees and a road with a
  * little delivery car along the bottom of the page area. Both move gently: stars twinkle, clouds and birds drift, the
  * car drives, and tilting the phone slides the far layers against the near ones. With Android's animations off,
- * everything rests. Every color sits close to the page color, so text over it keeps its contrast.
+ * everything rests. Every color sits close to the page color, so text over it keeps its contrast. From 0.6.16 the sun,
+ * the moon, the clouds, the houses, the trees and the car are the website's models in the round ({@link Art}), each
+ * drawn flat until its picture is ready.
  */
 final class Scenery extends Drawable {
     enum Part { SKY, GROUND }
@@ -30,6 +32,13 @@ final class Scenery extends Drawable {
     private static final float BACK_HILL_DEPTH = 3;
     private static final float FRONT_HILL_DEPTH = 6;
     private static final float ROAD_DEPTH = 9;
+    /** The round car (0.6.16): as long as the flat one (its model 1.84 units long), its wheels this far below the road's
+     * middle line. */
+    private static final int CAR_LENGTH_DP = 40;
+    private static final float CAR_UNITS = 1.84f;
+    private static final float CAR_WHEELS_DP = 3.2f;
+    /** The round tree's unit for a flat tree's crown radius: both about 2.3 radii tall. */
+    private static final float TREE_UNIT = 1.15f;
     /** Where the stars sit, as shares of the sky (clear of the title at the left), with a size and a phase each. */
     private static final float[][] STARS = {
             {0.40f, 0.22f, 1.4f, 0.1f}, {0.47f, 0.62f, 1.0f, 0.7f}, {0.53f, 0.14f, 1.2f, 0.4f},
@@ -43,6 +52,8 @@ final class Scenery extends Drawable {
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private final Path road = new Path();
+    /** The road's dashed middle line, as filled shapes: dashed once for the page's size, not at every frame. */
+    private final Path roadDashes = new Path();
     private final Path backHill = new Path();
     private final Path frontHill = new Path();
     private final RectF rect = new RectF();
@@ -58,6 +69,7 @@ final class Scenery extends Drawable {
         line.setStyle(Paint.Style.STROKE);
         line.setStrokeCap(Paint.Cap.ROUND);
         roadDash = new DashPathEffect(new float[] {ui.dp(8), ui.dp(8)}, 0);
+        Art.watch(this);
     }
 
     Part part() {
@@ -101,6 +113,13 @@ final class Scenery extends Drawable {
         road.cubicTo(width * 0.35f, top + g * 0.7f, width * 0.65f, top + g * 0.92f, right + ui.dp(24),
                 top + g * 0.74f);
         roadMeasure = new PathMeasure(road, false);
+        Paint dashes = new Paint(Paint.ANTI_ALIAS_FLAG);
+        dashes.setStyle(Paint.Style.STROKE);
+        dashes.setStrokeCap(Paint.Cap.ROUND);
+        dashes.setStrokeWidth(ui.dp(2));
+        dashes.setPathEffect(roadDash);
+        roadDashes.reset();
+        dashes.getFillPath(road, roadDashes);
     }
 
     @Override public void draw(Canvas canvas) {
@@ -130,16 +149,20 @@ final class Scenery extends Drawable {
         canvas.restore();
         slide(canvas, MOON_DEPTH);
         if (ui.dark) {
-            fill.setColor(0xFF2E2D29);
-            canvas.drawCircle(sunX, sunY, ui.dp(16), fill);
-            fill.setColor(ui.page);
-            canvas.drawCircle(sunX + ui.dp(7), sunY - ui.dp(5), ui.dp(14), fill);
+            if (!Art.draw(ui, canvas, ArtSprites.MOON, sunX, sunY, ui.dp(15), null)) {
+                fill.setColor(0xFF2E2D29);
+                canvas.drawCircle(sunX, sunY, ui.dp(16), fill);
+                fill.setColor(ui.page);
+                canvas.drawCircle(sunX + ui.dp(7), sunY - ui.dp(5), ui.dp(14), fill);
+            }
         } else {
             float glow = 1 + 0.08f * Motion.wave(7f, 0);
             fill.setColor(0x33F4C74E);
             canvas.drawCircle(sunX, sunY, ui.dp(26) * glow, fill);
-            fill.setColor(0xFFF6DE92);
-            canvas.drawCircle(sunX, sunY, ui.dp(16), fill);
+            if (!Art.draw(ui, canvas, ArtSprites.SUN, sunX, sunY, ui.dp(16), null)) {
+                fill.setColor(0xFFF6DE92);
+                canvas.drawCircle(sunX, sunY, ui.dp(16), fill);
+            }
         }
         canvas.restore();
         int cloud = ui.dark ? 0xFF1A1A19 : 0xFFFBFAF7;
@@ -223,6 +246,8 @@ final class Scenery extends Drawable {
 
     /** A cloud of three puffs on a flat base, {@code size} being the middle puff's radius. */
     private void drawCloud(Canvas canvas, float x, float y, float size, int color) {
+        // The round cloud is a little wider for its middle puff than this flat one: drawn a tenth smaller.
+        if (Art.draw(ui, canvas, ui.dark ? ArtSprites.CLOUD_NIGHT : ArtSprites.CLOUD, x, y, size * 0.9f, null)) return;
         fill.setColor(color);
         canvas.drawCircle(x - size * 0.9f, y + size * 0.25f, size * 0.7f, fill);
         canvas.drawCircle(x, y, size, fill);
@@ -257,11 +282,8 @@ final class Scenery extends Drawable {
         line.setStrokeWidth(ui.dp(18));
         line.setColor(ui.dark ? 0xFF1E1E1D : 0xFFD6D3C9);
         canvas.drawPath(road, line);
-        line.setStrokeWidth(ui.dp(2));
-        line.setColor(ui.dark ? 0xFF2C2C2A : 0xFFEFEDE7);
-        line.setPathEffect(roadDash);
-        canvas.drawPath(road, line);
-        line.setPathEffect(null);
+        fill.setColor(ui.dark ? 0xFF2C2C2A : 0xFFEFEDE7);
+        canvas.drawPath(roadDashes, fill);
         if (roadMeasure != null) {
             // Across the page once every 16 seconds; parked two thirds along with animations off.
             float along = Motion.on() ? Motion.loop(16f, 0.64f) : 0.64f;
@@ -273,6 +295,11 @@ final class Scenery extends Drawable {
 
     /** A house sitting on the hill at (x, ground), {@code size} wide, with one lit window. */
     private void drawHouse(Canvas canvas, float x, float ground, float size) {
+        // Its foot a little into the hill, as the flat house's.
+        if (Art.draw(ui, canvas, ui.dark ? ArtSprites.HOUSE_NIGHT : ArtSprites.HOUSE, x, ground + size * 0.12f, size,
+                null)) {
+            return;
+        }
         float wall = size * 0.75f;
         fill.setColor(ui.dark ? 0xFF1C1C1B : 0xFFDCD9CF);
         rect.set(x - size / 2, ground - wall, x + size / 2, ground + size * 0.15f);
@@ -291,7 +318,13 @@ final class Scenery extends Drawable {
         canvas.drawRect(rect, fill);
     }
 
+    /** A tree on the hill at (x, ground), its crown's radius {@code size}. */
     private void drawTree(Canvas canvas, float x, float ground, float size) {
+        // The round tree, about two units tall, as tall as the flat one (its trunk's foot a little into the hill).
+        if (Art.draw(ui, canvas, ui.dark ? ArtSprites.TREE_NIGHT : ArtSprites.TREE, x, ground + size * 0.15f,
+                size * TREE_UNIT, null)) {
+            return;
+        }
         fill.setColor(ui.dark ? 0xFF1D1C1A : 0xFFD3CEC2);
         rect.set(x - size * 0.12f, ground - size * 1.1f, x + size * 0.12f, ground + size * 0.2f);
         canvas.drawRect(rect, fill);
@@ -306,6 +339,12 @@ final class Scenery extends Drawable {
         // A gentle bounce on the road.
         canvas.translate(carAt[0], carAt[1] - ui.dp(0.8f) * Math.abs(Motion.wave(0.9f, 0)));
         canvas.rotate(angle);
+        // The website's car in the round, as long as the flat one, its wheels on the road where the flat one's are.
+        if (Art.draw(ui, canvas, ui.dark ? ArtSprites.CAR_NIGHT : ArtSprites.CAR, 0, ui.dp(CAR_WHEELS_DP),
+                ui.dp(CAR_LENGTH_DP) / CAR_UNITS, null)) {
+            canvas.restore();
+            return;
+        }
         float u = ui.dp(1);
         int body = ui.dark ? 0xFF2D4C73 : 0xFFA9C1E0;
         int glass = ui.dark ? 0xFF3E5F87 : 0xFFE3ECF7;

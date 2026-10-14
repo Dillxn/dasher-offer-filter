@@ -42,6 +42,7 @@ public final class LegalActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         Ui ui = new Ui(this);
+        Art.preload(ui);
         LegalTexts.Doc doc = LegalTexts.Doc.named(getIntent().getStringExtra(DOC));
         LinearLayout page = ui.column();
 

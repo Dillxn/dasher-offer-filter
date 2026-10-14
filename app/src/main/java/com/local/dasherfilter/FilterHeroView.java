@@ -59,8 +59,10 @@ final class FilterHeroView extends FrameLayout {
 
     /** The ring's outer edge, brush included, from its middle, in the design's dp. */
     private static final int RING_OUTER_DP = 88;
-    /** The ring's middle, down from the top of the design, in dp. */
+    /** The ring's middle, down from the top of the design, in dp: where the round mascot's model has its origin. */
     private static final int RING_MIDDLE_DP = 104;
+    /** The round mascot's model unit (its rim's radius), in the design's dp: the flat funnel's half width. */
+    private static final int MASCOT_UNIT_DP = 62;
 
     /** Stars around the ring: dp from the middle across, dp down, and size. */
     private static final float[][] TWINKLES = {
@@ -130,6 +132,7 @@ final class FilterHeroView extends FrameLayout {
         pausedDash = new DashPathEffect(new float[] {ui.dp(7), ui.dp(5)}, 0);
         dotted = new DashPathEffect(new float[] {ui.dp(2), ui.dp(6)}, 0);
         setWillNotDraw(false);
+        Art.watch(this);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         mascotControl = control();
         mascotControl.setAccessibilityDelegate(new AccessibilityDelegate() {
@@ -613,7 +616,8 @@ final class FilterHeroView extends FrameLayout {
     /**
      * The mascot: a glazed funnel, lit from the upper left with a shine down its left side, whose rim shows its inside
      * (a sieve while on), narrowing to a collar and a rounded spout, with mittened arms and a face, over a soft
-     * shadow. While on, now and then an arm waves.
+     * shadow. While on, now and then an arm waves. From 0.6.16 its body and arms are the website's model in the round
+     * ({@link #drawRoundMascot}), the face drawn over them as before; until those pictures are ready, the flat funnel.
      */
     private void drawMascot(Canvas canvas, float cx) {
         int color = stateColor();
@@ -621,11 +625,6 @@ final class FilterHeroView extends FrameLayout {
         float breathe = off ? 0 : Motion.wave(4.5f, 0);
         // Pressed, the mascot squishes down a little, like a button.
         float squish = mascotControl.isPressed() ? 0.93f : 1f;
-        float rimY = ui.dp(72);
-        float half = ui.dp(62);
-        float neckY = ui.dp(146);
-        float neck = ui.dp(11);
-        float spoutY = ui.dp(164);
         float groundY = ui.dp(177);
 
         // Its shadow, a little narrower as it breathes in.
@@ -637,10 +636,62 @@ final class FilterHeroView extends FrameLayout {
 
         canvas.save();
         canvas.scale((1 + 0.012f * breathe) * squish, (1 + 0.012f * breathe) * squish, cx, ui.dp(150));
+        float wave = waveAngle();
+        if (!drawRoundMascot(canvas, cx, wave)) drawFlatMascot(canvas, cx, color, off, wave);
+
+        // A blink every few seconds while awake.
+        boolean blink = state == State.ON && Motion.on() && Motion.loop(5.3f, 0) > 0.965f;
+        Mascot.Mood face = wave != 0 ? Mascot.Mood.CHEER : blink ? Mascot.Mood.BLINK : mood();
+        Mascot.face(canvas, face, cx, ui.dp(110), ui.dp(40), off ? ui.inkMuted : ui.ink);
+        canvas.restore();
+
+        if (state == State.PAUSED) {
+            float t = Motion.on() ? Motion.loop(3.2f, 0) : 0.3f;
+            text.setFakeBoldText(true);
+            text.setColor(withAlpha(ui.inkSecondary, (int) (255 * (1 - t))));
+            text.setTextSize(ui.dp(12) + ui.dp(6) * t);
+            canvas.drawText("z", cx + ui.dp(36) + ui.dp(10) * t, ui.dp(92) - ui.dp(28) * t, text);
+        }
+    }
+
+    /**
+     * The mascot in the round (0.6.16): the website's model, its body with its left arm, then its right arm in front,
+     * turned about its shoulder while it waves; the model's origin at the ring's middle, its rim's radius the flat
+     * funnel's 62 dp. False, drawing nothing, until both pictures are ready.
+     */
+    private boolean drawRoundMascot(Canvas canvas, float cx, float wave) {
+        Art.Sprite body = state == State.ON ? (ui.dark ? ArtSprites.MASCOT_ON_NIGHT : ArtSprites.MASCOT_ON)
+                : state == State.PAUSED ? (ui.dark ? ArtSprites.MASCOT_PAUSED_NIGHT : ArtSprites.MASCOT_PAUSED)
+                : ui.dark ? ArtSprites.MASCOT_OFF_NIGHT : ArtSprites.MASCOT_OFF;
+        Art.Sprite arm = state == State.ON ? ArtSprites.ARM_ON : state == State.PAUSED ? ArtSprites.ARM_PAUSED
+                : ui.dark ? ArtSprites.ARM_OFF_NIGHT : ArtSprites.ARM_OFF;
+        if (!Art.ready(ui, body) || !Art.ready(ui, arm)) return false;
+        float unit = ui.dp(MASCOT_UNIT_DP);
+        float originY = ui.dp(RING_MIDDLE_DP);
+        Art.draw(ui, canvas, body, cx, originY, unit, null);
+        // The arm's own picture is placed by the model's origin, as the body's is; it turns about its shoulder.
+        float f = unit / arm.unit;
+        float shoulderX = cx + (arm.x - arm.pointX(Art.ORIGIN)) * f;
+        float shoulderY = originY + (arm.y - arm.pointY(Art.ORIGIN)) * f;
+        if (wave != 0) {
+            canvas.save();
+            canvas.rotate(wave, shoulderX, shoulderY);
+        }
+        Art.draw(ui, canvas, arm, shoulderX, shoulderY, unit, null);
+        if (wave != 0) canvas.restore();
+        return true;
+    }
+
+    /** The flat funnel: its arms, body, shine, outline, collar and rim (with its sieve while on). */
+    private void drawFlatMascot(Canvas canvas, float cx, int color, boolean off, float wave) {
+        float rimY = ui.dp(72);
+        float half = ui.dp(62);
+        float neckY = ui.dp(146);
+        float neck = ui.dp(11);
+        float spoutY = ui.dp(164);
         float armY = ui.dp(104);
         float side = half - (half - neck) * (armY - rimY) / (neckY - rimY);
         int glint = blend(color, 0xFFFFFFFF, 0.55f);
-        float wave = waveAngle();
         drawArm(canvas, cx - side, armY, -1, 0, color, glint);
         if (wave == 0) drawArm(canvas, cx + side, armY, 1, 0, color, glint);
 
@@ -708,20 +759,6 @@ final class FilterHeroView extends FrameLayout {
         line.setStrokeWidth(ui.dp(2));
         rect.inset(ui.dp(5), ui.dp(3.5f));
         canvas.drawArc(rect, 208, 34, false, line);
-
-        // A blink every few seconds while awake.
-        boolean blink = state == State.ON && Motion.on() && Motion.loop(5.3f, 0) > 0.965f;
-        Mascot.Mood face = wave != 0 ? Mascot.Mood.CHEER : blink ? Mascot.Mood.BLINK : mood();
-        Mascot.face(canvas, face, cx, ui.dp(110), ui.dp(40), off ? ui.inkMuted : ui.ink);
-        canvas.restore();
-
-        if (state == State.PAUSED) {
-            float t = Motion.on() ? Motion.loop(3.2f, 0) : 0.3f;
-            text.setFakeBoldText(true);
-            text.setColor(withAlpha(ui.inkSecondary, (int) (255 * (1 - t))));
-            text.setTextSize(ui.dp(12) + ui.dp(6) * t);
-            canvas.drawText("z", cx + ui.dp(36) + ui.dp(10) * t, ui.dp(92) - ui.dp(28) * t, text);
-        }
     }
 
     /**
