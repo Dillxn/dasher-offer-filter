@@ -451,8 +451,11 @@ public final class LegalTextsTest {
                         + "next UTC day",
                 "Turning the switch off stops it and discards that day's code;",
                 // The website's count, which the site's own Privacy page carries from this text.
-                "When you tap Download on offerfilter.org's install page, your browser sends the same feedback "
-                        + "service one anonymous count saying only that Download was tapped",
+                // 0.6.15: downloads are counted at the link itself, which sends the browser straight on.
+                "The Download link on offerfilter.org's install page, and the one on the update server's own page, go "
+                        + "first to the same feedback service, which counts one download",
+                "The count says only that the app was downloaded.", "and never keeps either",
+                "the download goes ahead whether or not the count is stored",
                 "The page sets no cookie and stores nothing in your browser for it",
                 // What the service keeps of both.
                 "The feedback service keeps counts as daily totals", "Totals are deleted after 400 days.",
