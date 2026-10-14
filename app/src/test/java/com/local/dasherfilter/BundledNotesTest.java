@@ -124,6 +124,7 @@ public class BundledNotesTest {
         both.addAll(notice(22));
         both.addAll(notice(23));
         both.addAll(notice(24));
+        both.addAll(notice(25));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -339,7 +340,9 @@ public class BundledNotesTest {
         since19.addAll(notice(22));
         since19.addAll(notice(23));
         since19.addAll(notice(24));
-        assertEquals("a reader of notice 19 sees 20's lines, then 21's, 22's, 23's and 24's", since19, BundledNotes.noticeChanges(19, true));
+        since19.addAll(notice(25));
+        assertEquals("a reader of notice 19 sees 20's lines, then 21's, 22's, 23's, 24's and 25's", since19,
+                BundledNotes.noticeChanges(19, true));
         for (String wrong : new String[] {"identifier", "track", "location", "earn more", "guarantee",
                 "only daily totals"}) {
             assertFalse(wrong, notice.toLowerCase(java.util.Locale.US).contains(wrong));
@@ -424,13 +427,39 @@ public class BundledNotesTest {
      * degrade performance, only enhance it"): the homepage's pictures are the website's 3D art; nothing is read, kept or
      * sent differently, so no notice.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.16", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(24, Consent.VERSION);
+    @Test public void release0616SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.16");
         assertEquals(lines.toString(), 1, lines.size());
         assertTrue(lines.get(0), lines.get(0).contains("3D art"));
         assertTrue(lines.get(0), lines.get(0).length() <= 160);
+    }
+
+    /**
+     * 0.6.17 (the owner, 14 October 2026: "can we ascertain whether we are breaking terms or not?", then "Say it
+     * plainly"): the account warning says what DoorDash's terms ban; the card is notice 25's lines.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.17", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(25, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.17");
+        assertEquals("the card says what notice 25 says", notice(25), lines);
+    }
+
+    /** 0.6.17's notice (25): DoorDash's terms ban tools like this one; nothing about how it works changed. */
+    @Test public void notice25SaysWhatDoorDashsTermsBan() {
+        List<String> lines = BundledNotes.noticeChanges(24);
+        assertEquals(notice(25), lines);
+        assertEquals(lines.toString(), 2, lines.size());
+        String notice = String.join(" ", lines);
+        for (String fact : new String[] {"DoorDash's terms ban automated tools that read or collect data from its "
+                + "apps", "this app is one", "limit or deactivate your account",
+                "Nothing about how the app works has changed"}) {
+            assertTrue(fact, notice.contains(fact));
+        }
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter") || line.contains("may break"));
+        }
     }
 
     /** 0.6.13: a customer's name alone on a pickup screen is masked in reports; nothing else changes. */
@@ -442,9 +471,7 @@ public class BundledNotesTest {
 
     /** 0.6.14's notice (24): every stop counts, the pickup included, and the number was not changed. */
     @Test public void notice24SaysThePickupCounts() {
-        assertEquals(24, Consent.VERSION);
-        List<String> lines = BundledNotes.noticeChanges(23);
-        assertEquals(notice(24), lines);
+        List<String> lines = notice(24);
         assertEquals(lines.toString(), 4, lines.size());
         assertTrue(lines.get(3), lines.get(3).contains("taps Dasher's ⚙ once"));
         String notice = String.join(" ", lines);

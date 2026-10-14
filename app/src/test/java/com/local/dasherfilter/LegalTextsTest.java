@@ -42,8 +42,8 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "14 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.15";
-    /** Privacy's new study scope is published separately; unchanged Terms keep their own effective identity. */
+    static final String TERMS_VERSION = "0.6.17";
+    /** 0.6.17 changed only the Terms (the account warning); Privacy keeps its own effective identity. */
     static final String PRIVACY_EFFECTIVE = "14 October 2026";
     static final String PRIVACY_VERSION = "0.6.15";
 

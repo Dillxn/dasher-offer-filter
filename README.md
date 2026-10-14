@@ -10,7 +10,7 @@ Day, Night, System and Auto change only the app's own screens; the home-screen i
 
 ## Risks
 
-- **DoorDash's terms and your account.** Using a third-party tool with the Dasher app may break DoorDash's terms, and DoorDash could limit or deactivate your account. Declining offers can also lower your acceptance rate. Autopilot's acceptance-rate goal is a best effort, not a promise: it cannot accept offers for you, and your acceptance rate rises only when you accept offers.
+- **DoorDash's terms and your account.** DoorDash's terms ban automated tools that read or collect data from its apps, and Offer Filter is one, so DoorDash could limit or deactivate your account. Declining offers can also lower your acceptance rate. Autopilot's acceptance-rate goal is a best effort, not a promise: it cannot accept offers for you, and your acceptance rate rises only when you accept offers.
 - **Not affiliated with DoorDash.** Offer Filter is independent software. DoorDash and Dasher are trademarks of DoorDash, Inc., named only to say which app it works with.
 - **It can be wrong, and there is no warranty.** It can misread an offer, accept or decline one you did not want it to, or fail to act; a tap is only a request to Dasher. Check your Dasher history. It is provided as is, without warranty ([TERMS.md](TERMS.md), [LICENSE](LICENSE)).
 - **Not while driving.** Don't handle your phone while driving: set your rules before you drive and pull over to look at offers. It is not a safety device.

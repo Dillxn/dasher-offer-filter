@@ -33,7 +33,9 @@ final class Consent {
     // learning's pay best is per stop.
     // 24 (0.6.14): pay per stop counts every stop Dasher shows, the pickup included; the saved number is unchanged, so
     // a single order asks twice what it did.
-    static final int VERSION = 24;
+    // 25 (0.6.17): the account point says plainly that DoorDash's terms ban automated tools that read or collect
+    // data from its apps, and that this is one (the owner chose "Say it plainly", 14 October 2026).
+    static final int VERSION = 25;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -80,8 +82,8 @@ final class Consent {
                 + "do not teach it; any known implausible figure rejects the lesson. The Learn button on the homepage "
                 + "turns it off; off keeps the bests without learning. Reset clears the bests and Clear history clears them "
                 + "too; your minimums stay. Area mode starts off. Autopilot growth is separate."},
-        {"Your Dasher account.", "Using it may break DoorDash's terms. DoorDash could limit or deactivate your "
-                + "account."},
+        {"Your Dasher account.", "DoorDash's terms ban automated tools that read or collect data from its apps, "
+                + "and this is one. DoorDash could limit or deactivate your account."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},
         {"Your data.", "Diagnostic logs use a rolling 24-hour window, pruned during app use. The latest 200 offer decisions "
