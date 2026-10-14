@@ -1,4 +1,4 @@
-## 0.6.14 — Pay per stop counts the pickup
+## 0.6.14 — Pay per stop counts the pickup; Dasher's ⚙ for a stuck offer; buildings and trees
 
 Version 0.6.14 (code 106) answers the owner's ask of 14 October 2026: "i don't want the pay per stop to not count the pickup", and, asked whether to halve his number, "it doesn't need to do any halving or any post artificial anything. it should be simple. if I say I want $5 per stop then a single pickup and single dropoff dash would require $10. if I have 3 stops, whatever the makeup, then it would require $15."
 
@@ -9,6 +9,8 @@ Version 0.6.14 (code 106) answers the owner's ask of 14 October 2026: "i don't w
 - **Once, at the update.** "Minimums since" moves to now when a money minimum or learned pay best is set, so Autopilot's growth starts its evidence over; one line in the log. Decision history from 0.6.12–0.6.13 is explained under the current rules and never pooled with new lines.
 - **Typical minimums** become $2.00 a stop, $1.00 a mile and $15 an hour, so they still ask a single order the typical $4.00 they were measured as. Only the suggestion changed; a saved number is never touched.
 - **Words.** The ticket's details show "Pay per stop — set $15.00 (3 stops: 3 × $5.00)", and "(2 stops: 2 × $2.00)" for a single order.
+- **Dasher's ⚙ for a stuck offer** (from the beta launch thread; Dillon chose "Tap it", 00:21 UTC). When Dasher shows Finding offers without an offer it announced, Peek, a card's tap and the on-screen check tap Dasher's ⚙ ("Open Settings") once for that offer, in place of Dasher's own notification tap, which never helped: only after a fresh read, while the offer's notification is still up, and never within 2 s of a touch. Any touch gives it up.
+- **The chart's buildings and trees are back** (Dillon: "i miss the building/tree skyline motif for the chart"; he chose B, "as before"). Each building is the offer's pay in dollars, coloured by what happened; each tree is the recorded score. The solid pay line is what the pay minimum asks of a single order at the bar ("Pay $10.00 min" at $5 a stop), and the dashed line is 100%. Renders: notes/0.6.14/.
 - Notice 24; Terms and Privacy for 0.6.14.
 
 No phone has run this build.

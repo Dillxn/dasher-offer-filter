@@ -122,6 +122,17 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
         assertTrue(chart.getContentDescription().toString().contains("No minimum pay is set."));
     }
 
+    /** The owner's own example (14 October 2026): $5 a stop asks $10 of a single order; Autopilot at 80% asks $8. */
+    @Test public void atFiveDollarsAStopThePayLineReadsTenDollarsAndEightAtAutopilotsEighty() {
+        FilterSettings five = FilterSettings.of(true, 500, 0, 0, 0);
+        DecisionChartView chart = chart(five, offer(1, 1200, 1000, 75));
+        assertEquals(1000L, chart.payoutThresholdCents());
+        assertTrue(drawnWords(chart).contains("Pay $10.00 min"));
+        chart.setRules(atBar(five, 80));
+        assertEquals(800L, chart.payoutThresholdCents());
+        assertTrue(drawnWords(chart).contains("Pay $8.00 min"));
+    }
+
     /** What the pay minimum asks of a single order (Dasher's "2 stops") at {@code bar}, rounded up to the cent. */
     private static long singleOrderCents(FilterSettings rules, int bar) {
         java.math.BigDecimal pay = AreaScore.floors(atBar(rules, bar), new OfferSnapshot(null, null, null, 2))

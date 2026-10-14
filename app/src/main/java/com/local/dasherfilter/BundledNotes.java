@@ -34,7 +34,13 @@ final class BundledNotes {
                     + "and $15 of three stops.",
             "Your number wasn't changed, so a single order now asks twice what it did; set it to what you want per "
                     + "stop.",
-            "Learning's best pay per stop counts the pickup too."};
+            "Learning's best pay per stop counts the pickup too.",
+            "If Dasher shows Finding offers without an offer it announced, the app taps Dasher's ⚙ once to bring it "
+                    + "up, as you would."};
+
+    private static final String SKYLINE_BACK =
+            "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
+                    + "pay line and the 100% line.";
 
     static {
         // What changed in the notice since the one before it. Two or three short lines, plain words. Notice 14 was
@@ -252,7 +258,8 @@ final class BundledNotes {
                 "No second card of ours beside Dasher's own offer notification: Dasher rings for offers itself.");
         release("0.6.13",
                 "A customer's name shown alone on a pickup screen is now masked in reports.");
-        release("0.6.14", PICKUP_COUNTED);
+        release("0.6.14", PICKUP_COUNTED[0], PICKUP_COUNTED[1], PICKUP_COUNTED[2], PICKUP_COUNTED[3],
+                SKYLINE_BACK);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

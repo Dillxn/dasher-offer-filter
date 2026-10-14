@@ -120,7 +120,8 @@ public final class LegalTextsTest {
                         + "you, and your acceptance rate rises only when you accept offers.",
                 "the app makes no promise to preserve your acceptance rate",
                 // Peek's recovery, the unlock catch-up and its pause; the screen hold; the update hold.
-                "Peek may tap Dasher's own offer notification once", "Peek waits up to 60 seconds for you to unlock it",
+                "Peek may tap Dasher's ⚙ button once when Dasher shows Finding offers, else Dasher's own offer "
+                        + "notification once", "Peek waits up to 60 seconds for you to unlock it",
                 "when you unlock within 40 seconds of it", "Peek never turns off its Settings switch",
                 "a Back to map button can take you back; it opens your map only when you tap it",
                 "it keeps your unlocked screen from timing out, whatever app is in front",

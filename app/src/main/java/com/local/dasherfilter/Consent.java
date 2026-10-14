@@ -64,7 +64,8 @@ final class Consent {
                 + "declines. Its chip on the homepage turns Autopilot off. Auto-accept is off by default; if "
                 + "you separately enable it in Settings, it can accept standalone offers that meet your minimums and commit "
                 + "you to a delivery. If Dasher shows an error and gets stuck during a decline, it may go Back and retry, at "
-                + "most twice. Your touch stops it. In split screen during a delivery it moves the divider, using the "
+                + "most twice. Your touch stops it. If Dasher shows Finding offers without an offer it announced, it "
+                + "may tap Dasher's ⚙ button once to bring the offer up, never within 2 seconds of your touch. In split screen during a delivery it moves the divider, using the "
                 + "divider's own controls, to give the navigating app more room, and puts it back afterward; move it "
                 + "yourself and it stops for that dash. It can briefly turn offer sound down. During a dash it keeps your "
                 + "unlocked screen from timing out; it never wakes or unlocks it."},

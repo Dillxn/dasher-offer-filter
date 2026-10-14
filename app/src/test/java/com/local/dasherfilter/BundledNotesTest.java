@@ -394,8 +394,9 @@ public class BundledNotesTest {
     @Test public void theCurrentReleaseSaysWhatChanged() {
         assertEquals("0.6.14", Updater.version(RuntimeEnvironment.getApplication()));
         List<String> lines = BundledNotes.whatsNew("0.6.14");
-        assertEquals(lines.toString(), 3, lines.size());
-        assertEquals("the card says what notice 24 says", notice(24), lines);
+        assertEquals(lines.toString(), 5, lines.size());
+        assertEquals("the card says what notice 24 says, then the skyline", notice(24), lines.subList(0, 4));
+        assertTrue(lines.get(4), lines.get(4).contains("buildings and trees are back"));
         String release = String.join(" ", lines);
         for (String fact : new String[] {"Pay per stop", "every stop", "the pickup included",
                 "$5 a stop asks $10 of a single order and $15 of three stops", "wasn't changed",
@@ -420,7 +421,8 @@ public class BundledNotesTest {
         assertEquals(24, Consent.VERSION);
         List<String> lines = BundledNotes.noticeChanges(23);
         assertEquals(notice(24), lines);
-        assertEquals(lines.toString(), 3, lines.size());
+        assertEquals(lines.toString(), 4, lines.size());
+        assertTrue(lines.get(3), lines.get(3).contains("taps Dasher's ⚙ once"));
         String notice = String.join(" ", lines);
         for (String fact : new String[] {"Pay per stop", "every stop Dasher shows, the pickup included",
                 "$5 a stop asks $10 of a single order and $15 of three stops", "Your number wasn't changed",
