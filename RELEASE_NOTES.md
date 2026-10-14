@@ -1,3 +1,13 @@
+## 0.6.19 — Your best accept keeps holding Autopilot's bar
+
+Version 0.6.19 (code 111) answers the owner's report of 14 October 2026 on 0.6.18, "it dropped the auto score below my recent high again on 6.18": he had turned Autopilot off and back on, and turning it on let go of his best accept, so the bar fell to 52%.
+
+- **Off and on keep it.** Turning Autopilot off and back on no longer lets go of your best accept of the last 7 days: back on, the bar goes straight to that score, with the words "you accepted an offer at this score". Changing your goal (also by picking another one as you turn it on), minimums, max stops, mode or learning still starts it over.
+- **The full 7 days.** The accept holds the bar for its whole 7 days, however many offers come after it: the app keeps the figures of offers you accept yourself (pay, miles, minutes, stops and items; at most 100, each for 7 days, on the phone only). Before, it counted only accepts among the latest 200 offers.
+- **This update, once.** With pay first as the goal, the update counts your accepts of the last 7 days again, so a high accept that turning Autopilot on had let go holds the bar again, from the next time Dasher is on screen with no offer up. With an acceptance-rate goal, nothing changes.
+- **Where the bar is going.** Accepting the notice now has Autopilot work out its bar at once; before, the homepage kept showing the bar the old version left ("when I opened the app it said 50%", the owner said) until an offer or a dash asked for it. While the bar waits to rise to your accept (it moves only while Dasher is on screen with no offer up), the line beside it says so: "Rising to 63%", and the details say when.
+- **Notice 27.** Everyone sees the notice once more, with a short What changed box. Terms and Privacy are for 0.6.19.
+
 ## 0.6.18 — Autopilot earnings first, and only Dasher's usual decline question confirmed
 
 Version 0.6.18 (code 110) answers the owner's report of 14 October 2026, "no reason auto pilot should have dropped to %50 when the latest order is above that... it's goal is to arm wrestle with the dispatch algorithm to ratchet up earnings", and his choice on the card, "Earnings first"; and his choice the same evening for Earn by Time: confirm only decline wording seen in his own reports, and pause on anything else.

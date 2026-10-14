@@ -3,6 +3,10 @@ package com.local.dasherfilter;
 import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -18,8 +22,9 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * Autopilot's own state in prefs "autopilot": the acceptance-rate reading (one number, at most 7 days, one reading per
- * offer within 2 minutes), the planner's goal-relative state, the next commit's cause and the last change, all cleared
- * at once by Clear history. Numbers and fixed names only.
+ * offer within 2 minutes), the planner's goal-relative state, the next commit's cause and the last change, and the
+ * hand accepts kept for the accepted floor (0.6.19), all cleared at once by Clear history. Numbers and fixed names
+ * only.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
@@ -206,11 +211,136 @@ public class AutopilotStoreTest {
         AutopilotStore.savePlanState(app, true, 2, NOW, 891);
         AutopilotStore.setJump(app, "TURNED_ON");
         AutopilotStore.recordChange(app, 100, 80, "RECOVERY", NOW, false);
-        for (Object value : prefs().getAll().values()) {
-            if (!(value instanceof String)) continue;
-            String text = (String) value;
-            assertTrue(text, text.matches("[A-Z_]+|[0-9.:=a-z]*"));
+        AutopilotStore.keepAccepts(app, Collections.singletonList(
+                hand(new OfferSnapshot(1445, 7.2, 27, 2, null, null, 3, true), NOW - MIN)), NOW - DAY);
+        for (java.util.Map.Entry<String, ?> entry : prefs().getAll().entrySet()) {
+            if (!(entry.getValue() instanceof String)) continue;
+            String text = (String) entry.getValue();
+            if (entry.getKey().equals("kept_accepts")) {
+                // Numbers under fixed keys, as JSON.
+                String field = "\"(at|pay|mi|min|stops|items|itemsApply)\":(-?[0-9.E]+|true)";
+                assertTrue(text, text.matches("\\[(\\{(" + field + ",?)+},?)*]"));
+            } else {
+                assertTrue(text, text.matches("[A-Z_]+|[0-9.:=a-z]*"));
+            }
         }
         assertEquals(OFFER, prefs().getString("ar_fp", null));
+        assertNotNull(prefs().getString("kept_accepts", null));
+    }
+
+    // ---- The hand accepts kept for the accepted floor (0.6.19) ----
+
+    private static final long MIN = 60_000L;
+
+    /** An offer the user accepted by hand at {@code at}. */
+    private static Autopilot.OfferRecord hand(OfferSnapshot facts, long at) {
+        return line(facts, at, false, false, false, at);
+    }
+
+    private static Autopilot.OfferRecord line(OfferSnapshot facts, long at, boolean addOn, boolean replay,
+                                              boolean skipped, long handAt) {
+        return new Autopilot.OfferRecord(facts, at - 30_000L, addOn, replay, true, false, false,
+                FilterSettings.BAR_AT_MINIMUMS, true, DecisionLog.MODEL, null, skipped, handAt);
+    }
+
+    @Test public void handAcceptsAreKeptPastTheLinesWithTheirFigures() {
+        OfferSnapshot his = new OfferSnapshot(1445, 7.2, 27, 2, null, null, 3, true);
+        List<Autopilot.OfferRecord> lines = Arrays.asList(
+                hand(his, NOW - MIN),
+                line(new OfferSnapshot(700, 3.0, 15, 2), NOW - 2 * MIN, true, false, false, NOW - 2 * MIN),
+                line(new OfferSnapshot(710, 3.0, 15, 2), NOW - 3 * MIN, false, true, false, NOW - 3 * MIN),
+                line(new OfferSnapshot(720, 3.0, 15, 2), NOW - 4 * MIN, false, false, true, NOW - 4 * MIN),
+                hand(new OfferSnapshot(null, 3.0, 15, 2), NOW - 5 * MIN),
+                line(new OfferSnapshot(730, 3.0, 15, 2), NOW - 6 * MIN, false, false, false, Autopilot.NEVER),
+                hand(new OfferSnapshot(740, 3.0, 15, 2), NOW - 8 * DAY));
+        List<Autopilot.OfferRecord> kept = AutopilotStore.keepAccepts(app, lines, NOW - 7 * DAY);
+        assertEquals("not an add-on, a replay, a skipped store's, unread pay, no hand accept or too old", 1,
+                kept.size());
+        Autopilot.OfferRecord one = kept.get(0);
+        assertEquals(NOW - MIN, one.acceptedByHandAt);
+        assertEquals(NOW - MIN, one.at);
+        assertEquals(Integer.valueOf(1445), one.facts.payCents);
+        assertEquals(7.2, one.facts.miles, 0);
+        assertEquals(Integer.valueOf(27), one.facts.minutes);
+        assertEquals(Integer.valueOf(2), one.facts.stops);
+        assertEquals(Integer.valueOf(3), one.facts.items);
+        assertTrue(one.facts.itemCountApplicable);
+        assertTrue(one.accepted);
+        assertFalse(one.addOn || one.replay || one.skipped || one.declined);
+        // Its line gone from the history, it is still kept; the same accept again is kept once.
+        assertEquals(1, AutopilotStore.keepAccepts(app, null, NOW - 7 * DAY).size());
+        assertEquals(1, AutopilotStore.keepAccepts(app, Collections.singletonList(hand(his, NOW - MIN)),
+                NOW - 7 * DAY).size());
+        // Once the floor's start passes it (its 7 days over, or a restart): forgotten.
+        long version = AutopilotStore.version();
+        assertTrue(AutopilotStore.keepAccepts(app, null, NOW - MIN + 1).isEmpty());
+        assertFalse(prefs().contains("kept_accepts"));
+        assertTrue(AutopilotStore.version() > version);
+        version = AutopilotStore.version();
+        assertTrue(AutopilotStore.keepAccepts(app, null, NOW).isEmpty());
+        assertEquals("nothing changed, nothing written", version, AutopilotStore.version());
+    }
+
+    @Test public void theNewest100AreKeptNewestFirst() {
+        List<Autopilot.OfferRecord> lines = new ArrayList<>();
+        for (int i = 0; i < 150; i++) lines.add(hand(new OfferSnapshot(1000 + i, 5.0, 20, 2), NOW - i * MIN));
+        Collections.reverse(lines);
+        List<Autopilot.OfferRecord> kept = AutopilotStore.keepAccepts(app, lines, NOW - DAY);
+        assertEquals(AutopilotStore.KEPT_ACCEPTS_MAX, kept.size());
+        assertEquals(NOW, kept.get(0).acceptedByHandAt);
+        assertEquals(NOW - 99 * MIN, kept.get(99).acceptedByHandAt);
+        assertEquals(Integer.valueOf(1099), kept.get(99).facts.payCents);
+    }
+
+    @Test public void aRestartOfTheFloorForgetsThemAndKeepsNoneBeforeIt() {
+        AutopilotStore.keepAccepts(app, Collections.singletonList(hand(new OfferSnapshot(1200, 5.0, 20, 2),
+                NOW - 2 * MIN)), NOW - DAY);
+        assertTrue(prefs().contains("kept_accepts"));
+        AutopilotStore.restartFloor(app, NOW - MIN);
+        assertFalse(prefs().contains("kept_accepts"));
+        assertTrue(AutopilotStore.keepAccepts(app, Collections.singletonList(hand(new OfferSnapshot(1200, 5.0, 20, 2),
+                NOW - 2 * MIN)), NOW - DAY).isEmpty());
+        assertEquals("from the restart on", 1, AutopilotStore.keepAccepts(app, Collections.singletonList(
+                hand(new OfferSnapshot(1300, 5.0, 20, 2), NOW - MIN)), NOW - DAY).size());
+        AutopilotStore.clear(app);
+        assertFalse(prefs().contains("kept_accepts"));
+    }
+
+    @Test public void unreadableKeptAcceptsReadAsNone() {
+        prefs().edit().putString("kept_accepts", "not json").commit();
+        assertTrue(AutopilotStore.keepAccepts(app, null, NOW - DAY).isEmpty());
+        assertFalse(prefs().contains("kept_accepts"));
+        prefs().edit().putString("kept_accepts", "[{\"at\":" + (NOW - MIN) + "},{\"at\":" + (NOW - 2 * MIN)
+                + ",\"pay\":900,\"mi\":5.0}]").commit();
+        List<Autopilot.OfferRecord> kept = AutopilotStore.keepAccepts(app, null, NOW - DAY);
+        assertEquals("one with no pay is left out", 1, kept.size());
+        assertEquals(Integer.valueOf(900), kept.get(0).facts.payCents);
+        assertNull(kept.get(0).facts.minutes);
+    }
+
+    /**
+     * The update to 0.6.19 (once): with pay first, a floor that restarted (turning Autopilot on or off may have done
+     * it) starts over from nothing; a goal that protects the rate keeps the restart; a restart under 0.6.19 is never
+     * undone.
+     */
+    @Test public void theUpdateRepairsARestartedFloorOnceWithPayFirst() {
+        prefs().edit().putLong("floor_since", NOW).commit();
+        assertFalse(AutopilotStore.undoToggleRestartOnce(app, false));
+        assertEquals(NOW, AutopilotStore.floorSince(app));
+        assertFalse("once only", AutopilotStore.undoToggleRestartOnce(app, true));
+        assertEquals(NOW, AutopilotStore.floorSince(app));
+
+        prefs().edit().clear().putLong("floor_since", NOW).commit();
+        assertTrue(AutopilotStore.undoToggleRestartOnce(app, true));
+        assertEquals(0, AutopilotStore.floorSince(app));
+        assertFalse(AutopilotStore.undoToggleRestartOnce(app, true));
+
+        prefs().edit().clear().commit();
+        AutopilotStore.restartFloor(app, NOW);
+        assertFalse(AutopilotStore.undoToggleRestartOnce(app, true));
+        assertEquals(NOW, AutopilotStore.floorSince(app));
+
+        prefs().edit().clear().commit();
+        assertFalse("nothing restarted, nothing to do", AutopilotStore.undoToggleRestartOnce(app, true));
     }
 }

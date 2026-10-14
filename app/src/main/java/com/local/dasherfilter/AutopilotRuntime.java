@@ -80,6 +80,8 @@ final class AutopilotRuntime {
         CONNECT,
         /** The homepage came back (for display; a plan moves nothing by itself). */
         RESUME,
+        /** The current notice was just accepted (0.6.19, {@link #noticeAccepted}). */
+        NOTICE,
         /** Clear history. */
         CLEAR,
         /** After a commit, or after a commit found its plan stale. */
@@ -90,11 +92,20 @@ final class AutopilotRuntime {
 
     /**
      * A change to Autopilot or the rules, already saved. Every one but turning Autopilot off makes the next commit a
-     * jump. The user's own restart the accepted floor (0.6.11); a lesson and Adopt do not.
+     * jump. A change of goal or rules restarts the accepted floor (0.6.11); turning Autopilot on or off (0.6.19), a
+     * lesson and Adopt do not.
      */
     enum UserChange {
-        TURNED_ON(Autopilot.Reason.TURNED_ON, true, true),
-        TURNED_OFF(null, true, true),
+        /**
+         * Turning Autopilot on keeps the accepted floor (0.6.19; the owner, 14 October 2026, when turning it back on put
+         * the bar at 52%, under his best accept of that morning: "it dropped the auto score below my recent high again
+         * on 6.18").
+         */
+        TURNED_ON(Autopilot.Reason.TURNED_ON, false, true),
+        /** Turning it on with another goal than it had is also a change of goal: that restarts the floor (0.6.19). */
+        TURNED_ON_NEW_GOAL(Autopilot.Reason.TURNED_ON, true, true),
+        /** Off puts the bar at exactly 100 and the floor holds nothing; it keeps it for when Autopilot is on again. */
+        TURNED_OFF(null, false, true),
         GOAL_CHANGED(Autopilot.Reason.GOAL_CHANGED, true, true),
         /** A minimum, max stops, Strict/Area or learning changed, Reset or an Undo (not pausing auto-decline). */
         RULES_CHANGED(Autopilot.Reason.RULES_CHANGED, true, false),
@@ -305,6 +316,16 @@ final class AutopilotRuntime {
         }
     }
 
+    /**
+     * The current notice was just accepted: a plan now (0.6.19). Nothing was planned before it, so after an update the
+     * homepage kept showing the bar the old version left ("Checking offers") until an offer, a dash's tick or the
+     * homepage coming back asked for one (the owner, 14 October 2026: "when I opened the app it said 50% which was
+     * already low"). The plan only shows where the bar is going; its commit still waits for a safe point.
+     */
+    static void noticeAccepted(Context context) {
+        requestPlan(context, Trigger.NOTICE);
+    }
+
     /** One plan, on the planning thread. */
     private static void plan(Context app) {
         // A request from now on asks for a plan of its own: this one may already have read its inputs.
@@ -322,13 +343,22 @@ final class AutopilotRuntime {
             AutopilotStore.Reading stored = AutopilotStore.reading(app, wall);
             Autopilot.State state = state(app, rules);
             long since = FilterStore.minimumsSince(app);
+            // Once (0.6.19): with pay first, a floor that turning Autopilot on or off may have restarted starts over.
+            boolean payFirst = rules.autopilotGoalPercent == FilterSettings.GOAL_PAY_FIRST;
+            if (AutopilotStore.undoToggleRestartOnce(app, payFirst)) log(app, AutopilotText.LOG_FLOOR_PAST_TOGGLES);
             // The accepted floor counts hand accepts of the last 7 days, across dashes (0.6.18; this dash before),
-            // since the user's own last change.
+            // since the user's last change of goal or rules.
             long floorSince = Math.max(wall - Autopilot.FLOOR_WINDOW_MS, AutopilotStore.floorSince(app));
+            // Those accepts are kept past the latest 200 lines for the 7 days (0.6.19), never after Clear history.
+            List<Autopilot.OfferRecord> kept;
+            synchronized (LOCK) {
+                if (generation.get() != planned) return;
+                kept = AutopilotStore.keepAccepts(app, lines, floorSince);
+            }
             Runnable hook = afterInputsForTests;
             if (hook != null) hook.run();
             Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, waits, reading(stored), state, wall,
-                    planned, since, TimeZone.getDefault(), CostPerMile.cents(app), floorSince));
+                    planned, since, TimeZone.getDefault(), CostPerMile.cents(app), floorSince, kept));
             String dropped = publish(app, plan, state, epoch, stored, wall);
             if (dropped != null) {
                 log(app, dropped);
@@ -676,7 +706,8 @@ final class AutopilotRuntime {
         FilterStore.setAutopilot(app, on, chosen);
         if (on && !before.autopilot) {
             log(app, AutopilotText.logOn(chosen));
-            userChanged(app, UserChange.TURNED_ON);
+            userChanged(app, before.autopilotGoalPercent == chosen ? UserChange.TURNED_ON
+                    : UserChange.TURNED_ON_NEW_GOAL);
         } else if (!on && before.autopilot) {
             log(app, AutopilotText.LOG_OFF);
             userChanged(app, UserChange.TURNED_OFF);
@@ -818,9 +849,10 @@ final class AutopilotRuntime {
      * before (or still being worked out) is never published or committed from, so it cannot write that state back.
      * Every change but turning off makes the next commit a jump straight to the new plan's target (at a safe point,
      * like every commit); turning off needs no commit, as the bar is already exactly 100, and forgets the note of the
-     * last change, which no longer explains the bar. The user's own changes also restart the accepted floor (0.6.11):
-     * hand accepts before them no longer hold the bar; a lesson and Adopt keep it. Then a plan is asked for. It writes
-     * no log line of its own: {@link #setAutopilot} does.
+     * last change, which no longer explains the bar. A change of goal or rules also restarts the accepted floor
+     * (0.6.11): hand accepts before it no longer hold the bar, and the ones kept for it are forgotten; turning
+     * Autopilot on or off (0.6.19), a lesson and Adopt keep it. Then a plan is asked for. It writes no log line of its
+     * own: {@link #setAutopilot} does.
      */
     static void userChanged(Context context, UserChange change) {
         if (context == null || change == null) return;

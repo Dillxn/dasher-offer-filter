@@ -38,7 +38,10 @@ final class Consent {
     // 26 (0.6.18): Autopilot puts pay first by default (a 70% goal moves to pay first once; the goals that protect the
     // acceptance rate are opt-in), and the best score you accepted yourself in the last 7 days holds its bar across
     // dashes (the owner chose "Earnings first", 14 October 2026).
-    static final int VERSION = 26;
+    // 27 (0.6.19): turning Autopilot off and on keeps that hold, the figures of offers accepted by hand are kept 7 days
+    // so it lasts past the latest 200 offers, and with pay first the update counts the accepts of the last 7 days again
+    // (the owner's report, 14 October 2026: "it dropped the auto score below my recent high again on 6.18").
+    static final int VERSION = 27;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -97,7 +100,8 @@ final class Consent {
                 + "records in a rolling 24-hour window, which are not shared, and the app keeps the latest acceptance rate "
                 + "Dasher showed, with the offer it was shown for (used up to 7 days, then deleted when the app next looks), "
                 + "even with Autopilot off; the rate leaves only in reports you share or send yourself, never in the "
-                + "summary after a dash. "
+                + "summary after a dash. Autopilot also keeps the figures of offers you accept yourself (at most 100, "
+                + "for 7 days), so the best one keeps holding its cutoff; they never leave this phone. "
                 + "Auto theme uses an existing allowed approximate location, or a local-clock fallback. "
                 + "Recognized payment, account and earnings screens are discarded. Feedback and offer reports are accountless and leave "
                 + "only when you tap Send; masked diagnostics go only when you attach them, or after each dash if you turn that on in "

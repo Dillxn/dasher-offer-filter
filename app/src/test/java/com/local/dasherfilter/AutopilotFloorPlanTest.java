@@ -256,6 +256,44 @@ public final class AutopilotFloorPlanTest {
         assertEquals(150, Autopilot.acceptedFloor(rich, 0));
     }
 
+    /**
+     * 0.6.19: accepts kept past the history's latest lines count as the history's own do, scored under the current
+     * rules, and one the history still holds (the same accept) counts once.
+     */
+    @Test
+    public void keptAcceptsCountBesideTheHistoryOnceEach() {
+        FilterSettings rules = flat(1000, 70);
+        List<Autopilot.OfferRecord> history = new ArrayList<>();
+        history.add(line(new OfferSnapshot(700, 5.0, 20, 2), 3, 2));
+        history.add(line(new OfferSnapshot(900, 5.0, 20, 2), 40, 39));
+        List<Autopilot.OfferRecord> kept = new ArrayList<>();
+        // The history's own 90% accept again, then a 120% one whose line left the history.
+        kept.add(line(new OfferSnapshot(900, 5.0, 20, 2), 39, 39));
+        kept.add(line(new OfferSnapshot(1200, 5.0, 20, 2), 50, 50));
+        kept.add(record(new OfferSnapshot(1500, 5.0, 20, 2), 51, 51, true, false));
+        List<Autopilot.HandAccept> accepts = Autopilot.handAccepts(rules, history, kept);
+        assertEquals("an add-on never counts, kept or not", 3, accepts.size());
+        assertEquals(70, accepts.get(0).score);
+        assertEquals(90, accepts.get(1).score);
+        assertEquals(NOW - 50 * MIN, accepts.get(2).at);
+        assertEquals(120, accepts.get(2).score);
+        assertEquals(120, Autopilot.acceptedFloor(accepts, SINCE));
+        assertEquals(Autopilot.handAccepts(rules, history).size(), Autopilot.handAccepts(rules, history, null).size());
+        // In the plan: the kept one holds the bar, from the floor's start like any other.
+        List<Autopilot.OfferRecord> lines = join(history, lines(40, 400, 20, 60));
+        assertEquals(120, kept(rules, lines, kept, SINCE).floor);
+        assertEquals("before the floor's start", 90, kept(rules, lines, kept, NOW - 45 * MIN).floor);
+        assertEquals("without them, the history's best", 90, plan(rules, lines, dasher(10), SINCE).floor);
+    }
+
+    private static Autopilot.Plan kept(FilterSettings rules, List<Autopilot.OfferRecord> lines,
+                                       List<Autopilot.OfferRecord> kept, long floorSince) {
+        Autopilot.State state = new Autopilot.State(false, 0, Autopilot.NEVER, -1, Autopilot.NEVER,
+                rules.minimumScalePercent, null);
+        return Autopilot.plan(new Autopilot.Inputs(rules, lines, busy(), dasher(10), state, NOW, 1, Long.MAX_VALUE,
+                TimeZone.getTimeZone("UTC"), 0, floorSince, kept));
+    }
+
     @Test
     public void addOnsReplaysMisreadsSkippedStoresOverMaxStopsAndUnreadFiguresNeverCount() {
         FilterSettings rules = new FilterSettings(true, 500, 0, 25, 3, true, 70, 100);
@@ -314,10 +352,14 @@ public final class AutopilotFloorPlanTest {
         assertSame("down from above", Autopilot.Reason.ACCEPTED, Autopilot.commitReason(plan, 100, 63, null));
         assertSame("a lesson's jump landing there", Autopilot.Reason.ACCEPTED,
                 Autopilot.commitReason(plan, 50, 63, Autopilot.Reason.LEARNED));
-        for (Autopilot.Reason users : Arrays.asList(Autopilot.Reason.TURNED_ON, Autopilot.Reason.GOAL_CHANGED,
-                Autopilot.Reason.RULES_CHANGED, Autopilot.Reason.CLEARED)) {
-            assertSame("a user's own jump keeps its reason", users, Autopilot.commitReason(plan, 100, 63, users));
+        assertSame("turning Autopilot on keeps the floor (0.6.19): its jump landing there too",
+                Autopilot.Reason.ACCEPTED, Autopilot.commitReason(plan, 100, 63, Autopilot.Reason.TURNED_ON));
+        for (Autopilot.Reason users : Arrays.asList(Autopilot.Reason.GOAL_CHANGED, Autopilot.Reason.RULES_CHANGED,
+                Autopilot.Reason.CLEARED)) {
+            assertSame("a change that restarts the floor keeps its reason", users,
+                    Autopilot.commitReason(plan, 100, 63, users));
         }
+        assertSame(Autopilot.Reason.TURNED_ON, Autopilot.commitReason(plan, 100, 80, Autopilot.Reason.TURNED_ON));
         assertSame("a step short of the floor keeps the mode's reason", Autopilot.Reason.PINNED,
                 Autopilot.commitReason(plan, 100, 80, null));
         assertSame(Autopilot.Reason.LEARNED, Autopilot.commitReason(plan, 100, 80, Autopilot.Reason.LEARNED));

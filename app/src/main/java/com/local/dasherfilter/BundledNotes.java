@@ -45,6 +45,18 @@ final class BundledNotes {
             "DoorDash could limit or deactivate your account. Nothing about how the app works has changed."};
 
     /**
+     * Notice 27's lines, also 0.6.19's card: turning Autopilot off and on keeps the best accept's hold, which lasts its
+     * full 7 days, and with pay first the update counts the accepts of the last 7 days again.
+     */
+    private static final String[] FLOOR_HOLDS = {
+            "Turning Autopilot off and on no longer lets go of your best accept: it keeps holding the bar for its 7 "
+                    + "days.",
+            "It holds even after 200 newer offers: the app keeps the figures of offers you accept yourself for 7 days, "
+                    + "on this phone only.",
+            "With pay first, this update also counts your accepts of the last 7 days again: the bar rises to your best "
+                    + "one once Dasher is on screen with no offer up."};
+
+    /**
      * Notice 26's lines, also 0.6.18's card: pay first by default, the best accept of 7 days holds the bar, and a
      * decline is confirmed only on Dasher's usual question.
      */
@@ -162,6 +174,9 @@ final class BundledNotes {
         // to it once, and the best hand-accepted score of the last 7 days holds Autopilot's bar across dashes; and
         // (option A, 19:36 UTC) only Dasher's usual decline question is confirmed, any other pauses auto-decline.
         notice(26, EARNINGS_FIRST);
+        // 0.6.19 (the owner, 14 October 2026: "it dropped the auto score below my recent high again on 6.18"): turning
+        // Autopilot off and on no longer restarts the accepted floor, and the accepts it counts are kept 7 days.
+        notice(27, FLOOR_HOLDS);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -297,6 +312,7 @@ final class BundledNotes {
                 + "the chart's buildings and trees, and the road's houses and car.");
         release("0.6.17", TERMS_PLAIN[0], TERMS_PLAIN[1]);
         release("0.6.18", EARNINGS_FIRST);
+        release("0.6.19", FLOOR_HOLDS);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

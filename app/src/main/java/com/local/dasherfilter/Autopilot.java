@@ -5,8 +5,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TimeZone;
 
 /**
@@ -407,6 +409,12 @@ final class Autopilot {
          * the dash's start). {@link Long#MAX_VALUE}: no floor.
          */
         final long floorSince;
+        /**
+         * Hand accepts kept for the accepted floor past the history's latest lines (0.6.19, AutopilotStore's
+         * {@code keepAccepts}), newest first: scored like the history's own ({@link #handAccepts}) for the floor and
+         * for which bars an accept held up ({@link Growth}), never counted as decided lines. Empty: the history's only.
+         */
+        final List<OfferRecord> keptAccepts;
 
         /** Inputs with no evidence for growth (no line is decided after {@link Long#MAX_VALUE}). */
         Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
@@ -428,9 +436,17 @@ final class Autopilot {
                     Long.MAX_VALUE);
         }
 
+        /** Inputs whose hand accepts are the history's only. */
         Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
                Reading reading, State state, long wallNow, long generation, long minimumsSince, TimeZone zone,
                int costPerMileCents, long floorSince) {
+            this(rules, newestFirst, waits, reading, state, wallNow, generation, minimumsSince, zone, costPerMileCents,
+                    floorSince, null);
+        }
+
+        Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
+               Reading reading, State state, long wallNow, long generation, long minimumsSince, TimeZone zone,
+               int costPerMileCents, long floorSince, List<OfferRecord> keptAccepts) {
             if (rules == null) throw new IllegalArgumentException("rules");
             this.costPerMileCents = Math.max(0, Math.min(CostPerMile.MOST_CENTS, costPerMileCents));
             this.rules = rules;
@@ -445,6 +461,8 @@ final class Autopilot {
             this.minimumsSince = minimumsSince;
             this.zone = zone == null ? TimeZone.getTimeZone("UTC") : zone;
             this.floorSince = floorSince;
+            this.keptAccepts = keptAccepts == null ? Collections.<OfferRecord>emptyList()
+                    : Collections.unmodifiableList(new ArrayList<>(keptAccepts));
         }
     }
 
@@ -917,7 +935,7 @@ final class Autopilot {
         ArNow ar = arNow(in.reading, counted, ignoreExempt, in.wallNow);
         Rate rate = lambda(in.waits, in.wallNow);
         List<MixLine> mix = mix(rules, window, thetas, in.costPerMileCents);
-        List<HandAccept> accepts = handAccepts(rules, in.newestFirst);
+        List<HandAccept> accepts = handAccepts(rules, in.newestFirst, in.keptAccepts);
         Growth.Evidence growth = Growth.evidence(rules, counted, in.minimumsSince, in.zone, accepts);
         Draft draft = new Draft(in, window, thetas, mix, ar, rate, ignoreExempt, growth);
         draft.floor = acceptedFloor(accepts, in.floorSince);
@@ -1008,17 +1026,35 @@ final class Autopilot {
      * whose pay or a needed figure was not read (score -1).
      */
     static List<HandAccept> handAccepts(FilterSettings rules, List<OfferRecord> newestFirst) {
+        return handAccepts(rules, newestFirst, null);
+    }
+
+    /**
+     * {@link #handAccepts(FilterSettings, List)} of the history, then of {@code kept} (0.6.19: the accepts kept past
+     * the history's latest lines), each the same way; a kept one the history still holds (the same ACCEPTED step) is
+     * left out, so no accept counts twice.
+     */
+    static List<HandAccept> handAccepts(FilterSettings rules, List<OfferRecord> newestFirst, List<OfferRecord> kept) {
         List<HandAccept> accepts = new ArrayList<>();
-        if (rules == null || newestFirst == null) return accepts;
-        for (OfferRecord record : newestFirst) {
+        if (rules == null) return accepts;
+        Set<Long> seen = new HashSet<>();
+        addHandAccepts(rules, newestFirst, seen, false, accepts);
+        addHandAccepts(rules, kept, seen, true, accepts);
+        return Collections.unmodifiableList(accepts);
+    }
+
+    private static void addHandAccepts(FilterSettings rules, List<OfferRecord> records, Set<Long> seen,
+                                       boolean skipSeen, List<HandAccept> accepts) {
+        if (records == null) return;
+        for (OfferRecord record : records) {
             if (record == null || record.acceptedByHandAt == NEVER || record.addOn || record.replay || record.skipped
                     || OfferSanity.looksMisread(record.facts)) continue;
+            if (!seen.add(record.acceptedByHandAt) && skipSeen) continue;
             if (rules.maxStops > 0 && record.facts.stops != null && record.facts.stops > rules.maxStops) continue;
             int score = AreaScore.scorePercent(rules, record.facts);
             if (score < 0) continue;
             accepts.add(new HandAccept(record.acceptedByHandAt, Math.min(BAR_MAX, score)));
         }
-        return Collections.unmodifiableList(accepts);
     }
 
     /**
@@ -1401,13 +1437,14 @@ final class Autopilot {
 
     /**
      * Why a commit from {@code from} to {@code to} happened: the pending jump when there is one (landing on a binding
-     * accepted floor, a lesson's jump says the floor's words); otherwise the floor's when the commit lands on a binding
-     * one; otherwise the plan's mode, with value moves up or down. Off and no-rules plans only ever return to exactly
-     * the minimums.
+     * accepted floor, the jump of a change that keeps the floor, a lesson or turning Autopilot on (0.6.19), says the
+     * floor's words); otherwise the floor's when the commit lands on a binding one; otherwise the plan's mode, with
+     * value moves up or down. Off and no-rules plans only ever return to exactly the minimums.
      */
     static Reason commitReason(Plan plan, int from, int to, Reason jumpCause) {
         if (jumpCause != null && !jumpCause.jump) throw new IllegalArgumentException("not a jump cause: " + jumpCause);
-        if ((jumpCause == null || jumpCause == Reason.LEARNED) && plan.floorBinds() && to == plan.target) {
+        if ((jumpCause == null || jumpCause == Reason.LEARNED || jumpCause == Reason.TURNED_ON) && plan.floorBinds()
+                && to == plan.target) {
             return Reason.ACCEPTED;
         }
         if (jumpCause != null) return jumpCause;
