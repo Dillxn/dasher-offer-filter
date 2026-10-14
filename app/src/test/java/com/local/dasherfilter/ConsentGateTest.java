@@ -163,7 +163,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Learning is on by default.", "Your Dasher account.",
                 "At your own risk.", "Not while driving.", "Your data.", "A daily count is on by default.",
                 "Optional offer timing study."), java.util.Arrays.asList(leads));
-        assertEquals("the pickup counted renews the notice (after pay per stop's 23)", 24, Consent.VERSION);
+        assertEquals("the plain account warning renews the notice (after the pickup counted, 24)", 25, Consent.VERSION);
         String does = Consent.POINTS[2][1];
         for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
                 "It taps Decline and its confirmation on offers that fail your chosen rules.",
@@ -207,7 +207,11 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 + "background offer (also just after you unlock, for one that came while it was locked), then return "
                 + "to your previous app."));
         assertTrue(peek.contains("Turn Peek off in Settings."));
-        assertTrue(Consent.POINTS[5][1].contains("may break DoorDash's terms"));
+        // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
+        assertTrue(Consent.POINTS[5][1].contains("DoorDash's terms ban automated tools that read or collect data "
+                + "from its apps, and this is one."));
+        assertTrue(Consent.POINTS[5][1].contains("DoorDash could limit or deactivate your account."));
+        assertFalse(Consent.POINTS[5][1].contains("may break"));
         assertTrue(Consent.POINTS[6][1].contains("no warranty"));
         assertTrue(Consent.POINTS[7][1].contains("Don't handle your phone while driving."));
         String learning = Consent.POINTS[4][1];
@@ -366,9 +370,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // Version 13 described reports through GitHub; 14 describes accountless feedback and its opt-in diagnostics,
         // Autopilot and the acceptance-rate reading, the screen hold and the dated beta terms; 15, the minimums'
         // growth; 20, the anonymous daily count; 21, the store skip list and the cost per mile; 22, the bar an accepted
-        // offer holds and the divider moved during a delivery; 23, pay per stop; 24, the pickup counted. A phone that
-        // accepted 14 (0.5.0) sees it again too.
-        assertEquals(24, Consent.VERSION);
+        // offer holds and the divider moved during a delivery; 23, pay per stop; 24, the pickup counted; 25, the plain
+        // account warning. A phone that accepted 14 (0.5.0) sees it again too.
+        assertEquals(25, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

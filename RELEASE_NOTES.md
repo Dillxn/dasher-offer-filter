@@ -1,3 +1,13 @@
+## 0.6.17 — A plainer warning about DoorDash's terms
+
+Version 0.6.17 (code 109) answers the owner's question of 14 October 2026, "can we ascertain whether we are breaking terms or not?", and his choice, "Say it plainly".
+
+- **What the terms say.** DoorDash's terms ban automated tools that read or collect data from its apps, and Offer Filter is one, so DoorDash could limit or deactivate your account. The notice, the Terms and the README said only that it "may break" DoorDash's terms. Declining offers is still yours to do: the Dasher agreement lets you accept or reject any offer.
+- **Notice 25.** Everyone sees the notice once more, with a short What changed box. The Terms are for 0.6.17; Privacy is unchanged.
+- Nothing the app reads, keeps, sends or taps changes.
+
+No phone has run this build.
+
 ## 0.6.16 — The website's 3D art in the app
 
 Version 0.6.16 (code 108) answers the owner's ask of 14 October 2026: "let's also upgrade the app's 2d graphics to our 3d art, but we must not degrade performance, only enhance it".

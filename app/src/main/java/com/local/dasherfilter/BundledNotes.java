@@ -38,6 +38,12 @@ final class BundledNotes {
             "If Dasher shows Finding offers without an offer it announced, the app taps Dasher's ⚙ once to bring it "
                     + "up, as you would."};
 
+    /** Notice 25's lines, also 0.6.17's card: the account warning says plainly what DoorDash's terms ban. */
+    private static final String[] TERMS_PLAIN = {
+            "The account warning is plainer: DoorDash's terms ban automated tools that read or collect data from "
+                    + "its apps, and this app is one.",
+            "DoorDash could limit or deactivate your account. Nothing about how the app works has changed."};
+
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
                     + "pay line and the 100% line.";
@@ -131,6 +137,9 @@ final class BundledNotes {
         // 0.6.14 (the owner, 14 October 2026: "i don't want the pay per stop to not count the pickup"): every stop
         // counts, the pickup included; the saved number is unchanged ("it doesn't need to do any halving").
         notice(24, PICKUP_COUNTED);
+        // 0.6.17 (the owner chose "Say it plainly", 14 October 2026): the account point says DoorDash's terms ban
+        // automated tools that read or collect data from its apps, and that this is one, where it said "may break".
+        notice(25, TERMS_PLAIN);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -264,6 +273,7 @@ final class BundledNotes {
                 + "shared link counts too. Privacy says how.");
         release("0.6.16", "The homepage's pictures are the website's 3D art now: the mascot, the sun, moon and clouds, "
                 + "the chart's buildings and trees, and the road's houses and car.");
+        release("0.6.17", TERMS_PLAIN[0], TERMS_PLAIN[1]);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

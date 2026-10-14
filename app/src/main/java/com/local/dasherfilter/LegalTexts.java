@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 14 October 2026 · for {app} 0.6.15
+            Beta terms, effective 14 October 2026 · for {app} 0.6.17
 
             ## What {app} is
 
@@ -184,9 +184,9 @@ final class LegalTexts {
 
             ## Your responsibilities
 
-            - Your Dasher account and your agreements with DoorDash are yours. Using third-party tools may break \
-            DoorDash's terms, and DoorDash could limit or deactivate your account. You decide whether to use {app}, \
-            and you accept that risk.
+            - Your Dasher account and your agreements with DoorDash are yours. DoorDash's terms ban automated tools \
+            that read or collect data from its apps, and {app} is one, so DoorDash could limit or deactivate your \
+            account. You decide whether to use {app}, and you accept that risk.
             - Obey traffic laws. Do not handle your phone while driving; set your rules before you drive and pull \
             over to look at offers. {app} is not a safety device.
             - Check your Dasher history. {app} can misread an offer, decline an offer you wanted, accept an offer \
