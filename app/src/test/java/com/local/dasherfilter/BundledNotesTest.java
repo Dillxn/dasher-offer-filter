@@ -412,12 +412,24 @@ public class BundledNotesTest {
      * 0.6.15 (the owner, 14 October 2026, of the download count's blind spots: "let's fix em"): downloads are counted at
      * the website's download link; nothing in the app changes, so no notice.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.15", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(24, Consent.VERSION);
+    @Test public void release0615SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.15");
         assertEquals(lines.toString(), 1, lines.size());
         assertTrue(lines.get(0), lines.get(0).contains("counted at the download link"));
+        assertTrue(lines.get(0), lines.get(0).length() <= 160);
+    }
+
+    /**
+     * 0.6.16 (the owner, 14 October 2026: "let's also upgrade the app's 2d graphics to our 3d art, but we must not
+     * degrade performance, only enhance it"): the homepage's pictures are the website's 3D art; nothing is read, kept or
+     * sent differently, so no notice.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.16", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(24, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.16");
+        assertEquals(lines.toString(), 1, lines.size());
+        assertTrue(lines.get(0), lines.get(0).contains("3D art"));
         assertTrue(lines.get(0), lines.get(0).length() <= 160);
     }
 

@@ -51,6 +51,12 @@ public class ConsentedTestApp extends Application {
         // From 0.6.2 Autopilot is on by default. Tests written before that run as an install whose user turned it off
         // (or kept it off); AutopilotDefaultTest turns the default back on to test it.
         FilterStore.autopilotOnByDefault = false;
+        // The pictures in the round are decoded on a thread of their own on a phone: here on the calling thread, from
+        // the app's resources, and none kept from an earlier test, so every drawing is the same whatever ran before.
+        Art.executorForTests = Runnable::run;
+        Art.source = Art.RESOURCES;
+        Art.flatForTests = false;
+        Art.forgetCache();
     }
 
     static void accept(Context context) {

@@ -1,3 +1,13 @@
+## 0.6.16 — The website's 3D art in the app
+
+Version 0.6.16 (code 108) answers the owner's ask of 14 October 2026: "let's also upgrade the app's 2d graphics to our 3d art, but we must not degrade performance, only enhance it".
+
+- **In the round.** The mascot and its wave, the sun, the moon and the clouds, the chart's buildings and trees, the road's houses, trees and car, and the launcher icon's mascot are the website's 3D models, drawn ahead of time into small pictures (about 83 KB).
+- **No slower.** A homepage frame draws 276 steps where 0.6.14 drew 628, and takes no longer to record. The pictures are decoded once, in the background; until they are ready the flat drawings stand in.
+- Nothing is read, kept or sent differently, so no notice.
+
+No phone has run this build.
+
 ## 0.6.15 — Downloads counted at the link
 
 Version 0.6.15 (code 107) answers the owner's "let's fix em" (14 October 2026) about the download count's blind spots.

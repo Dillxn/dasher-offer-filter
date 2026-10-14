@@ -34,7 +34,9 @@ import java.util.Map;
  * Under the street, the dash's counts are the chart's key ("DASH ✓ 1 ✕ 0 ? 1"), and a tap on one opens its latest
  * offer ({@link OnCount}). Tapping a building or its tree selects it and reports it to the listener; an offer picked
  * on the constellation is selected the same way ({@link #choose}). Buildings and trees rise together; with Android's
- * animations off they rest.
+ * animations off they rest. From 0.6.16 the buildings and the trees' crowns are the website's in the round ({@link Art}:
+ * a building's roof and a slice of its front stretched down to the street, a crown stretched to its tree), flat until
+ * their pictures are ready; the windows stay drawn, all of a frame's together.
  */
 @SuppressLint("ViewConstructor")
 final class DecisionChartView extends View {
@@ -64,6 +66,14 @@ final class DecisionChartView extends View {
     private final DashPathEffect scoreDash;
     private final RectF rect = new RectF();
     private final Path path = new Path();
+    /** A flat building's corners: its roof's two rounded, its foot's two square. */
+    private final float[] roofRadii = new float[8];
+    /** This frame's windows, lit, half-lit and dark, as the middles of squares drawn together after the buildings. */
+    private final float[][] windows = {new float[96], new float[96], new float[96]};
+    private final int[] windowFloats = new int[3];
+    private float windowSide;
+    private final Paint windowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static final int[] WINDOW_COLORS = {0xCCFFE9A3, 0x70FFFFFF, 0x28000000};
     private List<DecisionLog.Entry> entries = Collections.emptyList();
     private int selected = -1;
     private long selectedAt;
@@ -105,8 +115,10 @@ final class DecisionChartView extends View {
         label.setColor(ui.inkMuted);
         label.setTextAlign(Paint.Align.CENTER);
         line.setStyle(Paint.Style.STROKE);
+        windowPaint.setStrokeCap(Paint.Cap.SQUARE);
         setClickable(true);
         setFocusable(true);
+        Art.watch(this);
     }
 
     void setOnSelect(OnSelect listener) {
@@ -358,6 +370,7 @@ final class DecisionChartView extends View {
             }
             if (i == marked) markedRoof = roof;
         }
+        drawWindows(canvas);
         // The lines' words, then the badge over everything, so no label's backdrop covers it.
         float badgeX = Float.isNaN(markedRoof) ? Float.NaN : buildingCenter(marked, slot);
         float badgeY = Float.isNaN(markedRoof) ? Float.NaN : Math.max(markedRoof - ui.dp(12), ui.dp(10));
@@ -404,25 +417,78 @@ final class DecisionChartView extends View {
     /**
      * The offer's building, as 0.6.3 drew it: a rounded roof and two columns of windows, its colour what happened
      * (muted, as the landscape's), its windows lit when the offer passed or was accepted, half-lit when left for review
-     * (or to you), dark when filtered.
+     * (or to you), dark when filtered. From 0.6.16 in the round ({@link #drawRoundBuilding}) where its picture is ready.
+     * Its windows are kept for {@link #drawWindows}.
      */
     private void drawBuilding(Canvas canvas, float l, float t, float r, float b, DecisionLog.Entry entry) {
         int group = barColor(entry);
-        float radius = Math.min(ui.dp(4), Math.min((r - l) / 2f, Math.max(0, b - t) / 2f));
-        path.reset();
-        rect.set(l, t, r, b);
-        path.addRoundRect(rect, new float[] {radius, radius, radius, radius, 0, 0, 0, 0}, Path.Direction.CW);
-        fill.setColor(facadeColor(group));
-        canvas.drawPath(path, fill);
+        if (!drawRoundBuilding(canvas, l, t, r, b, group)) {
+            float radius = Math.min(ui.dp(4), Math.min((r - l) / 2f, Math.max(0, b - t) / 2f));
+            for (int i = 0; i < 4; i++) roofRadii[i] = radius;
+            path.reset();
+            rect.set(l, t, r, b);
+            path.addRoundRect(rect, roofRadii, Path.Direction.CW);
+            fill.setColor(facadeColor(group));
+            canvas.drawPath(path, fill);
+        }
         float window = Math.max(ui.dp(2), Math.min(ui.dp(4), (r - l) / 6f));
-        fill.setColor(group == Ui.resultColor(OfferRule.Result.KEEP) ? 0xCCFFE9A3
-                : group == Ui.resultColor(OfferRule.Result.DECLINE) ? 0x28000000 : 0x70FFFFFF);
+        int lit = group == Ui.resultColor(OfferRule.Result.KEEP) ? 0
+                : group == Ui.resultColor(OfferRule.Result.DECLINE) ? 2 : 1;
         float gap = window * 1.2f;
+        windowSide = window;
         for (float y = t + ui.dp(6); y + window <= b - ui.dp(4); y += window + gap) {
-            for (int column = 0; column < 2; column++) {
-                float x = l + (r - l) * (column == 0 ? 0.3f : 0.7f) - window / 2f;
-                canvas.drawRect(x, y, x + window, y + window, fill);
-            }
+            addWindow(lit, l + (r - l) * 0.3f, y + window / 2f);
+            addWindow(lit, l + (r - l) * 0.7f, y + window / 2f);
+        }
+    }
+
+    /**
+     * The building in the round (0.6.16): the website's rounded block, its front the building's colour, seen a little
+     * from above so its roof shows; its roof's picture at the building's width and a slice of its front stretched
+     * down to the street (a low building's roof cut at the street). False, drawing nothing, until it is ready.
+     */
+    private boolean drawRoundBuilding(Canvas canvas, float l, float t, float r, float b, int group) {
+        Art.Sprite block = group == Ui.resultColor(OfferRule.Result.KEEP)
+                ? (ui.dark ? ArtSprites.BLOCK_KEEP_NIGHT : ArtSprites.BLOCK_KEEP)
+                : group == Ui.resultColor(OfferRule.Result.DECLINE)
+                ? (ui.dark ? ArtSprites.BLOCK_DECLINE_NIGHT : ArtSprites.BLOCK_DECLINE)
+                : ui.dark ? ArtSprites.BLOCK_REVIEW_NIGHT : ArtSprites.BLOCK_REVIEW;
+        if (b <= t || !Art.ready(ui, block)) return false;
+        float f = (r - l) / (block.pointX(Art.RIGHT) - block.pointX(Art.LEFT));
+        float left = l - block.pointX(Art.LEFT) * f;
+        float right = left + block.w * f;
+        float top = t - block.y * f;
+        float capEnd = t + (block.pointY(Art.CAP_END) - block.y) * f;
+        if (b <= capEnd) return Art.drawRows(ui, canvas, block, 0, block.y + (b - t) / f, left, top, right, b, null);
+        Art.drawRows(ui, canvas, block, 0, block.pointY(Art.CAP_END), left, top, right, capEnd, null);
+        float slice = block.pointY(Art.SLICE);
+        return Art.drawRows(ui, canvas, block, slice - 1, slice + 1, left, capEnd, right, b, null);
+    }
+
+    /** Keeps a window's middle for {@link #drawWindows}: {@code lit} 0 lit, 1 half-lit, 2 dark. */
+    private void addWindow(int lit, float x, float y) {
+        float[] points = windows[lit];
+        int used = windowFloats[lit];
+        if (used + 2 > points.length) {
+            points = java.util.Arrays.copyOf(points, points.length * 2);
+            windows[lit] = points;
+        }
+        points[used] = x;
+        points[used + 1] = y;
+        windowFloats[lit] = used + 2;
+    }
+
+    /**
+     * Every building's windows, as squares the buildings gave their middles for: one draw for each of lit, half-lit
+     * and dark, where each window was one of its own (no building or tree stands over another's windows).
+     */
+    private void drawWindows(Canvas canvas) {
+        windowPaint.setStrokeWidth(windowSide);
+        for (int lit = 0; lit < windows.length; lit++) {
+            if (windowFloats[lit] == 0) continue;
+            windowPaint.setColor(WINDOW_COLORS[lit]);
+            canvas.drawPoints(windows[lit], 0, windowFloats[lit], windowPaint);
+            windowFloats[lit] = 0;
         }
     }
 
@@ -436,7 +502,10 @@ final class DecisionChartView extends View {
     private int treeColor() { return ui.dark ? 0xFF9DD6B6 : 0xFF32664F; }
     private int payoutColor() { return ui.dark ? 0xFFF1C58B : 0xFF865423; }
 
-    /** A slim evergreen: its very tip is the score, its trunk ends at the street. */
+    /**
+     * A slim evergreen: its very tip is the score, its trunk ends at the street. From 0.6.16 its crown is the website's
+     * in the round, stretched to the tree, where its picture is ready.
+     */
     private void drawTree(Canvas canvas, float x, float tip, float bottom, float width) {
         float height = bottom - tip;
         line.setColor(treeColor());
@@ -447,9 +516,20 @@ final class DecisionChartView extends View {
             line.setStrokeCap(Paint.Cap.BUTT);
             return;
         }
+        float crown = height * 0.84f;
+        Art.Sprite pine = ui.dark ? ArtSprites.PINE_NIGHT : ArtSprites.PINE;
+        if (Art.ready(ui, pine)) {
+            // The trunk from inside the crown, then the crown: its tip at the score, its foot as wide as the tree.
+            canvas.drawLine(x, tip + crown * 0.6f, x, bottom, line);
+            line.setStrokeCap(Paint.Cap.BUTT);
+            float across = width / (pine.pointX(Art.FOOT_RIGHT) - pine.pointX(Art.FOOT_LEFT));
+            float down = crown / (pine.pointY(Art.FOOT) - pine.y);
+            Art.drawInto(ui, canvas, pine, x - pine.x * across, tip - pine.y * down, x + (pine.w - pine.x) * across,
+                    tip + (pine.h - pine.y) * down, null);
+            return;
+        }
         canvas.drawLine(x, tip, x, bottom, line);
         line.setStrokeCap(Paint.Cap.BUTT);
-        float crown = height * 0.84f;
         path.reset();
         path.moveTo(x, tip);
         path.lineTo(x + width * 0.30f, tip + crown * 0.43f);

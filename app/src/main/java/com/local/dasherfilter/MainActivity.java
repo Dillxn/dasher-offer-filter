@@ -326,6 +326,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         super.onCreate(state);
         freshScreen = state == null;
         ui = new Ui(this);
+        // The pictures in the round for this palette, decoded off this thread while the page is built (0.6.16).
+        Art.preload(ui);
         // A crash notes where it happened (never what was on screen), for the next start's summary.
         StopReports.install(this);
         feedbackDialogs = new FeedbackDialogs(this, ui, this::feedbackChanged);

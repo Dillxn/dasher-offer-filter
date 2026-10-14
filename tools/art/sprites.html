@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Offer Filter pictures</title>
+<!-- One of the app's pictures from the website's 3D models, for tools/art/render-sprites.cjs: ?name=mascot_on. The
+     server it runs under serves the website's checkout at /site/ and this folder at /art/. -->
+<style>html,body{margin:0;background:transparent}canvas{display:block}</style></head><body>
+<canvas id="gl"></canvas>
+<script src="/site/assets/gl.js"></script><script src="/site/assets/models.js"></script>
+<script src="/art/sprites.js"></script>
+<script>
+(() => {
+  const name = new URLSearchParams(location.search).get('name');
+  try { window.result = OfferSprites.render(name); } catch (e) { window.result = {error: String(e && e.stack || e)}; }
+})();
+</script>
+</body></html>

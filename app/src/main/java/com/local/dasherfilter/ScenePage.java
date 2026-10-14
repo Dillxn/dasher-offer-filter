@@ -40,6 +40,8 @@ final class ScenePage extends ViewGroup {
     private static final float NEAR_HILL_DEPTH = 7;
     /** The sun's disc's radius (the moon's is smaller), and how high the far and near hills rise, in dp. */
     private static final int SUN_DP = 21;
+    /** The round sun's radius (0.6.16), inside the flat sun's pale ring. */
+    private static final int SUN_ROUND_DP = 18;
     private static final int FAR_HILL_DP = 46;
     private static final int NEAR_HILL_DP = 26;
     /** How far, in dp, the signpost may rise from the hills to clear the skyline before it is left out. */
@@ -86,6 +88,9 @@ final class ScenePage extends ViewGroup {
     private Shader sky;
     private Shader ground;
     private Shader sunGlow;
+    /** Where the flat moon's crescent was last cut for (it is cut again only when the moon moves). */
+    private float moonX = Float.NaN;
+    private float moonY = Float.NaN;
     private float shadedFor = Float.NaN;
     /** The horizon, width and rise the hills were last shaped for. */
     private float hillsLine = Float.NaN;
@@ -119,6 +124,7 @@ final class ScenePage extends ViewGroup {
         this.ui = ui;
         fluid = new FluidLayout(context.getResources().getDisplayMetrics().density);
         setWillNotDraw(false);
+        Art.watch(this);
     }
 
     /**
@@ -485,7 +491,10 @@ final class ScenePage extends ViewGroup {
         canvas.restore();
     }
 
-    /** By day a sun, by night a crescent moon, up by the settings button, both with a soft glow. */
+    /**
+     * By day a sun, by night a crescent moon, up by the settings button, both with a soft glow; from 0.6.16 the
+     * website's sun and moon in the round (Art), flat until their pictures are ready.
+     */
     private void drawSun(Canvas canvas, float width) {
         boolean anchored = sunAnchor != null && sunAnchor.getWidth() > 0;
         float x = anchored ? left(sunAnchor) + sunAnchor.getWidth() / 2f : width * 0.68f;
@@ -505,14 +514,20 @@ final class ScenePage extends ViewGroup {
         fill.setShader(null);
         canvas.restore();
         if (ui.dark) {
-            moon.reset();
-            moon.addCircle(x, y, ui.dp(15), Path.Direction.CW);
-            moonBite.reset();
-            moonBite.addCircle(x + ui.dp(7), y - ui.dp(5), ui.dp(13), Path.Direction.CW);
-            moon.op(moonBite, Path.Op.DIFFERENCE);
-            fill.setColor(0xFFF1E6C8);
-            canvas.drawPath(moon, fill);
-        } else {
+            if (!Art.draw(ui, canvas, ArtSprites.MOON, x, y, ui.dp(15), null)) {
+                if (x != moonX || y != moonY) {
+                    moonX = x;
+                    moonY = y;
+                    moon.reset();
+                    moon.addCircle(x, y, ui.dp(15), Path.Direction.CW);
+                    moonBite.reset();
+                    moonBite.addCircle(x + ui.dp(7), y - ui.dp(5), ui.dp(13), Path.Direction.CW);
+                    moon.op(moonBite, Path.Op.DIFFERENCE);
+                }
+                fill.setColor(0xFFF1E6C8);
+                canvas.drawPath(moon, fill);
+            }
+        } else if (!Art.draw(ui, canvas, ArtSprites.SUN, x, y, ui.dp(SUN_ROUND_DP), null)) {
             fill.setColor(0xFFFFE3A0);
             canvas.drawCircle(x, y, ui.dp(SUN_DP), fill);
             fill.setColor(0xFFF8C85A);
@@ -551,6 +566,8 @@ final class ScenePage extends ViewGroup {
         }
         float shown = 1 - Math.min(1, behind / (0.2f * (right - left) * (bottom - top)));
         if (shown <= 0) return;
+        // 0.6.16: the website's cloud in the round, its middle puff this size, flat until its picture is ready.
+        if (Art.draw(ui, canvas, ArtSprites.CLOUD, x, y, size, Art.faded(Math.round((color >>> 24) * shown)))) return;
         fill.setColor((color & 0x00FFFFFF) | (Math.round((color >>> 24) * shown) << 24));
         canvas.drawCircle(x, y, size, fill);
         canvas.drawCircle(x - size * 1.1f, y + size * 0.35f, size * 0.7f, fill);
