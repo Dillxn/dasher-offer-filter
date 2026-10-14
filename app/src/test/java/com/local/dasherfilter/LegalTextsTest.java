@@ -42,10 +42,10 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "14 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.18";
-    /** 0.6.18 changed both (pay first by default, the 7-day accepted floor, the goal's "picked" mark kept). */
+    static final String TERMS_VERSION = "0.6.19";
+    /** 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days). */
     static final String PRIVACY_EFFECTIVE = "14 October 2026";
-    static final String PRIVACY_VERSION = "0.6.18";
+    static final String PRIVACY_VERSION = "0.6.19";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -120,8 +120,11 @@ public final class LegalTextsTest {
                         + "auto-decline pauses until you resume it.",
                 // 0.6.18: the best hand accept of the last 7 days holds the bar across dashes.
                 "keeps it at least at the best such score of the last 7 days, across dashes",
-                "An accept stops holding the bar 7 days after it; turning Autopilot on, or a change of your goal, "
-                        + "minimums, max stops, mode or learning ends that hold; Adopt keeps it.",
+                // 0.6.19: turning Autopilot off and on keeps that hold, which lasts past the 200-line history.
+                "An accept stops holding the bar 7 days after it, even after newer offers have pushed it out of the "
+                        + "decision history (from 0.6.19); a change of your goal (turning Autopilot on with another "
+                        + "goal included), minimums, max stops, mode or learning ends that hold; turning Autopilot off "
+                        + "and on again (from 0.6.19; before, turning it on ended it) and Adopt keep it.",
                 "using your recent offers, how often they come and the acceptance rate Dasher shows when you decline",
                 // OfferRule.evaluate: a bar above 100% declines what meets the minimums but not the bar.
                 "Above 100% it declines offers that meet your minimums.",
@@ -257,8 +260,17 @@ public final class LegalTextsTest {
                 "Autopilot's bar and why it changed (never your acceptance rate)",
                 "The fingerprint kept with a reading never leaves the phone.",
                 "Report this offer leaves it out.",
-                "Clear history removes the reading, Autopilot's working figures, its last-change note, the note of "
-                        + "its last growth (and with it the Undo) and its other notes above.",
+                "Clear history removes the reading, Autopilot's working figures, the accepted offers it keeps, its "
+                        + "last-change note, the note of its last growth (and with it the Undo) and its other notes "
+                        + "above.",
+                // 0.6.19: the hand accepts kept for the accepted floor (AutopilotStore.keepAccepts).
+                "The offers you accept yourself while Autopilot is on (from 0.6.19): for each, its pay in cents, "
+                        + "miles, minutes, stops and item count, and when you accepted it",
+                "At most " + AutopilotStore.KEPT_ACCEPTS_MAX + ", each for " + Autopilot.FLOOR_DAYS + " days and "
+                        + "only since you last changed your goal or rules; that change removes them. They never leave "
+                        + "the phone, not even in a report.",
+                "when you last changed your goal or rules (an accepted offer holds its bar only after that; before "
+                        + "0.6.19, turning it on or off counted too)",
                 // The rules, the history's new fields and the 0.5.0 migration.
                 // 0.6.18: pay first by default, and whether the user picked the goal (FilterStore.goalChosen).
                 "Autopilot's settings: whether it is on, your goal (pay first, the default from 0.6.18, or an "

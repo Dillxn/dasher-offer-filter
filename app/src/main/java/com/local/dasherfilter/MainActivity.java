@@ -416,6 +416,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         OfferFilterService.requestCheckFromNotification();
         // Nothing was scheduled or checked before (0.6.18): the first update check runs now.
         Updater.noticeAccepted(this);
+        // Nor planned (0.6.19): Autopilot's plan now, so the bar it is heading for shows at once.
+        AutopilotRuntime.noticeAccepted(this);
         refresh();
     }
 

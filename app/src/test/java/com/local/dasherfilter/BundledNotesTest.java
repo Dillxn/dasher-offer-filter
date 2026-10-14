@@ -126,6 +126,7 @@ public class BundledNotesTest {
         both.addAll(notice(24));
         both.addAll(notice(25));
         both.addAll(notice(26));
+        both.addAll(notice(27));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -343,7 +344,8 @@ public class BundledNotesTest {
         since19.addAll(notice(24));
         since19.addAll(notice(25));
         since19.addAll(notice(26));
-        assertEquals("a reader of notice 19 sees 20's lines, then 21's, 22's, 23's, 24's, 25's and 26's", since19,
+        since19.addAll(notice(27));
+        assertEquals("a reader of notice 19 sees 20's lines, then 21's to 27's", since19,
                 BundledNotes.noticeChanges(19, true));
         for (String wrong : new String[] {"identifier", "track", "location", "earn more", "guarantee",
                 "only daily totals"}) {
@@ -450,11 +452,42 @@ public class BundledNotesTest {
      * above that... it's goal is to arm wrestle with the dispatch algorithm to ratchet up earnings", then "Earnings
      * first"): the card is notice 26's lines.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.18", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(26, Consent.VERSION);
+    @Test public void release0618SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.18");
         assertEquals("the card says what notice 26 says", notice(26), lines);
+    }
+
+    /**
+     * 0.6.19 (the owner, 14 October 2026: "it dropped the auto score below my recent high again on 6.18"): the card is
+     * notice 27's lines.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.19", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(27, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.19");
+        assertEquals("the card says what notice 27 says", notice(27), lines);
+    }
+
+    /**
+     * 0.6.19's notice (27): turning Autopilot off and on keeps the best accept's hold for its 7 days, past 200 newer
+     * offers, from figures kept on the phone; with pay first the update counts the last 7 days' accepts again.
+     */
+    @Test public void notice27SaysOffAndOnKeepTheBestAccept() {
+        List<String> lines = BundledNotes.noticeChanges(26);
+        assertEquals(notice(27), lines);
+        assertEquals(lines.toString(), 3, lines.size());
+        String notice = String.join(" ", lines);
+        for (String fact : new String[] {"Turning Autopilot off and on no longer lets go of your best accept",
+                "for its " + Autopilot.FLOOR_DAYS + " days", "even after " + DecisionLog.MAX_ENTRIES + " newer offers",
+                "keeps the figures of offers you accept yourself", "on this phone only", "With pay first",
+                "counts your accepts of the last 7 days again", "the bar rises to your best one",
+                "once Dasher is on screen with no offer up"}) {
+            assertTrue(fact, notice.contains(fact));
+        }
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
     }
 
     /**
@@ -462,8 +495,10 @@ public class BundledNotesTest {
      * Dasher's usual decline question is confirmed; the diagnostics switch; one restart after a fault; update checks wait.
      */
     @Test public void notice26SaysPayFirstAndTheSevenDayFloor() {
-        List<String> lines = BundledNotes.noticeChanges(25);
-        assertEquals(notice(26), lines);
+        List<String> lines = notice(26);
+        List<String> since25 = new ArrayList<>(lines);
+        since25.addAll(notice(27));
+        assertEquals(since25, BundledNotes.noticeChanges(25));
         assertEquals(lines.toString(), 6, lines.size());
         String notice = String.join(" ", lines);
         for (String fact : new String[] {"pay first by default", "protect your acceptance rate",

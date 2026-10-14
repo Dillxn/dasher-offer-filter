@@ -146,7 +146,11 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                         + "24-hour window, which are not shared",
                 "the app keeps the latest acceptance rate Dasher showed, with the offer it was shown for (used up to 7 "
                         + "days, then deleted when the app next looks), even with Autopilot off",
-                "the rate leaves only in reports you share or send yourself, never in the summary after a dash"}) {
+                "the rate leaves only in reports you share or send yourself, never in the summary after a dash",
+                // 0.6.19: the hand accepts kept for the accepted floor.
+                "Autopilot also keeps the figures of offers you accept yourself (at most "
+                        + AutopilotStore.KEPT_ACCEPTS_MAX + ", for " + Autopilot.FLOOR_DAYS + " days), so the best one "
+                        + "keeps holding its cutoff; they never leave this phone"}) {
             assertTrue(fact, data.contains(fact));
         }
         assertEquals(7L * 24 * 60 * 60_000, AutopilotStore.AR_MAX_AGE_MS);
@@ -165,8 +169,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Learning is on by default.", "Your Dasher account.",
                 "At your own risk.", "Not while driving.", "Your data.", "A daily count is on by default.",
                 "Optional offer timing study."), java.util.Arrays.asList(leads));
-        assertEquals("pay first by default and the 7-day floor renew the notice (after the plain account warning, 25)",
-                26, Consent.VERSION);
+        assertEquals("the floor kept through Autopilot off and on, and its accepts kept 7 days, renew the notice "
+                + "(after pay first by default, 26)", 27, Consent.VERSION);
         String does = Consent.POINTS[2][1];
         for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
                 "It taps Decline and its confirmation on offers that fail your chosen rules.",
@@ -381,9 +385,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // Autopilot and the acceptance-rate reading, the screen hold and the dated beta terms; 15, the minimums'
         // growth; 20, the anonymous daily count; 21, the store skip list and the cost per mile; 22, the bar an accepted
         // offer holds and the divider moved during a delivery; 23, pay per stop; 24, the pickup counted; 25, the plain
-        // account warning; 26, pay first by default and the 7-day floor. A phone that accepted 14 (0.5.0) sees it again
-        // too.
-        assertEquals(26, Consent.VERSION);
+        // account warning; 26, pay first by default and the 7-day floor; 27, the floor kept through Autopilot off and
+        // on, and its accepts kept 7 days. A phone that accepted 14 (0.5.0) sees it again too.
+        assertEquals(27, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

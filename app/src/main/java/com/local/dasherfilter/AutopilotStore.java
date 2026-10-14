@@ -2,6 +2,15 @@ package com.local.dasherfilter;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
  * Autopilot's own state, in prefs "autopilot", apart from the rules (Autopilot's switch, goal and bar are rules, in
@@ -18,7 +27,8 @@ import android.content.SharedPreferences;
  *       the exemption valve was last logged;</li>
  *   <li>the last growth of the minimums ({@link Growth}, 0.5.1): when, how much, how many offers on how many days, the
  *       minimums and the bar before and after, and whether its homepage note (with Undo) still waits for a tap;</li>
- *   <li>when the user's own last change restarted the accepted floor (0.6.11, {@link #floorSince}).</li>
+ *   <li>when the user's own last change restarted the accepted floor (0.6.11, {@link #floorSince}), and the figures
+ *       of the hand accepts kept for it for 7 days (0.6.19, {@link #keepAccepts}).</li>
  * </ul>
  * Clear history removes all of it ({@link #clear}). Callers on several threads share it: every read-modify-write is
  * under this class's lock, and every write bumps {@link #version}.
@@ -71,10 +81,21 @@ final class AutopilotStore {
         GREW_NOTE};
 
     /**
-     * When the user's own last change (Autopilot on or off, a goal, the rules, Reset, an Undo) restarted the accepted
-     * floor (wall clock): only hand accepts from then on hold the bar (0.6.11).
+     * When the user's own last change (a goal, the rules, Reset, an Undo; Autopilot on or off too before 0.6.19)
+     * restarted the accepted floor (wall clock): only hand accepts from then on hold the bar (0.6.11).
      */
     private static final String FLOOR_SINCE = "floor_since";
+    /** 1 once {@link #undoToggleRestartOnce} ran, or a restart from 0.6.19 on made it moot. */
+    private static final String FLOOR_SCHEMA = "floor_schema";
+    private static final int FLOOR_SCHEMA_NOW = 1;
+    /**
+     * The hand accepts kept for the accepted floor (0.6.19, {@link #keepAccepts}), newest first, as JSON: for each,
+     * when it was accepted and its figures (pay in cents, miles, minutes, stops, the item count and whether items
+     * apply).
+     */
+    private static final String KEPT_ACCEPTS = "kept_accepts";
+    /** At most this many kept accepts, the newest. */
+    static final int KEPT_ACCEPTS_MAX = 100;
 
     /** Changes whenever anything here is written or cleared, so a screen can skip redrawing unchanged state. */
     static volatile long version;
@@ -232,12 +253,130 @@ final class AutopilotStore {
         return prefs(context).getLong(FLOOR_SINCE, 0);
     }
 
-    /** The user's own change at {@code wall}: hand accepts before it no longer hold the bar. */
+    /**
+     * The user's own change at {@code wall}: hand accepts before it no longer hold the bar, and the ones kept for it
+     * are forgotten. A restart from 0.6.19 on also makes the once-only repair moot ({@link #undoToggleRestartOnce}).
+     */
     static void restartFloor(Context context, long wall) {
         synchronized (AutopilotStore.class) {
-            prefs(context).edit().putLong(FLOOR_SINCE, wall).apply();
+            prefs(context).edit().putLong(FLOOR_SINCE, wall).remove(KEPT_ACCEPTS)
+                    .putInt(FLOOR_SCHEMA, FLOOR_SCHEMA_NOW).apply();
             version++;
         }
+    }
+
+    /**
+     * Once (0.6.19): before it, turning Autopilot on or off restarted the accepted floor too, and what restarted it was
+     * not kept. With pay first as the goal ({@code payFirst}), a floor that restarted starts over from nothing, so the
+     * hand accepts of the last 7 days still in the history hold the bar again (best judgment: the accept that turning
+     * Autopilot back on let go, the owner's 14 October 2026 report, comes back; any other accept is scored under the
+     * rules as they are now). A goal that protects the acceptance rate keeps its restart. True when it moved.
+     */
+    static boolean undoToggleRestartOnce(Context context, boolean payFirst) {
+        synchronized (AutopilotStore.class) {
+            SharedPreferences prefs = prefs(context);
+            if (prefs.getInt(FLOOR_SCHEMA, 0) >= FLOOR_SCHEMA_NOW) return false;
+            boolean moved = payFirst && prefs.getLong(FLOOR_SINCE, 0) > 0;
+            SharedPreferences.Editor edit = prefs.edit().putInt(FLOOR_SCHEMA, FLOOR_SCHEMA_NOW);
+            if (moved) edit.remove(FLOOR_SINCE);
+            edit.apply();
+            version++;
+            return moved;
+        }
+    }
+
+    /**
+     * Keeps the hand accepts in {@code newestFirst} for the accepted floor (0.6.19), so the best of the last 7 days
+     * holds the bar even after its line leaves the latest 200 decisions, and returns every kept one, newest first, as
+     * a line Autopilot scores only for the floor. Kept: an offer the user accepted by hand at or after {@code since}
+     * and the floor's last restart, with its pay read, and not an add-on, a replay, a skipped store's or misread; at
+     * most {@link #KEPT_ACCEPTS_MAX}, the newest. Older ones are forgotten here. Written only when that changes.
+     */
+    static List<Autopilot.OfferRecord> keepAccepts(Context context, List<Autopilot.OfferRecord> newestFirst,
+                                                   long since) {
+        synchronized (AutopilotStore.class) {
+            SharedPreferences prefs = prefs(context);
+            long from = Math.max(since, prefs.getLong(FLOOR_SINCE, 0));
+            String stored = prefs.getString(KEPT_ACCEPTS, null);
+            TreeMap<Long, OfferSnapshot> kept = new TreeMap<>(Collections.reverseOrder());
+            for (Map.Entry<Long, OfferSnapshot> accept : readAccepts(stored).entrySet()) {
+                if (accept.getKey() >= from) kept.put(accept.getKey(), accept.getValue());
+            }
+            if (newestFirst != null) {
+                for (Autopilot.OfferRecord line : newestFirst) {
+                    if (line == null || line.acceptedByHandAt == Autopilot.NEVER || line.acceptedByHandAt < from
+                            || line.addOn || line.replay || line.skipped || line.facts.payCents == null
+                            || OfferSanity.looksMisread(line.facts)) continue;
+                    if (!kept.containsKey(line.acceptedByHandAt)) kept.put(line.acceptedByHandAt, line.facts);
+                }
+            }
+            while (kept.size() > KEPT_ACCEPTS_MAX) kept.pollLastEntry();
+            String next = writeAccepts(kept);
+            String was = stored == null ? "[]" : stored;
+            if (!next.equals(was)) {
+                SharedPreferences.Editor edit = prefs.edit();
+                if (kept.isEmpty()) edit.remove(KEPT_ACCEPTS); else edit.putString(KEPT_ACCEPTS, next);
+                edit.apply();
+                version++;
+            }
+            List<Autopilot.OfferRecord> records = new ArrayList<>();
+            for (Map.Entry<Long, OfferSnapshot> accept : kept.entrySet()) {
+                long at = accept.getKey();
+                records.add(new Autopilot.OfferRecord(accept.getValue(), at, false, false, true, false, false,
+                        FilterSettings.BAR_AT_MINIMUMS, false, DecisionLog.MODEL, null, false, at));
+            }
+            return Collections.unmodifiableList(records);
+        }
+    }
+
+    /** The kept accepts by when they were accepted; unreadable ones (or all, when the JSON is) are left out. */
+    private static Map<Long, OfferSnapshot> readAccepts(String json) {
+        Map<Long, OfferSnapshot> accepts = new HashMap<>();
+        if (json == null || json.isEmpty()) return accepts;
+        try {
+            JSONArray array = new JSONArray(json);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject accept = array.optJSONObject(i);
+                if (accept == null || !accept.has("at") || !accept.has("pay")) continue;
+                OfferSnapshot facts = new OfferSnapshot(accept.getInt("pay"), number(accept, "mi"),
+                        integer(accept, "min"), integer(accept, "stops"), null, null, integer(accept, "items"),
+                        accept.optBoolean("itemsApply", false));
+                if (facts.payCents != null) accepts.put(accept.getLong("at"), facts);
+            }
+        } catch (JSONException unreadable) {
+            accepts.clear();
+        }
+        return accepts;
+    }
+
+    /** The kept accepts as JSON, newest first; one that cannot be written (miles not a number) is left out. */
+    private static String writeAccepts(Map<Long, OfferSnapshot> newestFirst) {
+        JSONArray array = new JSONArray();
+        for (Map.Entry<Long, OfferSnapshot> accept : newestFirst.entrySet()) {
+            OfferSnapshot facts = accept.getValue();
+            try {
+                JSONObject json = new JSONObject().put("at", (long) accept.getKey()).put("pay", (int) facts.payCents);
+                if (facts.miles != null) json.put("mi", (double) facts.miles);
+                if (facts.minutes != null) json.put("min", (int) facts.minutes);
+                if (facts.stops != null) json.put("stops", (int) facts.stops);
+                if (facts.items != null) json.put("items", (int) facts.items);
+                if (facts.itemCountApplicable) json.put("itemsApply", true);
+                array.put(json);
+            } catch (JSONException unwritable) {
+                // Left out: the next plan keeps it again while its line is in the history.
+            }
+        }
+        return array.toString();
+    }
+
+    private static Integer integer(JSONObject json, String key) {
+        return json.has(key) && !json.isNull(key) ? json.optInt(key) : null;
+    }
+
+    private static Double number(JSONObject json, String key) {
+        if (!json.has(key) || json.isNull(key)) return null;
+        double value = json.optDouble(key);
+        return Double.isNaN(value) ? null : value;
     }
 
     // ---- The next commit's cause and the last change ----

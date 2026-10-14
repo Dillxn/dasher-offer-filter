@@ -1,6 +1,8 @@
 package com.local.dasherfilter;
 
 import android.app.Application;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.SystemClock;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -27,11 +29,13 @@ import static org.junit.Assert.assertTrue;
  * ask, the ask needs to jump to the new higher score"): the owner pinned at 50% accepts his $14.45 offer (7.2 mi,
  * 27 min, 63% of his minimums) by hand, and the next commit lifts the bar to 63% at once, with its own words; it holds
  * there for 7 days, across dashes (0.6.18; the owner chose "Earnings first", 14 October 2026: until then a new dash let
- * it go). The accept turning 7 days old and the user's own changes (a knob, the goal, Autopilot off and on) let it go,
- * each straight back at the next commit; a lesson and Adopt keep it. Automatic, add-on and observed accepts, an accept
- * before the user's last change, Autopilot off and the notice not accepted change nothing; Clear history forgets it.
- * Bars the floor holds up never grow the minimums. Plans run on the calling thread; Autopilot's clocks are the test's,
- * starting at the real one (the decision lines' steps and the dash go by the real clock).
+ * it go), even once 200 newer offers have pushed its line out of the history (0.6.19). The accept turning 7 days old
+ * and the user's own changes (a knob, the goal, turning Autopilot on with another goal) let it go, each straight back
+ * at the next commit; turning Autopilot off and on (0.6.19), a lesson and Adopt keep it. Automatic, add-on and
+ * observed accepts, an accept before the user's last change, Autopilot off and the notice not accepted change nothing;
+ * Clear history forgets it. The update to 0.6.19 brings back, once and with pay first, an accept that turning
+ * Autopilot on let go. Bars the floor holds up never grow the minimums. Plans run on the calling thread; Autopilot's
+ * clocks are the test's, starting at the real one (the decision lines' steps and the dash go by the real clock).
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
@@ -166,6 +170,19 @@ public class AutopilotFloorRuntimeTest {
         String last = null;
         for (String line : logged()) if (line.startsWith("commit ") && line.contains("% -> ")) last = line;
         return last;
+    }
+
+    private SharedPreferences autopilotPrefs() {
+        return app.getSharedPreferences(AutopilotStore.PREFS, Context.MODE_PRIVATE);
+    }
+
+    /** The hand accepts kept for the floor, as stored (0.6.19); null when none is. */
+    private String keptAccepts() {
+        return autopilotPrefs().getString("kept_accepts", null);
+    }
+
+    private int repairs() {
+        return Collections.frequency(logged(), AutopilotText.LOG_FLOOR_PAST_TOGGLES);
     }
 
     // ---- His accept ----
@@ -313,22 +330,84 @@ public class AutopilotFloorRuntimeTest {
     @Test public void aGoalChangeLetsItGo() {
         pinned();
         held();
+        assertNotNull(keptAccepts());
         userLater();
         AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TIER);
         releasedWith("you changed your goal");
+        assertNull("the accepts kept for it are forgotten", keptAccepts());
     }
 
-    @Test public void autopilotOffThenOnLetsItGo() {
+    /** Turning Autopilot on with another goal than it had is a change of goal too (0.6.19). */
+    @Test public void turningItOnWithAnotherGoalLetsItGo() {
         pinned();
         held();
         userLater();
         AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
-        assertEquals(100, bar());
-        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TIER);
         releasedWith("Autopilot turned on");
+        assertNull(keptAccepts());
     }
 
     // ---- What keeps it ----
+
+    /**
+     * The owner's 14 October 2026 report on 0.6.18 ("it dropped the auto score below my recent high again on 6.18"):
+     * he turned Autopilot off and back on, and its first commit put the bar at 52%, under his accept. From 0.6.19 off
+     * and on keep it: back on, the bar goes straight to the accept's score, in its words.
+     */
+    @Test public void autopilotOffThenOnKeepsIt() {
+        pinned();
+        held();
+        userLater();
+        long since = AutopilotStore.floorSince(app);
+        AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
+        assertEquals(100, bar());
+        assertEquals(since, AutopilotStore.floorSince(app));
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertEquals("the floor did not start over", since, AutopilotStore.floorSince(app));
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertEquals(50, plan.ownTarget);
+        assertEquals(63, plan.floor);
+        assertEquals(63, plan.target);
+        assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
+        assertEquals(63, bar());
+        assertEquals("commit 100% -> 63% (you accepted an offer at this score)", lastCommit());
+        assertEquals(Autopilot.Reason.ACCEPTED.name(), AutopilotStore.lastChange(app).why);
+        assertNull("the jump is used up", AutopilotStore.jump(app));
+    }
+
+    /**
+     * 0.6.19: 200 newer offers push his line out of the history, and his accept still holds the bar (its figures are
+     * kept for the floor); it lets go 7 days after the accept, and is forgotten then.
+     */
+    @Test public void anAcceptPastTheLatest200OffersStillHoldsItForItsSevenDays() {
+        pinned();
+        held();
+        FilterSettings decided = FilterStore.load(app);
+        for (int i = 0; i < DecisionLog.MAX_ENTRIES; i++) {
+            line(new OfferSnapshot(600 + i, 7.2, 27, 2), wall + (1 + i) * 1_000L, decided);
+        }
+        for (DecisionLog.Entry entry : DecisionLog.recent(app, DecisionLog.MAX_ENTRIES)) {
+            assertFalse("his line left the history", entry.facts.fingerprint().equals(HIS.fingerprint()));
+        }
+        wall += 10 * MIN;
+        elapsed += 10 * MIN;
+        assertTrue(AutopilotStore.recordReading(app, 10, "", wall - MIN));
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertEquals(63, plan.floor);
+        assertEquals(63, plan.target);
+        assertEquals(AutopilotRuntime.Commit.HELD, AutopilotRuntime.commitIfDue(app));
+        assertEquals(63, bar());
+        assertNotNull(keptAccepts());
+        // Past 7 days from the accept: straight back to the plan's own target, and forgotten.
+        wall += 7 * 24 * HOUR;
+        elapsed += 7 * 24 * HOUR;
+        assertTrue(AutopilotStore.recordReading(app, 10, "", wall - MIN));
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
+        releasedWith("your minimums are high for these offers");
+        assertNull(keptAccepts());
+    }
 
     @Test public void aLessonKeepsItAndTheRecoveryState() {
         pinned();
@@ -409,13 +488,117 @@ public class AutopilotFloorRuntimeTest {
         pinned();
         held();
         assertTrue(AutopilotStore.floorSince(app) > 0);
+        assertNotNull(keptAccepts());
         DecisionLog.clear(app);
         AutopilotRuntime.cleared(app);
         assertEquals(0, AutopilotStore.floorSince(app));
+        assertNull(keptAccepts());
         Autopilot.Plan plan = AutopilotRuntime.latest();
         assertSame(Autopilot.Mode.LEARNING, plan.mode);
         assertEquals(-1, plan.floor);
         assertEquals(100, plan.target);
+    }
+
+    // ---- The update to 0.6.19 ----
+
+    /** As 0.6.18 left it after turning Autopilot back on: the floor restarted after his accept, not yet repaired. */
+    private void restartedBy0618() {
+        assertTrue(autopilotPrefs().edit().putLong("floor_since", wall).remove("floor_schema")
+                .remove("kept_accepts").commit());
+    }
+
+    /**
+     * The owner's case on updating: 0.6.18 had restarted the floor when he turned Autopilot back on, after his accept.
+     * With pay first, the update's first plan counts the accepts of the last 7 days again, once, with its log line.
+     */
+    @Test public void theUpdateBringsBackAnAcceptThatTurningItOnLetGo() {
+        pinned();
+        held();
+        userLater();
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_PAY_FIRST);
+        assertEquals(-1, AutopilotRuntime.latest().floor);
+        restartedBy0618();
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertEquals(63, plan.floor);
+        assertEquals(Math.max(63, plan.ownTarget), plan.target);
+        assertEquals(0, AutopilotStore.floorSince(app));
+        assertNotNull("kept from now on", keptAccepts());
+        assertEquals(1, repairs());
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
+        assertEquals(63, AutopilotRuntime.latest().floor);
+        assertEquals("once only", 1, repairs());
+    }
+
+    /**
+     * The owner opening the app after the update (14 October 2026: "when I opened the app it said 50% which was already
+     * low"): nothing is planned before the new notice is accepted, and accepting it now plans at once (0.6.19), so the
+     * homepage says where the bar is going until the commit, at the next safe point, puts it there.
+     */
+    @Test public void acceptingTheUpdatesNoticePlansAtOnceAndShowsTheRise() {
+        pinned();
+        held();
+        userLater();
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_PAY_FIRST);
+        assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
+        int left = bar();
+        assertTrue(left + "%", left < 63);
+        restartedBy0618();
+        // The update: a new process with no plan, and the new notice not accepted yet.
+        AutopilotRuntime.forgetCache();
+        ConsentedTestApp.forget(app);
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.CONNECT);
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.RESUME);
+        assertNull("nothing planned before the notice", AutopilotRuntime.latest());
+        AutopilotText.Status opened = homepage();
+        assertEquals("Auto " + left + "%", AutopilotText.chip(opened));
+        assertEquals("Checking offers", AutopilotText.statusLine(opened));
+
+        ConsentedTestApp.accept(app);
+        AutopilotRuntime.noticeAccepted(app);
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertNotNull("planned at once", plan);
+        assertTrue(plan.floorBinds());
+        assertEquals(63, plan.target);
+        AutopilotText.Status waiting = homepage();
+        assertEquals("the bar deciding offers until the commit", "Auto " + left + "%", AutopilotText.chip(waiting));
+        assertEquals("Rising to 63%", AutopilotText.statusLine(waiting));
+
+        assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
+        assertEquals(63, bar());
+        assertEquals("commit " + left + "% -> 63% (you accepted an offer at this score)", lastCommit());
+        assertEquals(-1, AutopilotText.risingTo(homepage()));
+    }
+
+    /** The homepage's status as it shows it: the stored rules and last change, and Autopilot's latest plan. */
+    private AutopilotText.Status homepage() {
+        return new AutopilotText.Status(FilterStore.load(app), true, AutopilotRuntime.latest(), null,
+                AutopilotStore.lastChange(app), wall);
+    }
+
+    /** A goal that protects the acceptance rate keeps 0.6.18's restart. */
+    @Test public void theUpdateKeepsTheRestartForAGoalThatProtectsTheRate() {
+        pinned();
+        held();
+        userLater();
+        restartedBy0618();
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
+        assertEquals(-1, AutopilotRuntime.latest().floor);
+        assertEquals(wall, AutopilotStore.floorSince(app));
+        assertEquals(0, repairs());
+    }
+
+    /** The user's own change under 0.6.19, before any plan: the update never undoes it. */
+    @Test public void theUpdateNeverUndoesARestartMadeUnderIt() {
+        pinned();
+        held();
+        userLater();
+        assertTrue(autopilotPrefs().edit().remove("floor_schema").commit());
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_PAY_FIRST);
+        assertEquals(-1, AutopilotRuntime.latest().floor);
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
+        assertEquals(-1, AutopilotRuntime.latest().floor);
+        assertEquals(0, repairs());
     }
 
     // ---- Growth ----

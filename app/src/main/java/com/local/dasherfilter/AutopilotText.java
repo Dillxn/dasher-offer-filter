@@ -91,6 +91,12 @@ final class AutopilotText {
     static final String LOG_OFF = "off; bar back to " + Autopilot.BAR_OFF + "%";
     /** Autopilot turned on by default, once (0.6.2: a new install, or an install updating from an earlier version). */
     static final String LOG_ON_BY_DEFAULT = "on by default; bar " + Autopilot.BAR_OFF + "% until it plans";
+    /**
+     * Once (0.6.19, {@link AutopilotStore#undoToggleRestartOnce}): the accepted floor, which turning Autopilot on or
+     * off restarted before 0.6.19, counts the hand accepts of the last 7 days again.
+     */
+    static final String LOG_FLOOR_PAST_TOGGLES = "accepted floor: your accepts of the last " + Autopilot.FLOOR_DAYS
+            + " days count again (turning Autopilot on or off no longer restarts it)";
     static final String LOG_DEFERRED = "commit deferred: offer or decline in flight";
     static final String DISCARD_RULES = "plan discarded: rules changed";
     static final String DISCARD_OLD = "plan discarded: older than " + Autopilot.PLAN_MAX_AGE_MS / 60_000 + " min";
@@ -327,10 +333,12 @@ final class AutopilotText {
      * no money minimum, "Needs a minimum", the chip only "Auto"; pinned at the lowest bar, "Lowest bar · " before the
      * rest, the chip only its bar (0.6.3: the chips' words kept short, so they keep their room beside these in a split
      * screen). The first matching line wins, in the spec's order: auto-decline paused; no plan yet; learning; pinned;
-     * below the goal; at or above it; no reading yet; pay first's floor; pay first. Screen readers hear the whole
-     * status, the bar included, from the chip ({@link #chipDescription}).
+     * below the goal; at or above it; no reading yet; pay first's floor; pay first. Where the plan's words would show,
+     * a bar still rising to an accept's floor says so instead ({@link #showsRise}, 0.6.19: "Rising to 63%"). Screen
+     * readers hear the whole status, the bar included, from the chip ({@link #chipDescription}).
      */
     static String statusLine(Status s) {
+        if (showsRise(s)) return "Rising to " + risingTo(s) + "%";
         switch (s.kind) {
             case OFF:
                 return "Autopilot off";
@@ -359,6 +367,33 @@ final class AutopilotText {
                 return "Pay first · keeping 1 in 5";
             default:
                 return "Pay first";
+        }
+    }
+
+    /**
+     * The bar an offer accepted by hand is lifting it to while the bar deciding offers is still below it (0.6.19): the
+     * plan's floor binds, and its commit waits for the next safe point (Dasher's own screen read, no offer up), as
+     * right after an update, when the chip still shows the bar the old version left; -1 otherwise.
+     */
+    static int risingTo(Status s) {
+        Autopilot.Plan plan = s.plan;
+        return s.on && plan != null && plan.floorBinds() && s.bar < plan.floor ? plan.floor : -1;
+    }
+
+    /**
+     * Whether the status line says where the bar is rising to ({@link #risingTo}) in place of its own words: only
+     * where those follow the plan (pinned, no reading yet, pay first), never where the acceptance meter shows.
+     */
+    static boolean showsRise(Status s) {
+        if (risingTo(s) < 0 || meters(s)) return false;
+        switch (s.kind) {
+            case PINNED:
+            case AR_UNKNOWN:
+            case PASS_FLOOR:
+            case PAY_FIRST:
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -426,6 +461,9 @@ final class AutopilotText {
      * does.
      */
     static String statusSaid(Status s) {
+        if (showsRise(s)) {
+            return barSaid(s) + " Rising to " + risingTo(s) + " percent, the score of an offer you accepted.";
+        }
         switch (s.kind) {
             case OFF:
                 return "Autopilot off.";
@@ -558,14 +596,19 @@ final class AutopilotText {
     /**
      * While an offer the user accepted by hand holds the bar (0.6.11, {@link Autopilot.Plan#floorBinds}; across dashes
      * from 0.6.18): "The bar stays at 63% or more: you accepted an offer that scored 63% of your minimums in the last 7
-     * days. …"; null otherwise.
+     * days. …"; while the bar is still below it ({@link #risingTo}, 0.6.19), when it rises: "The bar rises to 63% once
+     * Dasher is on screen with no offer up, and stays at 63% or more: …". Null otherwise.
      */
     static String detailsFloor(Status s) {
         Autopilot.Plan plan = s.plan;
         if (!s.on || plan == null || !plan.floorBinds()) return null;
-        return "The bar stays at " + plan.floor + "% or more: you accepted an offer that scored " + plan.floor
-                + "% of your minimums in the last " + Autopilot.FLOOR_DAYS + " days. When that accept is "
-                + Autopilot.FLOOR_DAYS + " days old, or you change your goal or minimums, Autopilot sets it again.";
+        String holds = risingTo(s) >= 0
+                ? "The bar rises to " + plan.floor + "% once Dasher is on screen with no offer up, and stays at "
+                        + plan.floor + "% or more"
+                : "The bar stays at " + plan.floor + "% or more";
+        return holds + ": you accepted an offer that scored " + plan.floor + "% of your minimums in the last "
+                + Autopilot.FLOOR_DAYS + " days. When that accept is " + Autopilot.FLOOR_DAYS + " days old, or you "
+                + "change your goal or minimums, Autopilot sets it again.";
     }
 
     /**
