@@ -21,6 +21,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 PACKAGE = 'com.local.dasherfilter'
 SIGNER = '553994c4d1310bf92f236525d1d293df597f37be39a7fd34f8b58e68dda0c703'
 RENDER = 'https://dash-offer-filter-build.onrender.com'
+# The page's Download link: the feedback service's counted download link, which counts a browser's download (once per
+# network a day) and sends it on to /OfferFilter.apk here (backend/anonymous-feedback/WEBSITE_DOWNLOAD_COUNT.md).
+DOWNLOAD = 'https://nwglojlrzfbsibtoqjzc.supabase.co/functions/v1/offer-filter-feedback/download'
 NAME = re.search(r'NAME = "([^"]+)"', (ROOT / 'app/src/main/java/com/local/dasherfilter/AppName.java')
                  .read_text(encoding='utf-8')).group(1)
 SIG_V2 = 0x7109871A
@@ -162,7 +165,7 @@ independent real-phone checks. Not made by, endorsed by or affiliated with DoorD
 DoorDash could limit or deactivate your account. It can misread, accept or decline an offer you did not want it to.
 Use at your own risk, with no warranty. Don't handle your phone while driving.</p>
 <p>No account is needed to download, use or receive updates from this server.</p>
-<p><a href="/OfferFilter.apk" download="OfferFilter-{html.escape(version)}.apk">Download {name} {html.escape(version)}</a></p>
+<p><a href="{DOWNLOAD}">Download {name} {html.escape(version)}</a></p>
 <h2>First install</h2>
 <ol>
 <li>Open the downloaded file. If Android asks, allow your browser to install unknown apps. Play Protect may warn about

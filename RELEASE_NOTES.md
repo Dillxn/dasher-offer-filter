@@ -1,3 +1,12 @@
+## 0.6.15 — Downloads counted at the link
+
+Version 0.6.15 (code 107) answers the owner's "let's fix em" (14 October 2026) about the download count's blind spots.
+
+- **Counted at the link.** offerfilter.org's Download button and the update server's page link to the feedback service's `/download`, which counts a browser's download (once per network a UTC day) and sends it straight on to the APK. A long press, "Save link as", scripts off and a shared link now count too. Robots, link previews and prefetches don't.
+- Nothing in the app changes, so no notice; Privacy (for 0.6.15) describes the counted link.
+
+No phone has run this build.
+
 ## 0.6.14 — Pay per stop counts the pickup; Dasher's ⚙ for a stuck offer; buildings and trees
 
 Version 0.6.14 (code 106) answers the owner's ask of 14 October 2026: "i don't want the pay per stop to not count the pickup", and, asked whether to halve his number, "it doesn't need to do any halving or any post artificial anything. it should be simple. if I say I want $5 per stop then a single pickup and single dropoff dash would require $10. if I have 3 stops, whatever the makeup, then it would require $15."

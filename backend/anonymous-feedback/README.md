@@ -2,8 +2,8 @@
 
 The Supabase Edge Function `offer-filter-feedback` (project `offer-filter-feedback`, ref `nwglojlrzfbsibtoqjzc`)
 receives Offer Filter's anonymous feedback, offer reports and opt-in diagnostics, and the website's feedback form.
-It also counts: the app's anonymous daily check-in, and presses of the install page's Download button, kept as
-daily totals (and, briefly, a count's token and its network's day-keyed value, so each counts once). The app posts to `https://nwglojlrzfbsibtoqjzc.supabase.co/functions/v1/offer-filter-feedback`.
+It also counts: the app's anonymous daily check-in, and downloads through the counted download link (the install
+page's and the update server's Download links, `…/offer-filter-feedback/download`), kept as daily totals (and, briefly, a count's token and its network's day-keyed value, so each counts once). The app posts to `https://nwglojlrzfbsibtoqjzc.supabase.co/functions/v1/offer-filter-feedback`.
 
 Nothing here is deployed by CI. Deploy by hand, in the order below.
 
@@ -43,7 +43,7 @@ as `null`; nothing is trimmed.
 | Event | Sent by | Keys |
 | --- | --- | --- |
 | `daily` | The app, at most once a UTC day, with no `Origin` and `Content-Type: application/json` | `kind`, `event`, `countToken` (required), `first`, `appVersion`, `appVersionCode` |
-| `download` | The install page's Download button, by `navigator.sendBeacon` from `https://offerfilter.org` or `https://www.offerfilter.org`, as `text/plain;charset=UTF-8` (no CORS preflight) or `application/json` | `kind`, `event`, `countToken` (optional) |
+| `download` | Install pages loaded before 0.6.15's counted link: their Download button, by `navigator.sendBeacon` from `https://offerfilter.org` or `https://www.offerfilter.org`, as `text/plain;charset=UTF-8` (no CORS preflight) or `application/json` | `kind`, `event`, `countToken` (optional) |
 
 | Field | Rule |
 | --- | --- |
@@ -57,6 +57,16 @@ So the app's count is exactly
 and the website's `{"kind":"count","event":"download"}`. Neither carries a message, a device, an Android version, a
 maker, a locale, a time zone or any identifier. `text/plain` is taken only from the website's origins and only for a
 count (anything else sent so: 415).
+
+### The counted download link
+
+`GET` or `HEAD` `…/offer-filter-feedback/download` answers `302` to the APK on the update server (`lib.ts`'s
+`APK_URL`), `Cache-Control: no-store`, `Referrer-Policy: no-referrer`. A browser's GET (a User-Agent beginning
+`Mozilla/` that names no robot or link previewer, and no `Sec-Purpose` or `Purpose` naming a prefetch or prerender)
+is first counted as a `download`, as a POSTed one is: once per network a UTC day, within the daily cap. The count
+runs after the answer (`EdgeRuntime.waitUntil`; elsewhere the redirect waits for it at most 1.5 s), and a failure is
+only logged. The User-Agent and purpose are read only to decide, never stored. Any other method there: 405.
+`WEBSITE_DOWNLOAD_COUNT.md` says why and which links use it.
 
 ## Answers
 
@@ -226,8 +236,9 @@ How to read them:
 - `new_installs_counted` (`first`) is how many of those had never been counted before: an install's first count
   accepted by the service. A reinstall, or clearing the app's data, makes a new install, counted as new again. Summed
   over a period, it is the installs first counted in that period.
-- `downloads` is presses of the install page's Download button, each network counted once a UTC day: a press is not
-  an install, and two people on one network on one day count once.
+- `downloads` is downloads through the counted link (the install page's and the update server's Download links;
+  before 0.6.15, presses of the install page's button), each network counted once a UTC day: a download is not an
+  install, and two people on one network on one day count once.
 - No row says who: the totals carry no address, device or identifier, so they cannot tell your phone from anyone
   else's. Anything above your own installs is someone else's.
 

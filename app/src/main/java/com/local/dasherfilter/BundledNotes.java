@@ -260,6 +260,8 @@ final class BundledNotes {
                 "A customer's name shown alone on a pickup screen is now masked in reports.");
         release("0.6.14", PICKUP_COUNTED[0], PICKUP_COUNTED[1], PICKUP_COUNTED[2], PICKUP_COUNTED[3],
                 SKYLINE_BACK);
+        release("0.6.15", "Downloads from the website are now counted at the download link itself, so a long press or a "
+                + "shared link counts too. Privacy says how.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

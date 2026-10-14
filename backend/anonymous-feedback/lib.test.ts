@@ -5,10 +5,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ALLOWED_ORIGINS,
+  APK_URL,
   COUNT_EVENTS,
+  countsAsDownload,
   Invalid,
   ipv6,
   isCount,
+  isDownloadPath,
   networkOf,
   reference,
   secondsUntilUtcMidnight,
@@ -234,4 +237,44 @@ test("a count is not feedback, and feedback is not a count", () => {
   assert.throws(() => validate({ kind: "count", message: "Hello" }, null), Invalid);
   assert.throws(() => validate({ kind: "count", event: "download" }, WEBSITE), Invalid);
   assert.throws(() => validateCount({ kind: "feedback", message: "Hello" }, null), Invalid);
+});
+
+test("the counted download link: its path, and where it sends every fetch", () => {
+  assert.ok(isDownloadPath("/offer-filter-feedback/download"));
+  assert.ok(isDownloadPath("/functions/v1/offer-filter-feedback/download/"));
+  assert.ok(!isDownloadPath("/offer-filter-feedback"));
+  assert.ok(!isDownloadPath("/offer-filter-feedback/downloads"));
+  assert.ok(!isDownloadPath("/offer-filter-feedback/download/x"));
+  assert.equal(APK_URL, "https://dash-offer-filter-build.onrender.com/OfferFilter.apk", "the app's update file");
+});
+
+test("a browser's GET of the download link counts; robots, previews, prefetches and HEAD do not", () => {
+  const chrome = "Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 " +
+    "Mobile Safari/537.36";
+  const samsung = "Mozilla/5.0 (Linux; Android 16; SM-S938U) AppleWebKit/537.36 (KHTML, like Gecko) " +
+    "SamsungBrowser/28.0 Chrome/130.0.0.0 Mobile Safari/537.36";
+  const facebookApp = "Mozilla/5.0 (Linux; Android 15; SM-A156U Build/AP3A; wv) AppleWebKit/537.36 " +
+    "(KHTML, like Gecko) Version/4.0 Chrome/129.0.0.0 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/485.0.0.0;]";
+  for (const person of [chrome, samsung, facebookApp]) assert.ok(countsAsDownload("GET", person, null), person);
+
+  assert.ok(!countsAsDownload("HEAD", chrome, null), "a HEAD fetches no file");
+  assert.ok(!countsAsDownload("POST", chrome, null));
+  assert.ok(!countsAsDownload("GET", chrome, "prefetch;prerender"), "Sec-Purpose: a prerender");
+  assert.ok(!countsAsDownload("GET", chrome, "prefetch"), "Purpose: a prefetch");
+  assert.ok(!countsAsDownload("GET", null, null), "no User-Agent");
+  for (const robot of [
+    "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+    "Mozilla/5.0 (compatible; meta-externalagent/1.1 (+https://developers.facebook.com/docs/sharing/webmasters/" +
+    "crawler))",
+    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/601.2.4 (KHTML, like Gecko) Version/9.0.1 " +
+    "Safari/601.2.4 facebookexternalhit/1.1 Facebot Twitterbot/1.0",
+    "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)",
+    "TelegramBot (like TwitterBot)",
+    "WhatsApp/2.24.1.6 A",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/129.0.0.0 Safari/537.36",
+    "curl/8.5.0",
+    "python-requests/2.32.3",
+  ]) assert.ok(!countsAsDownload("GET", robot, null), robot);
 });

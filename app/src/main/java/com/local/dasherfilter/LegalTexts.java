@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 14 October 2026 · for {app} 0.6.14
+            Beta terms, effective 14 October 2026 · for {app} 0.6.15
 
             ## What {app} is
 
@@ -238,7 +238,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 14 October 2026 · for {app} 0.6.14
+            Beta privacy policy, effective 14 October 2026 · for {app} 0.6.15
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -699,23 +699,26 @@ final class LegalTexts {
             sent again until the next UTC day. Turning the switch off stops it and discards that day's code; if \
             that day's count was already tried, turning it back on sends nothing more until the next UTC day, since \
             the first try may have arrived.
-            - The install page's **Download** button. When you tap Download on offerfilter.org's install page, your \
-            browser sends the same feedback service one anonymous count saying only that Download was tapped. The \
-            page sets no cookie and stores nothing in your browser for it, and the download goes ahead whether or \
-            not the count arrives. Like any web request it carries your browser's ordinary request information \
-            (such as your IP address, the browser and the page's address), which Cloudflare and Supabase receive as \
-            described above.
+            - The **Download** link. The Download link on offerfilter.org's install page, and the one on the update \
+            server's own page, go first to the same feedback service, which counts one download and at once sends \
+            your browser on to the app's file on the update server. The count says only that the app was \
+            downloaded. The service reads your browser's description (its user agent) and whether the request was \
+            made ahead of a tap only to leave out link previews, search robots and prefetches, and never keeps \
+            either. The page sets no cookie and stores nothing in your browser for it, and the download goes ahead \
+            whether or not the count is stored. Like any web request it carries your browser's ordinary request \
+            information (such as your IP address, the browser and the page's address), which Cloudflare and \
+            Supabase receive as described above.
             - How counts are kept. The feedback service keeps counts as daily totals: for each UTC day, how many \
             daily counts came for each app version and how many of those were an install's first, and how many \
-            Download taps came. A total carries no IP address, user agent, code, network value or identifier, so it \
+            downloads came. A total carries no IP address, user agent, code, network value or identifier, so it \
             cannot tell one phone or person from another. Totals are deleted after 400 days. Each counted code is \
             kept with its day and nothing else, for at most 2 days, only so a retried count is counted once. To \
-            count one network's Download taps once a day, and to stop counting more than 50 daily counts from one \
+            count one network's downloads once a day, and to stop counting more than 50 daily counts from one \
             network in a day (many phones can share one address), the service keeps, under the same day-keyed \
-            one-way network value the feedback rate limit uses, whether that network's Download tap was counted \
-            today and how many daily counts came from it today, and deletes this once the day is over; no table \
-            records which network sent which code. It counts at most 20,000 a day in all. Cloudflare and Supabase \
-            receive each count's ordinary connection metadata, as described under Where feedback goes.
+            one-way network value the feedback rate limit uses, whether that network's download was counted today \
+            and how many daily counts came from it today, and deletes this once the day is over; no table records \
+            which network sent which code. It counts at most 20,000 a day in all. Cloudflare and Supabase receive \
+            each count's ordinary connection metadata, as described under Where feedback goes.
             - **Share report**, only when you tap it, hands a masked report to the app you choose: the same report \
             attached diagnostics carry, with the latest acceptance-rate reading. From there, that app handles the \
             copy under its own privacy practices.

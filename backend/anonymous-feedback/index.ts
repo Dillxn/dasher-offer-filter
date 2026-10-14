@@ -8,19 +8,27 @@
 // network (an IPv4 address or an IPv6 /64, from Cloudflare's cf-connecting-ip only) is turned into a keyed hash with
 // a random salt that changes every UTC day, used only to count recent submissions, and kept at most an hour.
 //
-// A count (kind "count") is one POST too: the app's daily check-in ("daily", no Origin) or a press of the install
-// page's Download button ("download", from the website's origins, sent with navigator.sendBeacon as text/plain, which
-// needs no preflight; text/plain is taken from those origins for a count and nothing else). Daily totals are what is
-// kept for long (day, event, app version, whether it was an install's first count). A count's random token is kept
-// two days at most, so a retried count is counted once; the same daily network hash, kept only until its day is over,
-// lets each network count one download and at most 50 daily counts a day. Counted and duplicate counts are both
-// answered 201.
+// A count (kind "count") is one POST too: the app's daily check-in ("daily", no Origin) or, from install pages loaded
+// before the counted link, a press of their Download button ("download", from the website's origins, sent with
+// navigator.sendBeacon as text/plain, which needs no preflight; text/plain is taken from those origins for a count and
+// nothing else). Daily totals are what is kept for long (day, event, app version, whether it was an install's first
+// count). A count's random token is kept two days at most, so a retried count is counted once; the same daily network
+// hash, kept only until its day is over, lets each network count one download and at most 50 daily counts a day.
+// Counted and duplicate counts are both answered 201.
+//
+// The counted download link (this address and then /download, the install page's and the update server's Download
+// links) answers every GET or HEAD with a redirect to the APK on the update server. A browser's GET (not a robot's,
+// not a prefetch) is counted as a "download" first, the same way and once per network a day; the redirect never waits
+// on storage, and a count that fails is only logged.
 
 import {
   ALLOWED_ORIGINS,
+  APK_URL,
   type Count,
+  countsAsDownload,
   Invalid,
   isCount,
+  isDownloadPath,
   LIMITS,
   networkOf,
   reference,
@@ -210,8 +218,56 @@ async function answerCount(req: Request, origin: string | null, body: Record<str
   }
 }
 
+/** The longest the redirect waits for its count where the runtime cannot finish it after answering. */
+const DOWNLOAD_COUNT_WAIT_MS = 1_500;
+
+/** One download, as the counted download link counts it: no token (each network counts once a day). */
+const DOWNLOAD: Count = { event: "download", countToken: null, first: false, appVersion: null, appVersionCode: null };
+
+/** Counts one download, as a POSTed download count is counted; a failure is logged, never answered. */
+async function countDownload(req: Request): Promise<void> {
+  try {
+    const bucket = await rateBucket(networkOf(req.headers.get("cf-connecting-ip")), new Date());
+    await storeCount(DOWNLOAD, bucket);
+  } catch (failure) {
+    console.error("download count failed", failure instanceof Upstream ? failure.status : "unexpected");
+  }
+}
+
+/**
+ * The counted download link: every GET or HEAD is sent on to the APK; a browser's GET is counted first. The count runs
+ * after the answer where the runtime allows it (EdgeRuntime.waitUntil), so the download never waits on storage.
+ */
+async function answerDownload(req: Request): Promise<Response> {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return json(null, 405, { ok: false, error: "method_not_allowed" });
+  }
+  const purpose = req.headers.get("sec-purpose") ?? req.headers.get("purpose");
+  if (countsAsDownload(req.method, req.headers.get("user-agent"), purpose)) {
+    const counting = countDownload(req);
+    type Runtime = { EdgeRuntime?: { waitUntil?: (work: Promise<unknown>) => void } };
+    const runtime = (globalThis as unknown as Runtime).EdgeRuntime;
+    if (typeof runtime?.waitUntil === "function") {
+      runtime.waitUntil(counting);
+    } else {
+      await Promise.race([counting, new Promise((done) => setTimeout(done, DOWNLOAD_COUNT_WAIT_MS))]);
+    }
+  }
+  return new Response(null, {
+    status: 302,
+    headers: {
+      "Location": APK_URL,
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
+
+  if (isDownloadPath(new URL(req.url).pathname)) return await answerDownload(req);
 
   if (req.method === "OPTIONS") {
     if (!origin || !ALLOWED_ORIGINS.has(origin)) {

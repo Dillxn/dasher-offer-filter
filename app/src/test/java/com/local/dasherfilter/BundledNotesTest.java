@@ -391,8 +391,7 @@ public class BundledNotesTest {
      * 0.6.14 (the owner, 14 October 2026: "i don't want the pay per stop to not count the pickup"): pay per stop counts
      * every stop, the pickup included ($5 a stop: $10 a single order, $15 three stops); the number unchanged.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.14", Updater.version(RuntimeEnvironment.getApplication()));
+    @Test public void release0614SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.14");
         assertEquals(lines.toString(), 5, lines.size());
         assertEquals("the card says what notice 24 says, then the skyline", notice(24), lines.subList(0, 4));
@@ -407,6 +406,19 @@ public class BundledNotesTest {
                 "halved"}) {
             assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
         }
+    }
+
+    /**
+     * 0.6.15 (the owner, 14 October 2026, of the download count's blind spots: "let's fix em"): downloads are counted at
+     * the website's download link; nothing in the app changes, so no notice.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.15", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(24, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.15");
+        assertEquals(lines.toString(), 1, lines.size());
+        assertTrue(lines.get(0), lines.get(0).contains("counted at the download link"));
+        assertTrue(lines.get(0), lines.get(0).length() <= 160);
     }
 
     /** 0.6.13: a customer's name alone on a pickup screen is masked in reports; nothing else changes. */
