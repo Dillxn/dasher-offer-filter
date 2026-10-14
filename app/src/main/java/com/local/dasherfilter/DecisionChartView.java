@@ -359,7 +359,9 @@ final class DecisionChartView extends View {
             if (i == marked) markedRoof = roof;
         }
         // The lines' words, then the badge over everything, so no label's backdrop covers it.
-        drawThresholdLabels(canvas, left, right);
+        float badgeX = Float.isNaN(markedRoof) ? Float.NaN : buildingCenter(marked, slot);
+        float badgeY = Float.isNaN(markedRoof) ? Float.NaN : Math.max(markedRoof - ui.dp(12), ui.dp(10));
+        drawThresholdLabels(canvas, left, right, badgeX, badgeY);
         if (!Float.isNaN(markedRoof)) {
             float center = buildingCenter(marked, slot);
             drawBadge(canvas, center, markedRoof - ui.dp(12), DecisionLog.outcome(entries.get(marked)),
@@ -508,10 +510,25 @@ final class DecisionChartView extends View {
 
     /**
      * "100%" at the right end, over the minimums' line, in the trees' green; the pay line's "Pay $10.00 min" (or "ref"
-     * by area) at its left end, just over it, in its own colour. Autopilot's line goes unnamed (its chip says it).
+     * by area) at its left end, just over it, in its own colour. Autopilot's line goes unnamed (its chip says it). Where
+     * the badge (at {@code badgeX}, {@code badgeY}; NaN without one) would cover "100%", the words stand just left of it.
      */
-    private void drawThresholdLabels(Canvas canvas, float left, float right) {
-        drawLineLabel(canvas, "100%", right - ui.dp(2), hundredY(), true, treeColor());
+    private void drawThresholdLabels(Canvas canvas, float left, float right, float badgeX, float badgeY) {
+        float end = right - ui.dp(2);
+        if (!Float.isNaN(badgeX)) {
+            float reach = ui.dp(9);
+            label.setTypeface(Ui.MEDIUM);
+            label.setTextSize(Math.min(ui.sp(10), ui.dp(13)));
+            float baseline = hundredY() - ui.dp(3) - label.descent();
+            float wide = label.measureText("100%");
+            boolean across = badgeX + reach > end - wide - ui.dp(3) && badgeX - reach < end + ui.dp(3);
+            boolean level = badgeY + reach > baseline + label.ascent() - ui.dp(1)
+                    && badgeY - reach < baseline + label.descent() + ui.dp(1);
+            label.setTypeface(null);
+            label.setTextSize(ui.sp(11));
+            if (across && level) end = badgeX - reach - ui.dp(4);
+        }
+        drawLineLabel(canvas, "100%", end, hundredY(), true, treeColor());
         if (payoutMinimumCents > 0) {
             drawLineLabel(canvas, payLabel(), left + ui.dp(2), payoutThresholdY(), false, payoutColor());
         }
