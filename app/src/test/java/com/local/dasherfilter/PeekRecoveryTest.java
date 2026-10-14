@@ -2548,4 +2548,157 @@ public class PeekRecoveryTest {
         assertTrue(log(app), ownTaps.isEmpty());
         assertFalse(log(app), log(app).contains("[alert] on screen:"));
     }
+
+    // ---- Dasher's gear, for an offer Dasher announced and did not draw (0.6.14) ----
+
+    /** Dasher's Finding offers as the owner's phone draws it: its gear ("Open Settings") first, then the wait. */
+    private AccessibilityNodeInfo findingWithGear(AccessibilityNodeInfo gear) {
+        AccessibilityNodeInfo root = node(DASHER, null, false);
+        Shadows.shadowOf(root).addChild(gear);
+        Shadows.shadowOf(root).addChild(node(DASHER, "Help", false));
+        Shadows.shadowOf(root).addChild(node(DASHER, "Finding offers...", false));
+        return root;
+    }
+
+    /**
+     * The owner's 13 October 2026 report: Dasher came back on Finding offers without the offer it announced, and only
+     * his tap on its gear brought the offer up (Dasher's own notification tap never had). A peek taps the gear once,
+     * 2.5 s after Dasher came up, in place of that tap, and goes on as after it.
+     */
+    @Test
+    public void aPeeksDasherOnFindingOffersGetsItsGearTappedOnceInPlaceOfItsOwnTap() {
+        connect(app(MAPS));
+        postListed("Taco Bell", false);
+        dasherOpened();
+        AccessibilityNodeInfo gear = button("Open Settings");
+        List<Long> gearTaps = taps(gear);
+        dasherShows(findingWithGear(gear));
+        long up = peekState().upAt();
+        passTo(up + Peek.PRESENT_MS - 100);
+        assertTrue("not before 2.5 s", gearTaps.isEmpty());
+        passTo(up + Peek.PRESENT_MS + 100);
+        assertEquals("Dasher's gear, once: " + log(app), 1, gearTaps.size());
+        assertTrue("never Dasher's own notification tap with it", ownTaps.isEmpty());
+        contains(log(app), "[peek] Dasher's gear: tapped");
+        assertTrue(peekState().gearTapped());
+
+        // Dasher makes its main screen again with the offer: declined as any offer on screen, then back to Maps.
+        declined(offer("$7.90"));
+        dasherShows(findingWithGear(button("Open Settings")));
+        Intent back = started();
+        assertNotNull("back to Maps once the decline completed: " + log(app), back);
+        assertEquals(MAPS_HOME, back.getComponent());
+        contains(log(app), " after Dasher's gear)");
+        assertEquals("never tapped again", 1, gearTaps.size());
+        assertTrue(ownTaps.isEmpty());
+    }
+
+    @Test
+    public void aPeeksGearThatBroughtNothingUpLeavesTheOffersCardAsDashersOwnTapWould() {
+        connect(app(OTHER));
+        postListed("Taco Bell", false);
+        dasherOpened();
+        AccessibilityNodeInfo gear = button("Open Settings");
+        List<Long> gearTaps = taps(gear);
+        dasherShows(findingWithGear(gear));
+        passTo(peekState().upAt() + Peek.PRESENT_MS + 100);
+        assertEquals(1, gearTaps.size());
+        long tapped = peekState().ownTapAt();
+        passTo(tapped + Peek.OWN_TAP_WAIT_MS + 100);
+        contains(log(app), "[peek] offer never showed (launcher, Dasher's gear); left Dasher up; card silent");
+        assertEquals(OfferNotificationService.UNSHOWN_TEXT, text(card()));
+        assertTrue(ownTaps.isEmpty());
+        assertEquals("once", 1, gearTaps.size());
+    }
+
+    @Test
+    public void aCardsDasherOnFindingOffersGetsItsGearOnceThePhoneIsQuiet() {
+        cardTapped();
+        AccessibilityNodeInfo gear = button("Open Settings");
+        List<Long> gearTaps = taps(gear);
+        dasherShows(findingWithGear(gear));
+        Object open = ReflectionHelpers.getField(screen.get(), "cardOpen");
+        long up = ReflectionHelpers.<Long>getField(open, "upAt");
+        passTo(up + Peek.PRESENT_MS + 100);
+        assertTrue("not until the touch watch has seen the phone quiet", gearTaps.isEmpty());
+        assertEquals("the touch watch is up for it", 1, touchWatches().size());
+        pass(OfferFilterService.GEAR_QUIET_MS - 300);
+        assertTrue(gearTaps.isEmpty());
+        pass(400);
+        assertEquals("Dasher's gear, once: " + log(app), 1, gearTaps.size());
+        contains(log(app), "[alert] card: Dasher's gear: tapped");
+        assertTrue("never Dasher's own notification tap with it", ownTaps.isEmpty());
+        assertTrue("the touch watch goes down after it", touchWatches().isEmpty());
+
+        // The offer comes up: what came of the gear goes in the log.
+        dasherShows(offer("$25.00"));
+        contains(log(app), "[alert] card: offer facts read ");
+        contains(log(app), " after Dasher's gear");
+        pass(10_000);
+        assertEquals(1, gearTaps.size());
+        assertTrue(ownTaps.isEmpty());
+    }
+
+    @Test
+    public void aTouchWhileTheGearWaitsLeavesItUntapped() {
+        cardTapped();
+        AccessibilityNodeInfo gear = button("Open Settings");
+        List<Long> gearTaps = taps(gear);
+        dasherShows(findingWithGear(gear));
+        Object open = ReflectionHelpers.getField(screen.get(), "cardOpen");
+        long up = ReflectionHelpers.<Long>getField(open, "upAt");
+        passTo(up + Peek.PRESENT_MS + 100);
+        pass(1_000);
+        touchNow();
+        assertFalse("a touch with no decline under way is no decline's: " + log(app),
+                log(app).contains("touch during decline"));
+        pass(OfferFilterService.GEAR_WAIT_MS);
+        assertTrue(gearTaps.isEmpty());
+        contains(log(app), "[alert] card: Dasher's gear: skipped (you touched the screen)");
+        assertTrue(ownTaps.isEmpty());
+        assertTrue(touchWatches().isEmpty());
+    }
+
+    @Test
+    public void anOfferDasherBesideNeverDrawsGetsItsGearInItsHalf() {
+        connect(app(OTHER));
+        AccessibilityNodeInfo gear = button("Open Settings");
+        List<Long> gearTaps = taps(gear);
+        splitBesideOfferFilter(findingWithGear(gear));
+        dasherEvent();
+        postListed("Taco Bell", false);
+        contains(log(app), "[peek] skipped: Dasher is on screen");
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS + 300);
+        assertTrue(gearTaps.isEmpty());
+        pass(OfferFilterService.GEAR_QUIET_MS + 300);
+        assertEquals("Dasher's gear, once: " + log(app), 1, gearTaps.size());
+        contains(log(app), "[alert] on screen: Dasher showed none of the offer 5.");
+        contains(log(app), "after its notification; Dasher's gear: tapped");
+        assertTrue(ownTaps.isEmpty());
+        assertNull("Dasher is never launched over the split", started());
+        pass(OfferFilterService.GEAR_OUTCOME_MS);
+        contains(log(app), "[alert] on screen: no offer facts read 5.");
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS * 3);
+        assertEquals("never twice", 1, gearTaps.size());
+    }
+
+    @Test
+    public void theGearIsNeverTappedOverAnotherOfDashersScreens() {
+        // The gear's words on a screen that is not Finding offers (its menu over the dash's own screen): Dasher's own
+        // notification tap, as before.
+        AccessibilityNodeInfo gear = button("Open Settings");
+        List<Long> gearTaps = taps(gear);
+        AccessibilityNodeInfo menu = node(DASHER, null, false);
+        Shadows.shadowOf(menu).addChild(gear);
+        Shadows.shadowOf(menu).addChild(node(DASHER, "Zone offer wait", false));
+        Shadows.shadowOf(menu).addChild(node(DASHER, "1-2 min", false));
+        connect(menu);
+        dasherEvent();
+        postListed("Taco Bell", false);
+        pass(OfferFilterService.ON_SCREEN_DRAW_MS + 300);
+        pass(OfferFilterService.GEAR_WAIT_MS);
+        assertTrue(log(app), gearTaps.isEmpty());
+        assertEquals("Dasher's own notification tap, as before: " + log(app), 1, ownTaps.size());
+        assertFalse(log(app).contains("Dasher's gear"));
+    }
 }
