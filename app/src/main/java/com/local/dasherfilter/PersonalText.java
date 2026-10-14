@@ -12,7 +12,8 @@ import java.util.regex.Pattern;
 
 /**
  * Personal details in Dasher's screen text, masked before any of it is kept on the phone or leaves it: a customer's
- * name ("Deliver to Sam P" reads "Deliver to [name]", "Sam's order" reads "[name]'s order") and the dasher's own (the
+ * name ("Deliver to Sam P" reads "Deliver to [name]", "Sam's order" reads "[name]'s order", and a first name and last
+ * initial alone, "Sam P", as an order's details list the customer, reads "[name]") and the dasher's own (the
  * name above "651 orders completed", before a badge such as "[icon] Pro Shopper", or heading Dasher's side menu),
  * street addresses and city/state/ZIP lines ("[address]", "Apt/Suite: [address]"), phone numbers ("[phone]"), emails
  * ("[email]"), a customer's own drop-off words ("[instructions]"), card numbers and a card's security code, expiry or
@@ -225,6 +226,18 @@ final class PersonalText {
             + ":?|(?i:customer(?: name)?):";
     private static final Pattern CUSTOMER_NAME = Pattern.compile(
             "\\b(" + CUSTOMER_HEADING + ")( +|, +)(" + NAME_WORDS + ")");
+    /**
+     * A name standing alone as Dasher writes a customer's, a first name (or two) and a last initial ("Sam P", "Noel
+     * G.", "Mary Ann S"), with no heading before it to say so: an order's details on its pickup screen list the
+     * customer this way (0.6.11's report: the name after "Help", above "Make this delivery count"). The two stores whose
+     * names have this shape keep them ({@link #STORES_SHAPED_LIKE_NAMES}).
+     */
+    private static final String INITIAL_NAME_WORDS = "(?:\\p{Lu}[\\p{L}'’-]+ ){1,2}\\p{Lu}\\.?";
+    private static final Pattern INITIAL_NAME_LABEL = Pattern.compile(INITIAL_NAME_WORDS);
+    /** The same as an item of a log line's labels: "[Help, Sam P, Make this delivery count]". */
+    private static final Pattern INITIAL_NAME_ITEM = Pattern.compile(
+            "(^|\\[|, )(" + INITIAL_NAME_WORDS + ")(?=,|\\]|$)", Pattern.MULTILINE);
+    private static final Set<String> STORES_SHAPED_LIKE_NAMES = new HashSet<>(Arrays.asList("circle k", "big y"));
     /** A heading that is a label of its own, with the name as the next label. */
     private static final Pattern CUSTOMER_HEADING_LABEL = Pattern.compile(
             "(?i:deliver(?:ing)? to|delivery for|drop[- ]?off for|order for|verify items for|customer|customer name) *:?");
@@ -462,7 +475,8 @@ final class PersonalText {
         out = names(GREETING, out, 2, "$1");
         out = possessives(out);
         out = names(NAME_BEFORE_COMPLETED, out, 2, "$1", "$3");
-        if (wholeLabel) return out;
+        if (wholeLabel) return initialName(out.trim()) ? NAME : out;
+        out = initialNames(out);
         out = names(NAME_BEFORE_BADGE, out, 2, "$1", "$3");
         out = names(NAME_BEFORE_DASHING_NOW, out, 2, "$1", "$3");
         return SIDE_MENU_IN_LINE.matcher(out).find() ? names(NAME_BEFORE_MENU_ITEM, out, 2, "$1", "$3") : out;
@@ -603,6 +617,25 @@ final class PersonalText {
             found.appendReplacement(out, isName(found.group(1))
                     ? Matcher.quoteReplacement(NAME) + "$2$3" : Matcher.quoteReplacement(found.group()));
         }
+        found.appendTail(out);
+        return out.toString();
+    }
+
+    /** A label that is a first name and a last initial alone ({@link #INITIAL_NAME_WORDS}), and not a store's name. */
+    private static boolean initialName(String text) {
+        return INITIAL_NAME_LABEL.matcher(text).matches() && isName(text)
+                && !STORES_SHAPED_LIKE_NAMES.contains(text.toLowerCase(Locale.US));
+    }
+
+    /** Each item of a log line's labels that is a first name and a last initial alone, as {@link #NAME}. */
+    private static String initialNames(String text) {
+        Matcher found = INITIAL_NAME_ITEM.matcher(text);
+        if (!found.find()) return text;
+        StringBuffer out = new StringBuffer();
+        do {
+            found.appendReplacement(out, initialName(found.group(2))
+                    ? "$1" + Matcher.quoteReplacement(NAME) : Matcher.quoteReplacement(found.group()));
+        } while (found.find());
         found.appendTail(out);
         return out.toString();
     }

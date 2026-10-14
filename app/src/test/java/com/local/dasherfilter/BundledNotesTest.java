@@ -385,12 +385,19 @@ public class BundledNotesTest {
         }
     }
 
+    /** 0.6.13: a customer's name alone on a pickup screen is masked in reports; nothing else changes. */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.13", Updater.version(RuntimeEnvironment.getApplication()));
+        List<String> lines = BundledNotes.whatsNew("0.6.13");
+        assertEquals(lines.toString(), 1, lines.size());
+        assertTrue(lines.get(0), lines.get(0).contains("masked in reports"));
+    }
+
     /**
      * 0.6.12 (the owner, 13 October 2026: "swap overall payout for pay per stop"): pay per stop, counted after the first
      * pickup, single orders unchanged, the learned best per stop; never a promise of more pay.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.12", Updater.version(RuntimeEnvironment.getApplication()));
+    @Test public void release0612SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.12");
         assertEquals(lines.toString(), 5, lines.size());
         String release = String.join(" ", lines);

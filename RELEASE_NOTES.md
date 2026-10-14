@@ -1,3 +1,7 @@
+## 0.6.13 — A customer's name alone is masked in reports
+
+Version 0.6.13 (code 105). 0.6.11's Share report kept a customer's first name and last initial unmasked: a pickup screen lists the customer as a label of its own, after "Help", with no heading before it. A label that is only a first name (or two) and a last initial ("Sam P", "Noel G.") now reads [name], as a whole label and as an item of a log line's labels, so a report also cleans lines already on the phone. Circle K and Big Y keep their names. Decisions read raw labels and are unchanged. PRIVACY already says customer names become [name]; this masks more, never less, so no notice. Fix by the beta launch thread (29c3543), reviewed and applied by the release thread.
+
 ## 0.6.12 — Minimum pay becomes pay per stop
 
 Version 0.6.12 (code 104) answers the owner's ask of 13 October 2026: "we also need to swap overall payout for pay per stop I think" (he chose Swap: the pay knob becomes a pay-per-stop minimum; max stops, $/mi and $/hr unchanged).

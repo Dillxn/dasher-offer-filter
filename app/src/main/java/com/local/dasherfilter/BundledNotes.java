@@ -240,6 +240,8 @@ final class BundledNotes {
                 "Learning keeps your best pay per stop.",
                 "Fewer empty gaps on the homepage, and the time-of-day chart comes back after each new offer.",
                 "No second card of ours beside Dasher's own offer notification: Dasher rings for offers itself.");
+        release("0.6.13",
+                "A customer's name shown alone on a pickup screen is now masked in reports.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

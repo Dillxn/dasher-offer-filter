@@ -2,6 +2,10 @@
 
 - "you never for any project need approval if you're using best judgment": make the call with best judgment, do it, and say what was decided and why (release notes, the commit, a line to the owner). Every "needs a new owner decision", "not approved" or "ask the owner" below is a decision to make on best judgment in that way. Still ask only when the choice is genuinely the owner's own (their money, accounts or identity, or a product direction they have not set), and never weaken the safety rules below (taps only on the declined offer's own controls, the user's touch always wins, local-only signing, privacy, consent).
 
+# 0.6.13 (14 October 2026): a customer's first name and last initial alone is masked
+
+- 0.6.11's Share report kept a customer's name unmasked: a pickup screen lists it as a label of its own after "Help". PersonalText.INITIAL_NAME_WORDS (one or two capitalised words and a last initial) masks such a whole label, and such an item of a log line's labels, as [name]; Circle K and Big Y (STORES_SHAPED_LIKE_NAMES) and NOT_NAMES first words keep theirs. Masking only: decisions and StoreName read raw labels. No notice (PRIVACY already promises [name]).
+
 # 0.6.12 (13 October 2026): minimum pay becomes pay per stop (plan: notes/0.6.12/pay-per-stop.md) — supersedes, for the pay axis only, 0.5.0's fold of per stop into minimum pay and the 0.6.0 directive's "Do not restore retired per-stop ... spokes"
 
 - The owner: "we also need to swap overall payout for pay per stop I think"; on the decision card he chose Swap. The pay knob is a pay-per-stop minimum; max stops, $/mi and $/hr are unchanged. No fourth spoke: the PAY axis itself is per stop, and the reserved STOP slot stays reserved.
