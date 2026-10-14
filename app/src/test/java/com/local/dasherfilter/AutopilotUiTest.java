@@ -315,7 +315,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
     // ---- The goal chooser ----
 
     @Test
-    public void aTapWhileOffAsksWhatMattersMoreWithTheTopTierCheckedAndOneTapTurnsItOn() {
+    public void aTapWhileOffAsksWhatMattersMoreWithPayFirstCheckedAndOneTapTurnsItOn() {
         FilterStore.save(app, FilterSettings.of(true, 350, 150, 30, 3));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
@@ -329,10 +329,13 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             ListView list = chooser.getListView();
             assertEquals("a native single-choice list", ListView.CHOICE_MODE_SINGLE, list.getChoiceMode());
             assertEquals(3, list.getCount());
-            assertEquals("Keep a top tier — acceptance rate 70% or more", String.valueOf(list.getItemAtPosition(0)));
-            assertEquals("Keep a tier — acceptance rate 50% or more", String.valueOf(list.getItemAtPosition(1)));
-            assertEquals("Pay first — no acceptance-rate goal", String.valueOf(list.getItemAtPosition(2)));
-            assertEquals("the top tier preselected", 0, list.getCheckedItemPosition());
+            // 0.6.18 (the owner chose "Earnings first"): pay first first and preselected; the tiers opt-in.
+            assertEquals("Pay first — push for better pay, no acceptance-rate goal",
+                    String.valueOf(list.getItemAtPosition(0)));
+            assertEquals("Protect my acceptance rate — 70% or more (a top tier)",
+                    String.valueOf(list.getItemAtPosition(1)));
+            assertEquals("Protect my acceptance rate — 50% or more (a tier)", String.valueOf(list.getItemAtPosition(2)));
+            assertEquals("pay first preselected", 0, list.getCheckedItemPosition());
             assertEquals("About acceptance rate", chooser.getButton(AlertDialog.BUTTON_NEUTRAL).getText().toString());
             assertEquals("Not now", chooser.getButton(AlertDialog.BUTTON_NEGATIVE).getText().toString());
             assertTrue("no OK: one tap applies", chooser.getButton(AlertDialog.BUTTON_POSITIVE) == null
@@ -345,7 +348,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
                     contrast(turnsOn.getCurrentTextColor(), new Ui(activity.get()).surface) >= 4.5);
             assertFalse("asking changes nothing", FilterStore.load(app).autopilot);
 
-            Shadows.shadowOf(chooser).clickOnItem(1);
+            Shadows.shadowOf(chooser).clickOnItem(2);
             idle();
             assertFalse("one tap applies and closes", chooser.isShowing());
             FilterSettings on = FilterStore.load(app);
@@ -369,8 +372,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             settleSky(content);
             toggleAutopilotByChip(content);
             chooser = ShadowAlertDialog.getLatestAlertDialog();
-            assertEquals("the stored goal is checked now", 1, chooser.getListView().getCheckedItemPosition());
-            Shadows.shadowOf(chooser).clickOnItem(2);
+            assertEquals("the stored goal is checked now", 2, chooser.getListView().getCheckedItemPosition());
+            Shadows.shadowOf(chooser).clickOnItem(0);
             idle();
             assertEquals(FilterSettings.GOAL_PAY_FIRST, FilterStore.load(app).autopilotGoalPercent);
             assertEquals("Autopilot on · pay first", ShadowToast.getTextOfLatestToast());
@@ -403,7 +406,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue(find(content, AutopilotChip.class).performLongClick());
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertEquals(AutopilotText.CHOOSER_TITLE, title(chooser));
-            assertEquals("the stored goal is checked", 1, chooser.getListView().getCheckedItemPosition());
+            assertEquals("the stored goal is checked", 2, chooser.getListView().getCheckedItemPosition());
 
             chooser.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();
             idle();
@@ -431,7 +434,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
             // A goal chosen while on says it changed.
             assertTrue(find(content, AutopilotChip.class).performLongClick());
-            Shadows.shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(0);
+            Shadows.shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(1);
             idle();
             assertEquals(FilterSettings.GOAL_TOP_TIER, FilterStore.load(app).autopilotGoalPercent);
             assertEquals("Autopilot goal: acceptance rate 70% or more", ShadowToast.getTextOfLatestToast());
@@ -870,7 +873,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             String said = message(details);
             List<String> lines = java.util.Arrays.asList(said.split("\n\n"));
             assertEquals(said, "Bar: 100% of your minimums (100% = exactly your minimums).", lines.get(0));
-            assertEquals(said, "Goal: Keep a top tier — acceptance rate 70% or more.", lines.get(1));
+            assertEquals(said, "Goal: Protect my acceptance rate — 70% or more (a top tier).", lines.get(1));
             assertEquals(said, "Acceptance rate: about 53% (Dasher showed 55% 12 min ago; 4 offers since).",
                     lines.get(2));
             assertEquals(said, "Below your goal: about 17 more accepts to reach 70% (an estimate — DoorDash counts "
@@ -1306,7 +1309,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             idle();
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertEquals(AutopilotText.CHOOSER_TITLE, title(chooser));
-            assertEquals(0, chooser.getListView().getCheckedItemPosition());
+            assertEquals("its stored 70% checked (second from 0.6.18)", 1, chooser.getListView().getCheckedItemPosition());
             chooser.dismiss();
             AccessibilityNodeInfo said = chip.createAccessibilityNodeInfo();
             List<String> actions = new ArrayList<>();
@@ -1479,7 +1482,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertEquals("its plan for them starts from 100", 100, AutopilotRuntime.latest().current);
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertEquals(AutopilotText.CHOOSER_TITLE, title(chooser));
-            assertEquals("its stored goal checked", 1, chooser.getListView().getCheckedItemPosition());
+            assertEquals("its stored 50% checked (third from 0.6.18)", 2, chooser.getListView().getCheckedItemPosition());
         }
     }
 

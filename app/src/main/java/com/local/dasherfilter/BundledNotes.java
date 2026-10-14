@@ -44,6 +44,24 @@ final class BundledNotes {
                     + "its apps, and this app is one.",
             "DoorDash could limit or deactivate your account. Nothing about how the app works has changed."};
 
+    /**
+     * Notice 26's lines, also 0.6.18's card: pay first by default, the best accept of 7 days holds the bar, and a
+     * decline is confirmed only on Dasher's usual question.
+     */
+    private static final String[] EARNINGS_FIRST = {
+            "Autopilot puts pay first by default now. The goals that protect your acceptance rate are a choice in its "
+                    + "goal question.",
+            "Your goal moved to pay first unless you had picked 50% or pay first; a long press on Autopilot's chip "
+                    + "brings 70% back.",
+            "The best score you accepted yourself in the last 7 days now holds Autopilot's bar across dashes, until "
+                    + "you change your goal or minimums.",
+            "A decline is confirmed only on Dasher's usual question; any other question is left to you and pauses "
+                    + "auto-decline.",
+            "This notice ends with a switch to share anonymous diagnostics after each dash; it starts off and Settings "
+                    + "can change it later.",
+            "If screen reading stops on a fault it restarts once, then a notification says offers aren't filtered; "
+                    + "update checks wait for this notice."};
+
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
                     + "pay line and the 100% line.";
@@ -140,6 +158,10 @@ final class BundledNotes {
         // 0.6.17 (the owner chose "Say it plainly", 14 October 2026): the account point says DoorDash's terms ban
         // automated tools that read or collect data from its apps, and that this is one, where it said "may break".
         notice(25, TERMS_PLAIN);
+        // 0.6.18 (the owner chose "Earnings first", 14 October 2026): pay first is the default goal, a 70% goal moves
+        // to it once, and the best hand-accepted score of the last 7 days holds Autopilot's bar across dashes; and
+        // (option A, 19:36 UTC) only Dasher's usual decline question is confirmed, any other pauses auto-decline.
+        notice(26, EARNINGS_FIRST);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -274,6 +296,7 @@ final class BundledNotes {
         release("0.6.16", "The homepage's pictures are the website's 3D art now: the mascot, the sun, moon and clouds, "
                 + "the chart's buildings and trees, and the road's houses and car.");
         release("0.6.17", TERMS_PLAIN[0], TERMS_PLAIN[1]);
+        release("0.6.18", EARNINGS_FIRST);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

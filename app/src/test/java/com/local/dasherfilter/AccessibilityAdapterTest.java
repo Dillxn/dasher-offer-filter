@@ -941,6 +941,9 @@ public class AccessibilityAdapterTest {
 
         // The sheet is drawn over the original offer, so both sets of labels share one tree.
         AccessibilityNodeInfo confirm = node("Decline offer", true);
+        // Dasher's question as the owner's reports show it (DashSummaryTest): its prompt line first (0.6.18: only
+        // that wording is confirmed), then the warning.
+        Shadows.shadowOf(declined).addChild(node("Are you sure you want to decline this offer?", false));
         Shadows.shadowOf(declined).addChild(node("Declining this offer may lower your acceptance rate", false));
         Shadows.shadowOf(declined).addChild(node("Go back", true));
         Shadows.shadowOf(declined).addChild(confirm);

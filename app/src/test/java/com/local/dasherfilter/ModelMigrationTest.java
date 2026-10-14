@@ -127,14 +127,14 @@ public class ModelMigrationTest {
         assertEquals(0, rules.maxStops);
         assertTrue("enabled is kept", rules.enabled);
         assertFalse(rules.autopilot);
-        assertEquals(70, rules.autopilotGoalPercent);
+        assertEquals("pay first, the default goal from 0.6.18", 0, rules.autopilotGoalPercent);
         assertEquals(100, rules.minimumScalePercent);
 
         Map<String, ?> stored = prefs().getAll();
         for (String key : RETIRED) assertFalse(key, stored.containsKey(key));
         assertEquals(2, stored.get("rules_model"));
         assertEquals(false, stored.get("autopilot_on"));
-        assertEquals(70, stored.get("autopilot_goal"));
+        assertEquals(0, stored.get("autopilot_goal"));
         assertEquals(100, stored.get("autopilot_bar_percent"));
         assertFalse("the goal was never asked", stored.containsKey("autopilot_goal_asked"));
         assertFalse("auto-accept is switched off once", FilterStore.autoAcceptEnabled(app));
@@ -330,12 +330,12 @@ public class ModelMigrationTest {
         assertFalse(rules.enabled);
         assertFalse(rules.hasAnyRule());
         assertFalse(rules.autopilot);
-        assertEquals(70, rules.autopilotGoalPercent);
+        assertEquals("pay first, the default goal from 0.6.18", 0, rules.autopilotGoalPercent);
         assertEquals(100, rules.minimumScalePercent);
         Map<String, ?> stored = prefs().getAll();
         assertEquals(2, stored.get("rules_model"));
         assertEquals(false, stored.get("autopilot_on"));
-        assertEquals(70, stored.get("autopilot_goal"));
+        assertEquals(0, stored.get("autopilot_goal"));
         assertEquals(100, stored.get("autopilot_bar_percent"));
         assertFalse("no rule is invented", stored.containsKey("flat") || stored.containsKey("enabled"));
         assertNull(FilterStore.peekModelNotice(app));
@@ -499,7 +499,7 @@ public class ModelMigrationTest {
         FilterStore.setAutopilot(app, true, 33);
         FilterSettings on = FilterStore.load(app);
         assertTrue(on.autopilot);
-        assertEquals("an unknown goal is the default", 70, on.autopilotGoalPercent);
+        assertEquals("an unknown goal is the default, pay first (0.6.18)", 0, on.autopilotGoalPercent);
         assertTrue(FilterStore.goalAsked(app));
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 112));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_PAY_FIRST);
@@ -522,7 +522,7 @@ public class ModelMigrationTest {
                 .putInt("autopilot_goal", 42).commit();
         FilterSettings high = FilterStore.load(app);
         assertEquals(150, high.minimumScalePercent);
-        assertEquals(70, high.autopilotGoalPercent);
+        assertEquals("an unknown goal is the default, pay first (0.6.18)", 0, high.autopilotGoalPercent);
         assertTrue("compare-and-set compares what load reads", FilterStore.commitAutopilotBar(app, 150, 120));
         prefs().edit().putInt("autopilot_bar_percent", 10).commit();
         assertEquals(50, FilterStore.load(app).minimumScalePercent);

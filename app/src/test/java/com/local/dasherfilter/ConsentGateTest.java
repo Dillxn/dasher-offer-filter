@@ -131,7 +131,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         for (String fact : new String[] {"rolling 24-hour window", "latest 200 offer decisions",
                 "no age-based expiry", "Feedback and offer reports are accountless and leave only when you tap Send",
                 "masked diagnostics go only when you attach them",
-                "or after each dash if you turn that on in Settings (off by default)",
+                // 0.6.18: or with the notice's own switch, unchecked.
+                "or after each dash if you turn that on in Settings or with the switch at the end of this notice (off "
+                        + "by default)",
                 "Unsent submissions wait on this phone up to 7 days", "The feedback service keeps them 90 days",
                 "Anthropic's Claude", "OpenAI's ChatGPT/Codex", "text masking can miss details",
                 "Network providers still receive normal connection metadata",
@@ -163,10 +165,14 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Learning is on by default.", "Your Dasher account.",
                 "At your own risk.", "Not while driving.", "Your data.", "A daily count is on by default.",
                 "Optional offer timing study."), java.util.Arrays.asList(leads));
-        assertEquals("the plain account warning renews the notice (after the pickup counted, 24)", 25, Consent.VERSION);
+        assertEquals("pay first by default and the 7-day floor renew the notice (after the plain account warning, 25)",
+                26, Consent.VERSION);
         String does = Consent.POINTS[2][1];
         for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
                 "It taps Decline and its confirmation on offers that fail your chosen rules.",
+                // 0.6.18 (notice 26): only Dasher's usual question is confirmed; any other pauses.
+                "It confirms only Dasher's usual question (\"Are you sure you want to decline this offer?\"); any "
+                        + "other question it leaves to you and pauses auto-decline.",
                 // 0.6.10 (notice 21): the skip list declines whatever an offer pays; the cost per mile is the driver's
                 // own, off by default.
                 "It also declines offers from stores you put on your skip list (from an offer's details), whatever "
@@ -174,12 +180,14 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "your own cost per mile if you set one in its details (off by default)",
                 // Autopilot's bar goes both ways (FilterStore.BAR_MIN to BAR_MAX): raised, it declines offers that
                 // meet the minimums, which the acceptance-rate warning covers too.
-                // 0.6.2 (notice 19): on by default, and its chip turns it off.
-                "Autopilot is on by default and moves that cutoff up or down by itself (" + FilterStore.BAR_MIN + "% to "
-                        + FilterStore.BAR_MAX + "% of your minimums), using your recent offers, how often they come "
-                        + "and the acceptance rate Dasher shows when you decline",
+                // 0.6.2 (notice 19): on by default, and its chip turns it off. 0.6.18 (notice 26): pay first is its
+                // default goal; letting offers below the minimums through is for a goal that protects the rate.
+                "Autopilot is on by default, with pay first as its goal, and moves that cutoff up or down by itself ("
+                        + FilterStore.BAR_MIN + "% to " + FilterStore.BAR_MAX + "% of your minimums), using your recent "
+                        + "offers, how often they come and the acceptance rate Dasher shows when you decline",
                 "raised, it declines offers that meet your minimums",
-                "to protect your acceptance goal it can let offers below your minimums through for you to decide",
+                "if you choose a goal that protects your acceptance rate instead, it can let offers below your "
+                        + "minimums through for you to decide",
                 // 0.5.1 (notice 15): the minimums grow, at most 10% at a time, with Undo; more declines.
                 "Autopilot also raises your minimums after offers have paid above them for a while, at most "
                         + Growth.MOST_PERCENT + "% at a time, with Undo, which can mean more declines.",
@@ -187,10 +195,12 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Auto-accept is off by default; if you separately enable it in Settings, it can accept standalone "
                         + "offers that meet your minimums and commit you to a delivery.",
                 "it may go Back and retry, at most twice", "Your touch stops it.",
-                // 0.6.11 (notice 22): an offer the user accepts holds the bar for the dash, past the goal; the divider
-                // moves by its own controls during a delivery, and stops once the user moves it.
+                // 0.6.11 (notice 22): an offer the user accepts holds the bar, past the goal (0.6.18, notice 26: the
+                // best of the last 7 days, across dashes, until the user's own change); the divider moves by its own
+                // controls during a delivery, and stops once the user moves it.
                 "When you accept an offer yourself that scores above that cutoff, it raises the cutoff to that offer's "
-                        + "score for the rest of the dash, even above what your acceptance goal allows.",
+                        + "score and keeps it at least at the best score you accepted in the last 7 days, across dashes, "
+                        + "even above what an acceptance goal allows, until you change your goal or minimums.",
                 "In split screen during a delivery it moves the divider, using the divider's own controls, to give the "
                         + "navigating app more room, and puts it back afterward; move it yourself and it stops for that "
                         + "dash.",
@@ -371,8 +381,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // Autopilot and the acceptance-rate reading, the screen hold and the dated beta terms; 15, the minimums'
         // growth; 20, the anonymous daily count; 21, the store skip list and the cost per mile; 22, the bar an accepted
         // offer holds and the divider moved during a delivery; 23, pay per stop; 24, the pickup counted; 25, the plain
-        // account warning. A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(25, Consent.VERSION);
+        // account warning; 26, pay first by default and the 7-day floor. A phone that accepted 14 (0.5.0) sees it again
+        // too.
+        assertEquals(26, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

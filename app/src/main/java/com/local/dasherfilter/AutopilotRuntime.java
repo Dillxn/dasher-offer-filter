@@ -322,9 +322,9 @@ final class AutopilotRuntime {
             AutopilotStore.Reading stored = AutopilotStore.reading(app, wall);
             Autopilot.State state = state(app, rules);
             long since = FilterStore.minimumsSince(app);
-            // The accepted floor counts hand accepts this dash, since the user's own last change; none off a dash.
-            long dash = Dashing.currentStart(app);
-            long floorSince = dash <= 0 ? Long.MAX_VALUE : Math.max(dash, AutopilotStore.floorSince(app));
+            // The accepted floor counts hand accepts of the last 7 days, across dashes (0.6.18; this dash before),
+            // since the user's own last change.
+            long floorSince = Math.max(wall - Autopilot.FLOOR_WINDOW_MS, AutopilotStore.floorSince(app));
             Runnable hook = afterInputsForTests;
             if (hook != null) hook.run();
             Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, waits, reading(stored), state, wall,

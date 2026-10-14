@@ -35,7 +35,10 @@ final class Consent {
     // a single order asks twice what it did.
     // 25 (0.6.17): the account point says plainly that DoorDash's terms ban automated tools that read or collect
     // data from its apps, and that this is one (the owner chose "Say it plainly", 14 October 2026).
-    static final int VERSION = 25;
+    // 26 (0.6.18): Autopilot puts pay first by default (a 70% goal moves to pay first once; the goals that protect the
+    // acceptance rate are opt-in), and the best score you accepted yourself in the last 7 days holds its bar across
+    // dashes (the owner chose "Earnings first", 14 October 2026).
+    static final int VERSION = 26;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -48,20 +51,23 @@ final class Consent {
                 + "Only continue if you understand and accept that risk."},
         {"Not a DoorDash app.", AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash."},
         {"What it does.", "It reads Dasher's screen and notifications on this phone. It taps Decline and its confirmation "
-                + "on offers that fail your chosen rules. It also declines offers from stores you put on your skip list "
+                + "on offers that fail your chosen rules. It confirms only Dasher's usual question (\"Are you sure "
+                + "you want to decline this offer?\"); any other question it leaves to you and pauses auto-decline. "
+                + "It also declines offers from stores you put on your skip list "
                 + "(from an offer's details), whatever they pay. Your pay minimum is per stop, the pickup included: an offer "
                 + "must pay it for each stop Dasher shows, so $5 a stop asks $10 of a single order and $15 of three "
                 + "stops. Your number wasn't changed, so a single order now asks twice what it did; set it to what you "
                 + "want per stop. Strict mode checks every active minimum; optional area mode "
                 + "allows stronger pay or rates to compensate for weaker ones. Max stops stays a hard limit; "
                 + "unread required facts stay for review and add-ons stay strict. Permitted by the filter does not "
-                + "mean accepted. Autopilot is on by default and moves that cutoff up or down by itself (50% to 150% of "
-                + "your minimums), using your recent offers, how often they come and the acceptance rate Dasher shows when "
+                + "mean accepted. Autopilot is on by default, with pay first as its goal, and moves that cutoff up or "
+                + "down by itself (50% to 150% of your minimums), using your recent offers, how often they come and the acceptance rate Dasher shows when "
                 + "you decline, and your own cost per mile if you set one in its details (off by default): raised, "
-                + "it declines offers that meet your minimums; to protect your acceptance goal it can "
-                + "let offers below your minimums through for you to decide. When you accept an offer yourself that "
-                + "scores above that cutoff, it raises the cutoff to that offer's score for the rest of the dash, even "
-                + "above what your acceptance goal allows. Autopilot also raises your minimums after "
+                + "it declines offers that meet your minimums; if you choose a goal that protects your acceptance "
+                + "rate instead, it can let offers below your minimums through for you to decide. When you accept an "
+                + "offer yourself that scores above that cutoff, it raises the cutoff to that offer's score and keeps "
+                + "it at least at the best score you accepted in the last 7 days, across dashes, even above what an "
+                + "acceptance goal allows, until you change your goal or minimums. Autopilot also raises your minimums after "
                 + "offers have paid above them for a while, at most 10% at a time, with Undo, which can mean more "
                 + "declines. Its chip on the homepage turns Autopilot off. Auto-accept is off by default; if "
                 + "you separately enable it in Settings, it can accept standalone offers that meet your minimums and commit "
@@ -95,7 +101,7 @@ final class Consent {
                 + "Auto theme uses an existing allowed approximate location, or a local-clock fallback. "
                 + "Recognized payment, account and earnings screens are discarded. Feedback and offer reports are accountless and leave "
                 + "only when you tap Send; masked diagnostics go only when you attach them, or after each dash if you turn that on in "
-                + "Settings (off by default). What you type is sent as written, not masked. No feedback or diagnostics leave before "
+                + "Settings or with the switch at the end of this notice (off by default). What you type is sent as written, not masked. No feedback or diagnostics leave before "
                 + "you accept this notice. Unsent submissions wait on this phone up to 7 days. The feedback service keeps them 90 days, "
                 + "and the developer may review them with AI tools (Anthropic's Claude or OpenAI's ChatGPT/Codex); clearing this phone "
                 + "does not erase sent copies. Network providers still receive normal connection metadata, and text masking can miss "
@@ -117,6 +123,14 @@ final class Consent {
     static final String AGREEMENT = "By tapping " + ACCEPT + ", you acknowledge this acceptance-rate risk, "
             + "choose to use " + AppName.NAME + " at your own risk and accept the Terms.";
     static final String NOT_NOW = "Not now";
+    /**
+     * The notice's last control (0.6.18; the owner chose "The install page and the notice ask pilot Dashers to turn
+     * diagnostics on, and it stays opt-in", 14 October 2026): one switch, unchecked every time the notice shows.
+     * Accepting the notice with it on turns Settings' "Share anonymous diagnostics after each dash" on
+     * ({@link Feedback#setAfterDash}); with it off nothing changes (an already-on switch stays on). The same summaries,
+     * masking and limits as that switch.
+     */
+    static final String DIAGNOSTICS_ASK = "Share anonymous diagnostics after each dash (helps fix it for your phone)";
 
     /** Whether the current notice was accepted. Cheap enough for every read: Android keeps the prefs in memory. */
     static boolean accepted(Context context) {

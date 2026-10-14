@@ -286,14 +286,15 @@ public class UpdateReachTest extends AndroidAdapterTestBase {
         verifiedUpdate("99.0.0");
         ConsentedTestApp.forget(app);
         automaticCheck();
-        assertEquals("held, as the blocked update", "99.0.0", Updater.heldVersion(app));
-        assertEquals(Updater.BLOCKED, Updater.status(app));
-        assertNull("before acceptance the paused reminder is the one thing posted",
-                notices.getNotification(UpdateNotices.BLOCKED_ID));
+        // 0.6.18 (pilot safety Q8): before acceptance there is no check at all, so nothing is held or posted.
+        assertNull("no check before acceptance", Updater.heldVersion(app));
+        assertNull("before acceptance nothing is posted", notices.getNotification(UpdateNotices.BLOCKED_ID));
         assertTrue(notices.getAllNotifications().isEmpty());
 
         ConsentedTestApp.accept(app);
         automaticCheck();
+        assertEquals("held, as the blocked update", "99.0.0", Updater.heldVersion(app));
+        assertEquals(Updater.BLOCKED, Updater.status(app));
         assertNotNull("once accepted, it says so", notices.getNotification(UpdateNotices.BLOCKED_ID));
         app.getSystemService(NotificationManager.class).cancelAll();
         automaticCheck();

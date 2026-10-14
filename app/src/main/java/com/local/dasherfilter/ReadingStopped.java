@@ -93,11 +93,7 @@ final class ReadingStopped {
         if (dash > 0 && prefs.getLong(NOTIFIED_DASH, 0) == dash) return false;
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         if (manager == null) return false;
-        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Stopped reading Dasher",
-                NotificationManager.IMPORTANCE_DEFAULT);
-        channel.setDescription("Once per dash, when Android stops " + AppName.NAME + " from reading Dasher's "
-                + "screen. Never about an offer.");
-        manager.createNotificationChannel(channel);
+        ensureChannel(manager);
         if (!canPost(context, manager)) {
             DiagnosticLog.log(context, "service", "stopped-reading notice not posted: notifications are off");
             return false;
@@ -125,6 +121,65 @@ final class ReadingStopped {
         prefs.edit().putLong(NOTIFIED_DASH, dash).apply();
         DiagnosticLog.log(context, "service", "stopped-reading notice posted (mid-dash)");
         return true;
+    }
+
+    /** The ongoing notification while the screen reader is off after a fault (0.6.18, pilot safety Q6). */
+    static final int FAULT_NOTIFICATION_ID = 7248;
+    static final String FAULT_TEXT = "Offers aren't being filtered. Tap to fix.";
+
+    /**
+     * The screen reader stopped after an error (it fails closed): one notification that stays up while reading is off,
+     * "<app> stopped reading Dasher" / "Offers aren't being filtered. Tap to fix.", on this class's channel, whose tap
+     * opens the homepage (where screen reading's step says how to turn it back on). It goes when reading resumes
+     * ({@link #cancelFault}). Local only: nothing leaves the phone.
+     *
+     * @return true only when Android accepted the post now
+     */
+    static boolean faulted(Context context) {
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        if (manager == null) return false;
+        ensureChannel(manager);
+        if (!canPost(context, manager)) {
+            DiagnosticLog.log(context, "service", "screen-reading-fault notice not posted: notifications are off");
+            return false;
+        }
+        Intent app = new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        Notification notice = new Notification.Builder(context, CHANNEL_ID)
+                .setSmallIcon(OfferAlerts.smallIcon(context))
+                .setContentTitle(TITLE)
+                .setContentText(FAULT_TEXT)
+                .setStyle(new Notification.BigTextStyle().bigText(FAULT_TEXT))
+                .setContentIntent(PendingIntent.getActivity(context, FAULT_NOTIFICATION_ID, app,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE))
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setCategory(Notification.CATEGORY_STATUS)
+                .build();
+        try {
+            manager.notify(FAULT_NOTIFICATION_ID, notice);
+        } catch (RuntimeException refused) {
+            DiagnosticLog.log(context, "service", "screen-reading-fault notice refused: "
+                    + refused.getClass().getSimpleName());
+            return false;
+        }
+        DiagnosticLog.log(context, "service", "screen-reading-fault notice posted");
+        return true;
+    }
+
+    /** Reading resumed (the restart, or a new connection): the fault's notification goes. */
+    static void cancelFault(Context context) {
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        if (manager != null) manager.cancel(FAULT_NOTIFICATION_ID);
+    }
+
+    private static void ensureChannel(NotificationManager manager) {
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Stopped reading Dasher",
+                NotificationManager.IMPORTANCE_DEFAULT);
+        channel.setDescription("When " + AppName.NAME + " stops reading Dasher's screen: once per dash when Android "
+                + "stops it, and while it is off after an error. Never about an offer.");
+        manager.createNotificationChannel(channel);
     }
 
     /** The screen reader is back: the notice goes. */

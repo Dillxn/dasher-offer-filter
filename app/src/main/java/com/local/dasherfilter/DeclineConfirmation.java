@@ -1,6 +1,8 @@
 package com.local.dasherfilter;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -36,6 +38,62 @@ final class DeclineConfirmation {
             }
         }
         return false;
+    }
+
+    /**
+     * Dasher's decline questions whose wording the owner's own reports have shown (0.6.18; the owner chose "Only confirm
+     * wording seen in your own reports, and pause on anything else", 14 October 2026), as {@link #promptKey} keys them.
+     * Only a question whose every prompt line is one of these is ever confirmed; any other is handed back and pauses
+     * auto-decline ({@link TimeModeGuard#UNKNOWN_QUESTION_LINE}). Add a wording only when a report shows it.
+     */
+    static final List<String> KNOWN_PROMPTS = Collections.unmodifiableList(Arrays.asList(
+            "are you sure you want to decline this offer"));
+
+    /**
+     * A prompt line's key: {@link OfferControls#normalize normalized} (case, spacing), its final question mark, ellipsis
+     * or full stops (and the spaces around them) dropped. Nothing else is dropped: a known line with words added is
+     * another line.
+     */
+    static String promptKey(String label) {
+        return OfferControls.normalize(label).replaceAll("[\\s?？….]+$", "");
+    }
+
+    /**
+     * The question's prompt lines: each label that asks something ("are you sure" or a question mark in it, or ending in
+     * "…" or "..."); with none, each label {@link #hasPrompt} recognizes as being about declining. Buttons are never prompt
+     * lines (a question's buttons are not its words), and neither are its statements beside a question (Dasher's "Does
+     * not lower acceptance rate").
+     */
+    static List<String> promptLines(List<String> labels) {
+        List<String> asks = new ArrayList<>();
+        List<String> about = new ArrayList<>();
+        for (String label : labels) {
+            String value = OfferControls.normalize(label);
+            if (value.isEmpty()) continue;
+            if (value.contains("are you sure") || value.contains("?") || value.contains("？") || value.endsWith("…")
+                    || value.endsWith("...")) {
+                asks.add(label);
+            } else if (hasPrompt(Collections.singletonList(label))) {
+                about.add(label);
+            }
+        }
+        return asks.isEmpty() ? about : asks;
+    }
+
+    /** Whether the question on screen is one whose wording is known (every prompt line in {@link #KNOWN_PROMPTS}). */
+    static boolean knownPrompt(List<String> labels) {
+        List<String> lines = promptLines(labels);
+        if (lines.isEmpty()) return false;
+        for (String line : lines) {
+            if (!KNOWN_PROMPTS.contains(promptKey(line))) return false;
+        }
+        return true;
+    }
+
+    /** The prompt lines of a question that is not known, as read (to be masked before they are logged). */
+    static String unknownPrompt(List<String> labels) {
+        List<String> lines = promptLines(labels);
+        return lines.isEmpty() ? "(no question words)" : String.join(" / ", lines);
     }
 
     /**

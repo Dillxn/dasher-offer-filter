@@ -428,7 +428,8 @@ public final class OfferRuleTest {
         assertFalse(rules.withAutopilot(false, 50).autopilot);
         assertEquals(82, rules.withAutopilot(true, 0).minimumScalePercent);
         assertEquals(0, rules.withAutopilot(true, 0).autopilotGoalPercent);
-        assertEquals("an unknown goal is the default", 70, rules.withAutopilot(true, 60).autopilotGoalPercent);
+        assertEquals("an unknown goal is the default, pay first (0.6.18)", 0,
+                rules.withAutopilot(true, 60).autopilotGoalPercent);
         // Money is held to $0–$1,000 and the bar to 1–200%.
         FilterSettings clamped = new FilterSettings(true, -5, 200_000, 100_001, 0, false, 70, 500);
         assertEquals(0, clamped.flatCents);
@@ -438,7 +439,7 @@ public final class OfferRuleTest {
         assertEquals(1, clamped.withMinimumScalePercent(Integer.MIN_VALUE).minimumScalePercent);
         FilterSettings defaults = FilterSettings.of(true, 200, 100, 25, 0);
         assertFalse(defaults.autopilot);
-        assertEquals(70, defaults.autopilotGoalPercent);
+        assertEquals("pay first, the default goal from 0.6.18", 0, defaults.autopilotGoalPercent);
         assertEquals(100, defaults.minimumScalePercent);
         assertEquals(1500, defaults.perHourCents());
     }

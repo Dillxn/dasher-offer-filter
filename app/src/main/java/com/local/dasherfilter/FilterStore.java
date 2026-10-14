@@ -52,6 +52,13 @@ final class FilterStore {
     private static final String AUTOPILOT_GOAL = "autopilot_goal";
     /** The goal chooser was shown and answered (or Autopilot was set) at least once. */
     private static final String AUTOPILOT_GOAL_ASKED = "autopilot_goal_asked";
+    /**
+     * The user picked the stored goal themselves (0.6.18): written when a choice in the goal chooser applies it
+     * ({@link #setAutopilot} with Autopilot on), and by {@link #initializeGoalDefault} for a stored 50% or pay first,
+     * which only the chooser could ever have set. Absent for the suggested goal, kept by Not now, Back or turning
+     * Autopilot off. Before 0.6.18 nothing kept this, so a stored 70% could not be told from the suggested one.
+     */
+    private static final String AUTOPILOT_GOAL_CHOSEN = "autopilot_goal_chosen";
     /** The bar while Autopilot is on, in percent of the minimums; ignored (exactly 100) while it is off. */
     private static final String AUTOPILOT_BAR = "autopilot_bar_percent";
     /** The lowest and highest bar Autopilot may set. */
@@ -81,6 +88,13 @@ final class FilterStore {
      */
     private static final String AUTOPILOT_SCHEMA = "autopilot_default_schema";
     private static final int AUTOPILOT_SCHEMA_NOW = 1;
+    /**
+     * Pay first is the default goal (0.6.18; the owner chose "Earnings first", 14 October 2026): 1 once
+     * {@link #initializeGoalDefault} has moved a goal the user never chose to pay first, once only. From then on the
+     * user's own choice decides.
+     */
+    static final String GOAL_DEFAULT_SCHEMA = "autopilot_goal_default_schema";
+    private static final int GOAL_DEFAULT_SCHEMA_NOW = 1;
     /**
      * The pay minimum is pay per stop (0.6.12; the owner, 13 October 2026: "swap overall payout for pay per stop"): 1
      * once {@link #initializePayPerStop}'s first step has run (0.6.12's rule C, max(1, stops − 1), the saved number
@@ -309,7 +323,7 @@ final class FilterStore {
         int bar = autopilot ? bar(prefs) : FilterSettings.BAR_AT_MINIMUMS;
         return new FilterSettings(prefs.getBoolean(ENABLED, false), prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
                 prefs.getInt(PER_MINUTE, 0), prefs.getInt(MAX_STOPS, 0), autopilot,
-                FilterSettings.sanitizedGoal(prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_TOP_TIER)), bar,
+                FilterSettings.sanitizedGoal(prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_DEFAULT)), bar,
                 prefs.getBoolean(AREA_MODE, false), prefs.getBoolean(ACCEPTANCE_LEARNING, true), accepted(prefs));
     }
 
@@ -338,8 +352,9 @@ final class FilterStore {
 
     /**
      * Autopilot on by default (0.6.2; the owner, 12 October 2026: Autopilot "should be on by default"): a new install,
-     * and once an install updating from an earlier version whatever it had, get Autopilot on with its stored goal (70%,
-     * the suggested one, when none was chosen) and the bar at exactly the minimums. Nothing else changes: not the
+     * and once an install updating from an earlier version whatever it had, get Autopilot on with its stored goal (the
+     * suggested one when none was chosen: 70% then, pay first from 0.6.18, {@link #initializeGoalDefault}) and the bar
+     * at exactly the minimums. Nothing else changes: not the
      * minimums, "minimums since", "Let my minimums grow" or whether the goal was asked (the goal chooser still asks
      * once, with Autopilot already on). It makes no jump: Autopilot moves the bar from 100% only by its own commits, at
      * its safe points, and plans nothing before the current notice is accepted. Runs after the model-2 migration
@@ -348,6 +363,11 @@ final class FilterStore {
      * before this class's); the app was just installed or updated, so the runtime holds no plan of its own yet.
      */
     private static void initializeAutopilot(Context context, SharedPreferences prefs) {
+        initializeAutopilotOn(context, prefs);
+        initializeGoalDefault(context, prefs);
+    }
+
+    private static void initializeAutopilotOn(Context context, SharedPreferences prefs) {
         if (prefs.getInt(AUTOPILOT_SCHEMA, 0) >= AUTOPILOT_SCHEMA_NOW) return;
         boolean turnedOn = false;
         synchronized (FilterStore.class) {
@@ -356,7 +376,7 @@ final class FilterStore {
             if (autopilotOnByDefault && !prefs.getBoolean(AUTOPILOT_ON, false)) {
                 edit.putBoolean(AUTOPILOT_ON, true).putInt(AUTOPILOT_BAR, FilterSettings.BAR_AT_MINIMUMS)
                         .putInt(AUTOPILOT_GOAL, FilterSettings.sanitizedGoal(
-                                prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_TOP_TIER)));
+                                prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_DEFAULT)));
                 turnedOn = true;
             }
             edit.commit();
@@ -366,6 +386,58 @@ final class FilterStore {
         // class's lock; Autopilot's store takes no other).
         AutopilotStore.resetGoalState(context);
         DiagnosticLog.log(context, "autopilot", AutopilotText.LOG_ON_BY_DEFAULT);
+    }
+
+    /**
+     * Pay first is the default goal (0.6.18; the owner, 14 October 2026: "no reason auto pilot should have dropped to
+     * %50 when the latest order is above that... it's goal is to arm wrestle with the dispatch algorithm to ratchet up
+     * earnings", then "Earnings first"). Once only, after the model-2 migration and the Autopilot default (which write a
+     * goal where none is stored): a goal the user picked stays; any other becomes pay first.
+     * <p>Which goal the user picked (best judgment, as nothing before 0.6.18 kept it): one marked chosen
+     * ({@link #AUTOPILOT_GOAL_CHOSEN}), and a stored 50% or pay first, which only the goal chooser could ever set (they
+     * are marked chosen now; a new install's pay first is written with this step done, by the model-2 migration, and is
+     * not). A stored 70% is the suggested goal: 0.5.0's migration wrote it into every install, 0.6.2
+     * turned Autopilot on with it, the chooser came with it checked and Not now or Back kept it ("asked" is set by those
+     * as much as by a pick, and by turning Autopilot off), so a 70% the user tapped cannot be told from one they only
+     * kept; it moves to pay first, which the owner's decision is for, and notice 26 says so (one tap in the chooser
+     * brings 70% back, and from then on it is marked chosen). A new install simply has pay first.
+     * <p>The goal-relative state (recovering, the stall correction) goes with the old goal; the accepted floor stays (it
+     * restarts only at the user's own change) and Autopilot's runtime is never called (its lock is taken before this
+     * class's): the stored goal is in the rules key, so a plan for the old goal is stale. One fixed line in the log when
+     * a goal moved.
+     */
+    private static void initializeGoalDefault(Context context, SharedPreferences prefs) {
+        if (prefs.getInt(GOAL_DEFAULT_SCHEMA, 0) >= GOAL_DEFAULT_SCHEMA_NOW) return;
+        int moved = -1;
+        synchronized (FilterStore.class) {
+            if (prefs.getInt(GOAL_DEFAULT_SCHEMA, 0) >= GOAL_DEFAULT_SCHEMA_NOW) return;
+            SharedPreferences.Editor edit = prefs.edit().putInt(GOAL_DEFAULT_SCHEMA, GOAL_DEFAULT_SCHEMA_NOW);
+            boolean stored = prefs.contains(AUTOPILOT_GOAL);
+            int goal = stored ? prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_DEFAULT) : FilterSettings.GOAL_DEFAULT;
+            if (prefs.getBoolean(AUTOPILOT_GOAL_CHOSEN, false)) {
+                // The user's pick stands.
+            } else if (stored && (goal == FilterSettings.GOAL_TIER || goal == FilterSettings.GOAL_PAY_FIRST)) {
+                edit.putBoolean(AUTOPILOT_GOAL_CHOSEN, true);
+            } else {
+                edit.putInt(AUTOPILOT_GOAL, FilterSettings.GOAL_DEFAULT);
+                int was = FilterSettings.sanitizedGoal(goal);
+                if (stored && was != FilterSettings.GOAL_DEFAULT) moved = was;
+            }
+            edit.commit();
+        }
+        if (moved < 0 || context == null) return;
+        // As a change of goal does: no recovery or stall correction toward the old goal (outside this class's lock).
+        AutopilotStore.resetGoalState(context);
+        DiagnosticLog.log(context, "autopilot", AutopilotText.logGoalDefault(moved));
+    }
+
+    /** Whether the user picked the stored goal themselves (0.6.18, {@link #AUTOPILOT_GOAL_CHOSEN}). */
+    static boolean goalChosen(Context context) {
+        SharedPreferences prefs = prefs(context);
+        migrateToModel2(context, prefs);
+        initializePayPerStop(context, prefs);
+        initializeAutopilot(context, prefs);
+        return prefs.getBoolean(AUTOPILOT_GOAL_CHOSEN, false);
     }
 
     private static AcceptedFloors accepted(SharedPreferences prefs) {
@@ -612,7 +684,12 @@ final class FilterStore {
             if (autoAcceptOff) edit.putBoolean(AUTO_ACCEPT, false);
             // Only when absent: a downgrade and upgrade keeps the Autopilot settings it had.
             if (!storedAutopilot) edit.putBoolean(AUTOPILOT_ON, false);
-            if (!storedGoal) edit.putInt(AUTOPILOT_GOAL, FilterSettings.GOAL_TOP_TIER);
+            // A goal written here is the default (pay first from 0.6.18), never the user's pick: nothing for the goal
+            // step to move or keep.
+            if (!storedGoal) {
+                edit.putInt(AUTOPILOT_GOAL, FilterSettings.GOAL_DEFAULT)
+                        .putInt(GOAL_DEFAULT_SCHEMA, GOAL_DEFAULT_SCHEMA_NOW);
+            }
             if (!storedBar) edit.putInt(AUTOPILOT_BAR, FilterSettings.BAR_AT_MINIMUMS);
             edit.putInt(RULES_MODEL, MODEL);
             // Rules moved to model 2 here are judged per stop from the start (0.6.12): their notice and line say what
@@ -761,9 +838,11 @@ final class FilterStore {
     // ---- Autopilot's switch, goal and bar ----
 
     /**
-     * Turns Autopilot on or off with {@code goal} (70, 50 or 0; anything else is 70), the user's choice; the goal now
-     * counts as asked. Turning it off puts the bar back at exactly the minimums at once; turning it on from off starts
-     * the bar there too, and with Autopilot already on (a new goal) the bar stays until Autopilot moves it.
+     * Turns Autopilot on or off with {@code goal} (70, 50 or 0; anything else is pay first), the user's choice; the goal
+     * now counts as asked. Turning it on (only a pick in the goal chooser does) also marks the goal chosen (0.6.18);
+     * turning it off keeps whatever was. Turning it off puts the bar back at exactly the minimums at once; turning it on
+     * from off starts the bar there too, and with Autopilot already on (a new goal) the bar stays until Autopilot moves
+     * it.
      */
     static void setAutopilot(Context context, boolean on, int goal) {
         SharedPreferences prefs = prefs(context);
@@ -776,6 +855,7 @@ final class FilterStore {
             SharedPreferences.Editor edit = prefs.edit().putBoolean(AUTOPILOT_ON, on)
                     .putInt(AUTOPILOT_GOAL, FilterSettings.sanitizedGoal(goal))
                     .putBoolean(AUTOPILOT_GOAL_ASKED, true);
+            if (on) edit.putBoolean(AUTOPILOT_GOAL_CHOSEN, true);
             if (!on || !wasOn) edit.putInt(AUTOPILOT_BAR, FilterSettings.BAR_AT_MINIMUMS);
             edit.apply();
         }

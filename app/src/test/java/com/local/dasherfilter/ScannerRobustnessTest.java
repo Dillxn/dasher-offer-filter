@@ -185,6 +185,68 @@ public final class ScannerRobustnessTest {
         assertFalse(DiagnosticLog.read(app).contains("PRIVATE_ACCOUNT_SENTINEL"));
     }
 
+    /** A fault on the reader thread, as a guarded callback throws. */
+    private void fault() throws Exception {
+        Field field = OfferFilterService.class.getDeclaredField("scanner");
+        field.setAccessible(true);
+        ((Handler) field.get(service)).post(() -> { throw new IllegalStateException("PRIVATE_ACCOUNT_SENTINEL"); });
+        pass(0);
+    }
+
+    private android.app.Notification faultNotice() {
+        for (android.service.notification.StatusBarNotification posted : app.getSystemService(
+                android.app.NotificationManager.class).getActiveNotifications()) {
+            if (posted.getId() == ReadingStopped.FAULT_NOTIFICATION_ID) return posted.getNotification();
+        }
+        return null;
+    }
+
+    /**
+     * 0.6.18 (pilot safety Q6): still failing closed, the reader restarts itself once about 5 s after a fault, and a
+     * second fault in the same dash leaves it off. While it is off one ongoing notification says so; it goes when
+     * reading resumes.
+     */
+    @Test public void aFaultRestartsTheReaderOnceThenASecondFaultThisDashLeavesItOff() throws Exception {
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+        show(offer("$7.90", "0:35"));
+        fault();
+        assertFalse("failed closed", OfferFilterService.isConnected());
+        android.app.Notification notice = faultNotice();
+        assertNotNull("said while off", notice);
+        assertEquals(AppName.NAME + " stopped reading Dasher",
+                String.valueOf(notice.extras.getCharSequence(android.app.Notification.EXTRA_TITLE)));
+        assertEquals("Offers aren't being filtered. Tap to fix.",
+                String.valueOf(notice.extras.getCharSequence(android.app.Notification.EXTRA_TEXT)));
+        assertTrue("it stays up", (notice.flags & android.app.Notification.FLAG_ONGOING_EVENT) != 0);
+        assertNotNull("its tap opens the app", notice.contentIntent);
+        assertEquals(MainActivity.class.getName(), Shadows.shadowOf(notice.contentIntent).getSavedIntent()
+                .getComponent().getClassName());
+        AccessibilityNodeInfo confirm = node("Decline offer", true);
+        show(question(confirm));
+        assertEquals("nothing tapped while off", 0, clicks(confirm));
+        pass(OfferFilterService.SCANNER_RESTART_MS - 100);
+        assertFalse("not before 5 s", OfferFilterService.isConnected());
+
+        pass(200);
+        assertTrue("restarted once", OfferFilterService.isConnected());
+        assertNull("the notification goes when reading resumes", faultNotice());
+        String log = DiagnosticLog.read(app);
+        assertTrue(log, log.contains("scanner stopped: IllegalStateException"));
+        assertTrue(log, log.contains("screen reading restarts in 5 s (once a dash)"));
+        assertTrue(log, log.contains("screen reading restarted after a fault (IllegalStateException)"));
+        assertFalse(log, log.contains("PRIVATE_ACCOUNT_SENTINEL"));
+
+        fault();
+        assertFalse(OfferFilterService.isConnected());
+        pass(3 * OfferFilterService.SCANNER_RESTART_MS);
+        assertFalse("a second fault the same dash stays off", OfferFilterService.isConnected());
+        assertNotNull("and says so until reading resumes", faultNotice());
+        assertTrue(DiagnosticLog.read(app).contains("screen reading stays off: a second fault this dash"));
+        reconnect();
+        assertTrue("turning screen reading off and on reconnects", OfferFilterService.isConnected());
+        assertNull(faultNotice());
+    }
+
     @Test public void mixedWaitingAndDeliveryDoesNotEraseTheRouteOrSayFindingOffers() {
         OfferSnapshot route = new OfferSnapshot(2400, 5.0, 20, 2);
         ActiveRouteStore.save(app, route);

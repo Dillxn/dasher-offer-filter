@@ -26,8 +26,9 @@ import static org.junit.Assert.assertTrue;
  * The accepted floor through Autopilot's runtime (0.6.11, the owner: "if an accepted offer's score beats the autopilot
  * ask, the ask needs to jump to the new higher score"): the owner pinned at 50% accepts his $14.45 offer (7.2 mi,
  * 27 min, 63% of his minimums) by hand, and the next commit lifts the bar to 63% at once, with its own words; it holds
- * there for the dash. A new dash and the user's own changes (a knob, the goal, Autopilot off and on) let it go, each
- * straight back at the next commit; a lesson and Adopt keep it. Automatic, add-on and observed accepts, an accept
+ * there for 7 days, across dashes (0.6.18; the owner chose "Earnings first", 14 October 2026: until then a new dash let
+ * it go). The accept turning 7 days old and the user's own changes (a knob, the goal, Autopilot off and on) let it go,
+ * each straight back at the next commit; a lesson and Adopt keep it. Automatic, add-on and observed accepts, an accept
  * before the user's last change, Autopilot off and the notice not accepted change nothing; Clear history forgets it.
  * Bars the floor holds up never grow the minimums. Plans run on the calling thread; Autopilot's clocks are the test's,
  * starting at the real one (the decision lines' steps and the dash go by the real clock).
@@ -201,16 +202,101 @@ public class AutopilotFloorRuntimeTest {
 
     // ---- What lets it go ----
 
-    @Test public void aNewDashLetsItGo() {
-        pinned();
-        held();
+    /** A new dash after his accept (0.6.18: it no longer lets it go). */
+    private void nextDash() {
         Dashing.ended(app);
         realLater();
         Dashing.seen(app);
         assertTrue(Dashing.on(app));
+    }
+
+    @Test public void aNewDashKeepsIt() {
+        pinned();
+        held();
+        nextDash();
+        elapsed += 2 * MIN;
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
-        // 0 s after the floor's commit, and 13 points: in one commit, not a wait and a 20-point step.
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertSame(Autopilot.Mode.PINNED, plan.mode);
+        assertEquals(63, plan.floor);
+        assertEquals(63, plan.target);
+        assertEquals(AutopilotRuntime.Commit.HELD, AutopilotRuntime.commitIfDue(app));
+        assertEquals(63, bar());
+        assertEquals("no other commit since the floor's", COMMIT_63, lastCommit());
+    }
+
+    /**
+     * The owner's 14 October 2026 case (0.6.18): his hand accept at 6:45 AM scored 67%; by 2:56 PM, a dash later,
+     * Autopilot pinned at 50% read "67% → 50% (your minimums are high for these offers)". Now the earlier dash's accept
+     * holds the bar at 67% in the later dash, pinned or not, with the accepted words.
+     */
+    @Test public void anAcceptAtSixtySevenInAnEarlierDashHoldsTheBarInALaterOneWhilePinned() {
+        pinned();
+        // $15.40 for 7.2 mi: 67% of the $22.90 his $3.18 a mile asks.
+        OfferSnapshot morning = new OfferSnapshot(1540, 7.2, 27, 2);
+        FilterSettings decided = FilterStore.load(app);
+        assertEquals(67, AreaScore.scorePercent(decided, morning));
+        line(morning, wall - MIN, decided);
+        assertTrue(DecisionLog.markStep(app, morning, DecisionLog.StepKind.ACCEPTED, "", 10 * MIN));
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.ACCEPTED);
+        assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
+        assertEquals(67, bar());
+
+        // Eight hours later, in a later dash.
+        nextDash();
+        wall += 8 * HOUR;
+        elapsed += 8 * HOUR;
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertSame("the goal still can't be met", Autopilot.Mode.PINNED, plan.mode);
+        assertEquals(50, plan.ownTarget);
+        assertEquals(67, plan.floor);
+        assertEquals("never below the floor, pinned included", 67, plan.target);
+        assertTrue(plan.floorBinds());
+        assertEquals(AutopilotRuntime.Commit.HELD, AutopilotRuntime.commitIfDue(app));
+        assertEquals(67, bar());
+        assertEquals("commit 50% -> 67% (you accepted an offer at this score)", lastCommit());
+        assertEquals(Autopilot.Reason.ACCEPTED.name(), AutopilotStore.lastChange(app).why);
+    }
+
+    @Test public void itAgesOutSevenDaysAfterTheAccept() {
+        pinned();
+        held();
+        nextDash();
+        // Six days on, still held.
+        wall += 6 * 24 * HOUR;
+        elapsed += 6 * 24 * HOUR;
+        assertTrue(AutopilotStore.recordReading(app, 10, "", wall - MIN));
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
+        assertEquals(63, AutopilotRuntime.latest().floor);
+        assertEquals(AutopilotRuntime.Commit.HELD, AutopilotRuntime.commitIfDue(app));
+        assertEquals(63, bar());
+        // Past 7 days from the accept: no floor, straight back to the plan's own target.
+        wall += 24 * HOUR + MIN;
+        elapsed += 24 * HOUR + MIN;
+        assertTrue(AutopilotStore.recordReading(app, 10, "", wall - MIN));
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
         releasedWith("your minimums are high for these offers");
+    }
+
+    @Test public void theUsersChangeInALaterDashStillLetsItGo() {
+        pinned();
+        held();
+        nextDash();
+        userLater();
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TIER);
+        releasedWith("you changed your goal");
+    }
+
+    @Test public void aKnobInALaterDashStillLetsItGo() {
+        pinned();
+        held();
+        nextDash();
+        userLater();
+        FilterSettings before = FilterStore.load(app);
+        FilterStore.save(app, before, before.withMinimums(255, 318, 0));
+        AutopilotRuntime.rulesChanged(app);
+        releasedWith("you changed your minimums");
     }
 
     @Test public void aKnobLetsItGo() {

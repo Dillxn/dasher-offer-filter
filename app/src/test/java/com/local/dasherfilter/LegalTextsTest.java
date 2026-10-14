@@ -42,10 +42,10 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "14 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.17";
-    /** 0.6.17 changed only the Terms (the account warning); Privacy keeps its own effective identity. */
+    static final String TERMS_VERSION = "0.6.18";
+    /** 0.6.18 changed both (pay first by default, the 7-day accepted floor, the goal's "picked" mark kept). */
     static final String PRIVACY_EFFECTIVE = "14 October 2026";
-    static final String PRIVACY_VERSION = "0.6.15";
+    static final String PRIVACY_VERSION = "0.6.18";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -106,18 +106,30 @@ public final class LegalTextsTest {
                 "so $5 a stop asks $10 of a single order and $15 of three stops",
                 "your number was not changed, so a single order asks twice what it did",
                 "When an offer's stops are not read, it stays for review unless its pay misses even one stop's worth",
-                // 0.6.2: on by default, turned on once for earlier installs, and turned off from its chip.
-                "Autopilot is on by default (from 0.6.2, and turned on once then for earlier installs, keeping a "
-                        + "goal chosen before), with an "
-                        + "acceptance-rate goal of 70% until you choose another; you can turn it off from its chip on "
-                        + "the homepage.", "between 50% and 150%",
+                // 0.6.2: on by default, turned on once for earlier installs, and turned off from its chip. 0.6.18: pay
+                // first is its default goal; a 70% goal moved to it once, 50% stayed; the rate goals are opt-in.
+                "Autopilot is on by default (from 0.6.2, and turned on once then for earlier installs), with pay first "
+                        + "as its goal (from 0.6.18, when it replaced the suggested acceptance-rate goal of 70%: once, a "
+                        + "70% goal moved to pay first, since it could not be told from the suggested one, and a 50% "
+                        + "goal stayed) until you choose a goal that protects your acceptance rate (70% or 50%); you can "
+                        + "turn it off from its chip on the homepage.", "between 50% and 150%",
+                // 0.6.18: only Dasher's usual decline question is confirmed; any other pauses auto-decline.
+                "it confirms only a decline question worded as Dasher's usual one (\"Are you sure you want to "
+                        + "decline this offer?\"), seen in the developer's own reports; any other question, or one "
+                        + "saying declines are limited or that another decline would end your dash, is left to you and "
+                        + "auto-decline pauses until you resume it.",
+                // 0.6.18: the best hand accept of the last 7 days holds the bar across dashes.
+                "keeps it at least at the best such score of the last 7 days, across dashes",
+                "An accept stops holding the bar 7 days after it; turning Autopilot on, or a change of your goal, "
+                        + "minimums, max stops, mode or learning ends that hold; Adopt keeps it.",
                 "using your recent offers, how often they come and the acceptance rate Dasher shows when you decline",
                 // OfferRule.evaluate: a bar above 100% declines what meets the minimums but not the bar.
                 "Above 100% it declines offers that meet your minimums.",
                 "Offers it lets through below your minimums are left to you.",
                 "a complete standalone offer that strictly meets every active saved and enabled learned minimum at 100% or any higher Autopilot bar",
-                "Autopilot's acceptance-rate goal is a best effort, not a promise: Autopilot cannot accept offers for "
-                        + "you, and your acceptance rate rises only when you accept offers.",
+                "Autopilot's default goal, pay first, does not try to keep your acceptance rate up.",
+                "An acceptance-rate goal you choose instead is a best effort, not a promise: Autopilot cannot accept "
+                        + "offers for you, and your acceptance rate rises only when you accept offers.",
                 "the app makes no promise to preserve your acceptance rate",
                 // Peek's recovery, the unlock catch-up and its pause; the screen hold; the update hold.
                 "Peek may tap Dasher's ⚙ button once when Dasher shows Finding offers, else Dasher's own offer "
@@ -248,7 +260,11 @@ public final class LegalTextsTest {
                 "Clear history removes the reading, Autopilot's working figures, its last-change note, the note of "
                         + "its last growth (and with it the Undo) and its other notes above.",
                 // The rules, the history's new fields and the 0.5.0 migration.
-                "Autopilot's settings: whether it is on, your acceptance goal (70%, 50% or pay first), its current bar",
+                // 0.6.18: pay first by default, and whether the user picked the goal (FilterStore.goalChosen).
+                "Autopilot's settings: whether it is on, your goal (pay first, the default from 0.6.18, or an "
+                        + "acceptance rate of 70% or 50%) and whether you picked it yourself in its goal question, its "
+                        + "current bar",
+                "the scores of offers you accepted yourself in the last 7 days, across dashes",
                 "the bar it was judged at and whether Autopilot set that bar",
                 "whether Dasher said declining it does not lower your acceptance rate",
                 "used for the wait estimate and by Autopilot to estimate how often offers arrive",
@@ -357,13 +373,15 @@ public final class LegalTextsTest {
                 "so a changed clock cannot release an update held for a dash early",
                 "why it waits (a dash, Android's confirmation, or an installation Android blocked)",
                 "you end it in Dasher with its End dash",
-                // Before the notice: three looks that read no words (updates keep working before it).
+                // Before the notice: three looks that read no words; from 0.6.18 no update check either.
                 "with three exceptions that read no words",
-                "since updates are checked for and installed before the notice is accepted too",
+                "It checks for updates only once you accept the current notice (from 0.6.18), and accepting it runs "
+                        + "the first check",
                 "or for 8 hours with nothing of a dash seen, Dasher not in front and the screen off"}) {
             assertTrue(fact, privacy.contains(fact));
         }
-        for (String wrong : new String[] {"normally skipped", "or after 40 seconds", "It reads no other app's settings.",
+        for (String wrong : new String[] {"normally skipped", "or after 40 seconds",
+                "since updates are checked for and installed before the notice is accepted too", "It reads no other app's settings.",
                 "for at most three hours since the route was observed"}) {
             assertFalse(wrong, privacy.contains(wrong));
         }

@@ -196,7 +196,7 @@ public class AndroidAdapterReportsAndUpdatesTest extends AndroidAdapterTestBase 
                 + "Current when this report was generated; not a reconstructed historical baseline.\n"
                 + "Auto-decline saved: true; flat cents=2000; per-mile cents=150; per-minute cents=30 "
                 + "(per hour $18.00); max stops=3\n"
-                + "Autopilot: off; goal 70%; bar 100%; AR unknown\n"
+                + "Autopilot: off; pay first; bar 100%; AR unknown\n"
                 + "In words: $20.00 per stop · $1.50 per mile · $18.00 per hour · at most 3 stops\n"));
         assertTrue(report.contains("Notification access granted: false"));
         String lower = report.toLowerCase(java.util.Locale.US);

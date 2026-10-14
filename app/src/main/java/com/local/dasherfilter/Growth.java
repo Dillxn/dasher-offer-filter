@@ -43,8 +43,11 @@ final class Growth {
     /** One growth is at most this many points. */
     static final int MOST_PERCENT = 10;
     private static final long DAY_MS = 24L * 60 * 60_000;
-    /** An accept could have held the bar of a line decided at most this long after it (a dash is shorter). */
-    static final long HELD_HORIZON_MS = DAY_MS;
+    /**
+     * An accept could have held the bar of a line decided at most this long after it: the accepted floor's 7 days
+     * (0.6.18, {@link Autopilot#FLOOR_WINDOW_MS}; a day while the floor lasted a dash), so bars it held up never count.
+     */
+    static final long HELD_HORIZON_MS = Autopilot.FLOOR_WINDOW_MS;
 
     /** The minimums and the bar before and after one growth of {@link #percent} points (money in stored units). */
     static final class Grown {

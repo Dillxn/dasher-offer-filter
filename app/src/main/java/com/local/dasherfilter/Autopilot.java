@@ -32,8 +32,9 @@ import java.util.TimeZone;
  *
  * <p>Autopilot never accepts anything and never decides a single offer. The one thing it takes from what the user
  * accepts (0.6.11, the owner: "if an accepted offer's score beats the autopilot ask, the ask needs to jump to the new
- * higher score"): this dash, the bar never stays below the best score, under the current rules, among the offers the
- * user accepted by hand ({@link #acceptedFloor}, at most 150%). Nothing else is learned: the history only counts offers
+ * higher score"; across dashes from 0.6.18): the bar never stays below the best score, under the current rules, among
+ * the offers the user accepted by hand in the last {@value #FLOOR_DAYS} days since their own last change
+ * ({@link #acceptedFloor}, at most 150%), in every mode. Nothing else is learned: the history only counts offers
  * and outcomes for the acceptance rate, and the market for the value. A plan also says whether the minimums are due to
  * grow ({@link Plan#growth}, {@link Growth}): from Autopilot's own recorded bars only, never a bar an accept held up.
  */
@@ -41,6 +42,13 @@ final class Autopilot {
     // ---- Bar ----
     static final int BAR_MIN = 50;
     static final int BAR_MAX = 150;
+    /**
+     * How long a hand accept holds the bar (0.6.18; the owner chose "Earnings first", 14 October 2026): the accepted
+     * floor is the best score accepted by hand in the last 7 days, rolling, across dashes, so a one-off great offer ages
+     * out and the bar can't stay stuck above the market. The user's own change still restarts it.
+     */
+    static final int FLOOR_DAYS = 7;
+    static final long FLOOR_WINDOW_MS = FLOOR_DAYS * 24L * 60 * 60_000L;
     /** The bar while Autopilot is off: exactly the minimums. */
     static final int BAR_OFF = FilterSettings.BAR_AT_MINIMUMS;
 
@@ -108,9 +116,12 @@ final class Autopilot {
     static final long READING_DEDUP_MS = 120_000L;
 
     // ---- Goals and starters ----
-    /** The goals offered, in the chooser's order: keep a top tier (preselected), keep a tier, pay first. */
+    /**
+     * The goals offered, in the chooser's order (0.6.18): pay first, the default (preselected), then the opt-in goals
+     * that protect the acceptance rate, 70% and 50%.
+     */
     static final List<Integer> GOALS = Collections.unmodifiableList(Arrays.asList(
-            FilterSettings.GOAL_TOP_TIER, FilterSettings.GOAL_TIER, FilterSettings.GOAL_PAY_FIRST));
+            FilterSettings.GOAL_PAY_FIRST, FilterSettings.GOAL_TOP_TIER, FilterSettings.GOAL_TIER));
     /**
      * Typical minimums: $2.00 a stop, $1.00 a mile, 25¢ a minute ($15 an hour), no max stops. Pay per stop counts the
      * pickup from 0.6.14, so a single order (2 stops) asks $4.00, the typical minimum pay of Cincinnati offers.
@@ -181,7 +192,10 @@ final class Autopilot {
          * accepted floor.
          */
         LEARNED(true, "your learned minimums rose"),
-        /** The bar rose to, or stays held at, the score of an offer the user accepted by hand this dash (0.6.11). */
+        /**
+         * The bar rose to, or stays held at, the score of an offer the user accepted by hand (0.6.11; in the last 7 days
+         * from 0.6.18).
+         */
         ACCEPTED(false, "you accepted an offer at this score");
 
         /** A change the next commit must follow at once: the user's or a lesson's; it goes straight to the target. */
@@ -388,8 +402,9 @@ final class Autopilot {
          */
         final int costPerMileCents;
         /**
-         * Hand accepts from then on (wall clock) set the accepted floor ({@link #acceptedFloor}, 0.6.11): the later of
-         * the dash's start and the user's last own change. {@link Long#MAX_VALUE}: no floor (no dash under way).
+         * Hand accepts from then on (wall clock) set the accepted floor ({@link #acceptedFloor}, 0.6.11): from 0.6.18
+         * the later of {@link #FLOOR_WINDOW_MS} ago and the user's last own change, whatever the dash (0.6.11 to 0.6.17:
+         * the dash's start). {@link Long#MAX_VALUE}: no floor.
          */
         final long floorSince;
 
@@ -636,7 +651,8 @@ final class Autopilot {
         final int ownTarget;
         /**
          * The accepted floor (0.6.11, {@link #acceptedFloor}): the best score of an offer the user accepted by hand
-         * this dash, under these rules; -1 when none, and always -1 while off or with no money minimum.
+         * in the last {@value #FLOOR_DAYS} days since their own last change (0.6.18; this dash before), under these
+         * rules; -1 when none, and always -1 while off or with no money minimum.
          */
         final int floor;
         /** The committed bar the plan started from. */

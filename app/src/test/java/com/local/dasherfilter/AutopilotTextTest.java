@@ -143,7 +143,7 @@ public final class AutopilotTextTest {
         assertTrue(s.pinned());
         assertEquals(Arrays.asList(
                 "Bar: 50% of your minimums (100% = exactly your minimums).",
-                "Goal: Keep a top tier — acceptance rate 70% or more.",
+                "Goal: Protect my acceptance rate — 70% or more (a top tier).",
                 "Acceptance rate: 9%, shown by Dasher 1 min ago (no offers since).",
                 "Below your goal: about 61 more accepts to reach 70% (an estimate — DoorDash counts your last 100 "
                         + "offers, so older accepts also roll off).",
@@ -325,7 +325,7 @@ public final class AutopilotTextTest {
                 + "Opens Autopilot details.", AutopilotText.chipDescription(s));
         assertEquals(Arrays.asList(
                 "Bar: 82% of your minimums (100% = exactly your minimums).",
-                "Goal: Keep a top tier — acceptance rate 70% or more.",
+                "Goal: Protect my acceptance rate — 70% or more (a top tier).",
                 "Acceptance rate: 55%, shown by Dasher 12 min ago (2 offers since).",
                 "Below your goal: about 15 more accepts to reach 70% (an estimate — DoorDash counts your last 100 "
                         + "offers, so older accepts also roll off).",
@@ -477,7 +477,7 @@ public final class AutopilotTextTest {
         assertEquals(AutopilotText.Status.Kind.PAY_FIRST, s.kind);
         assertEquals("Pay first", AutopilotText.statusLine(s));
         assertEquals("Auto 119%", AutopilotText.chip(s));
-        assertEquals("Goal: Pay first — no acceptance-rate goal.", AutopilotText.detailsLines(s).get(1));
+        assertEquals("Goal: Pay first — push for better pay, no acceptance-rate goal.", AutopilotText.detailsLines(s).get(1));
         assertEquals("Of your last 20 offers, 12 would pass at 119%.", AutopilotText.detailsPass(s));
         assertNull("no goal to reach", AutopilotText.detailsGoalProgress(s));
         assertEquals("Last change 6 min ago: 115% → 119% (offers are coming often).",
@@ -607,10 +607,11 @@ public final class AutopilotTextTest {
         assertEquals("off: no Change goal, which would turn it on too", Arrays.asList("Turn on", "Close"),
                 AutopilotText.detailsButtons(s));
         assertEquals("Autopilot off. Opens Autopilot details.", AutopilotText.chipDescription(s));
-        assertEquals("Autopilot: off; goal 70%; bar 100%; AR 55% (Dasher, 12 min ago)", AutopilotText.reportLine(s));
+        // FilterSettings.of has the default goal, pay first from 0.6.18 (70% before).
+        assertEquals("Autopilot: off; pay first; bar 100%; AR 55% (Dasher, 12 min ago)", AutopilotText.reportLine(s));
         assertEquals(Arrays.asList("Autopilot is off: offers are judged at exactly your minimums."),
                 AutopilotText.detailsLines(status(off, null, null, null)));
-        assertEquals("Autopilot: off; goal 70%; bar 100%; AR unknown",
+        assertEquals("Autopilot: off; pay first; bar 100%; AR unknown",
                 AutopilotText.reportLine(status(off, null, null, null)));
     }
 
@@ -627,14 +628,16 @@ public final class AutopilotTextTest {
     @Test
     public void theGoalChooser() {
         assertEquals("What matters more?", AutopilotText.CHOOSER_TITLE);
+        // 0.6.18 (the owner chose "Earnings first"): pay first is listed first and preselected; the acceptance-rate
+        // goals are opt-in, worded as protecting it.
         assertEquals(Arrays.asList(
-                "Keep a top tier — acceptance rate 70% or more",
-                "Keep a tier — acceptance rate 50% or more",
-                "Pay first — no acceptance-rate goal"), AutopilotText.chooserItems());
-        assertEquals("70% is preselected", 0, AutopilotText.chooserIndex(70));
-        assertEquals(1, AutopilotText.chooserIndex(50));
-        assertEquals(2, AutopilotText.chooserIndex(0));
-        assertEquals("anything else reads as 70%", 0, AutopilotText.chooserIndex(33));
+                "Pay first — push for better pay, no acceptance-rate goal",
+                "Protect my acceptance rate — 70% or more (a top tier)",
+                "Protect my acceptance rate — 50% or more (a tier)"), AutopilotText.chooserItems());
+        assertEquals("pay first is preselected", 0, AutopilotText.chooserIndex(0));
+        assertEquals(1, AutopilotText.chooserIndex(70));
+        assertEquals(2, AutopilotText.chooserIndex(50));
+        assertEquals("anything else reads as pay first, the default", 0, AutopilotText.chooserIndex(33));
         assertEquals("About acceptance rate", AutopilotText.CHOOSER_ABOUT);
         assertEquals("DoorDash computes acceptance rate over your recent offers (it reports the last 100). Its rewards "
                 + "tiers use acceptance-rate minimums — check the Dasher app for your current requirements.",
@@ -841,8 +844,10 @@ public final class AutopilotTextTest {
         assertEquals(63, plan.target);
         AutopilotText.Status s = status(owner(70, 63), plan, nine, change(1, 50, 63, Autopilot.Reason.ACCEPTED));
 
-        String floor = "This dash the bar stays at 63% or more: you accepted an offer that scored 63% of your minimums. "
-                + "A new dash, or a change of your goal or minimums, lets Autopilot set it again.";
+        // 0.6.18: the floor holds across dashes, for 7 days from the accept.
+        String floor = "The bar stays at 63% or more: you accepted an offer that scored 63% of your minimums in the "
+                + "last 7 days. When that accept is 7 days old, or you change your goal or minimums, Autopilot sets it "
+                + "again.";
         assertEquals(floor, AutopilotText.detailsFloor(s));
         List<String> details = AutopilotText.detailsLines(s);
         assertEquals(AutopilotText.detailsBar(s), details.get(0));

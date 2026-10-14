@@ -29,7 +29,9 @@ final class UpdateCadence {
         /** The periodic job. */
         PERIODIC,
         /** Any other automatic check. */
-        AUTOMATIC;
+        AUTOMATIC,
+        /** The current notice was accepted (0.6.18): the first check, as nothing is checked before it. */
+        NOTICE_ACCEPTED;
 
         boolean manual() {
             return this == MANUAL;
@@ -37,7 +39,7 @@ final class UpdateCadence {
 
         /** Starts as soon as the cooldown allows, without waiting {@link #AUTOMATIC_SPACING_MS}. */
         boolean immediate() {
-            return this == MANUAL || this == OPENED || this == TURNED_ON || this == RETRY;
+            return this == MANUAL || this == OPENED || this == TURNED_ON || this == RETRY || this == NOTICE_ACCEPTED;
         }
 
         String label() {

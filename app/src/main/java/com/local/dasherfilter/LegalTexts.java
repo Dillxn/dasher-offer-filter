@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 14 October 2026 · for {app} 0.6.17
+            Beta terms, effective 14 October 2026 · for {app} 0.6.18
 
             ## What {app} is
 
@@ -58,9 +58,10 @@ final class LegalTexts {
             Automatic declines may dramatically lower your DoorDash acceptance rate. This can affect DoorDash \
             programs that depend on it. You must acknowledge this risk before filtering begins, including after an \
             update that changes the notice. Continuing is your choice, at your own risk; the app makes no promise \
-            to preserve your acceptance rate. Autopilot's acceptance-rate goal is a best effort, not a promise: \
+            to preserve your acceptance rate. Autopilot's default goal, pay first, does not try to keep your \
+            acceptance rate up. An acceptance-rate goal you choose instead is a best effort, not a promise: \
             Autopilot cannot accept offers for you, and your acceptance rate rises only when you accept offers. An \
-            offer you accept yourself can also hold Autopilot's bar above what the goal allows.
+            offer you accept yourself can also hold Autopilot's bar above what the goal allows, for up to 7 days.
 
             ## What it does
 
@@ -78,32 +79,38 @@ final class LegalTexts {
             is a separate, initially off choice: stronger pay or rates can compensate for weaker ones in the \
             combined score. Maximum stops remains a hard limit, missing required facts stay for review, and add-ons \
             remain strict. An offer permitted by the filter is not an accepted delivery. When an offer fails the \
-            chosen rules, the app can tap Decline and Dasher's confirmation for you. An offer already left to you \
-            stays yours if you change your rules while it shows; the new rules judge the next offer. Autopilot is \
-            on by default (from 0.6.2, and turned on once then for earlier installs, keeping a goal chosen before), \
-            with an acceptance-rate goal of 70% until you choose another; you can turn it off from its chip on the \
-            homepage. While it is on, it applies one bar to the chosen scoring model and resolved saved/learned \
-            requirements, between 50% and 150%, using your recent offers, how often they come and the acceptance \
-            rate Dasher shows when you decline. When you accept a standalone offer yourself (the confirmed \
-            acceptances acceptance learning counts, whether or not learning is on) and its score under your current \
-            rules is above the bar, Autopilot raises the bar to that score (at most 150%) at its next safe point \
-            and keeps it at least there for the rest of that dash, even above what your acceptance goal allows, \
-            which can mean more declines and a lower acceptance rate. A new dash, turning Autopilot on, or a change \
-            of your goal, minimums, max stops, mode or learning ends that hold; Adopt keeps it. Above 100% it \
-            declines offers that meet your minimums. Offers it lets through below your minimums are left to you. \
-            Autopilot also raises your minimums once its bar has stayed at 103% or more for 30 offers over at least \
-            2 days (bars an accepted offer held up do not count): all of them by the same share, at most 10% at a \
-            time, while its bar comes down so offers are asked about the same right after. It never lowers them; \
-            you can. A note on the homepage says what grew, with Undo, until you tap it or your minimums change \
-            another way. This bar-based growth waits while an enabled learned floor exceeds its saved minimum, so \
-            growing saved knobs and lowering the bar cannot loosen a learned requirement. Raised minimums can mean \
-            more declines. Turn this off with Let my minimums grow in Autopilot's details; while Autopilot is off, \
-            it does not grow your saved minimums. Auto-accept starts off. If you separately enable it in Settings, \
-            it can tap Accept on a complete standalone offer that strictly meets every active saved and enabled \
-            learned minimum at 100% or any higher Autopilot bar, even in area mode, committing you to that \
-            delivery. Automatic acceptance leaves add-ons and unclear offers to you. Add-on filtering stays strict \
-            against saved minimums at the current bar; standalone learned floors do not apply to add-ons unless \
-            adopted as saved minimums.
+            chosen rules, the app can tap Decline and Dasher's confirmation for you. From 0.6.18 it confirms only a \
+            decline question worded as Dasher's usual one ("Are you sure you want to decline this offer?"), seen in \
+            the developer's own reports; any other question, or one saying declines are limited or that another \
+            decline would end your dash, is left to you and auto-decline pauses until you resume it. An offer \
+            already left to you stays yours if you change your rules while it shows; the new rules judge the next \
+            offer. Autopilot is on by default (from 0.6.2, and turned on once then for earlier installs), with pay \
+            first as its goal (from 0.6.18, when it replaced the suggested acceptance-rate goal of 70%: once, a 70% \
+            goal moved to pay first, since it could not be told from the suggested one, and a 50% goal stayed) \
+            until you choose a goal that protects your acceptance rate (70% or 50%); you can turn it off from its \
+            chip on the homepage. While it is on, it applies one bar to the chosen scoring model and resolved \
+            saved/learned requirements, between 50% and 150%, using your recent offers, how often they come and the \
+            acceptance rate Dasher shows when you decline. When you accept a standalone offer yourself (the \
+            confirmed acceptances acceptance learning counts, whether or not learning is on) and its score under \
+            your current rules is above the bar, Autopilot raises the bar to that score (at most 150%) at its next \
+            safe point and keeps it at least at the best such score of the last 7 days, across dashes (from 0.6.18; \
+            before, for the rest of that dash), even above what an acceptance goal allows, which can mean more \
+            declines and a lower acceptance rate. An accept stops holding the bar 7 days after it; turning \
+            Autopilot on, or a change of your goal, minimums, max stops, mode or learning ends that hold; Adopt \
+            keeps it. Above 100% it declines offers that meet your minimums. Offers it lets through below your \
+            minimums are left to you. Autopilot also raises your minimums once its bar has stayed at 103% or more \
+            for 30 offers over at least 2 days (bars an accepted offer held up do not count): all of them by the \
+            same share, at most 10% at a time, while its bar comes down so offers are asked about the same right \
+            after. It never lowers them; you can. A note on the homepage says what grew, with Undo, until you tap \
+            it or your minimums change another way. This bar-based growth waits while an enabled learned floor \
+            exceeds its saved minimum, so growing saved knobs and lowering the bar cannot loosen a learned \
+            requirement. Raised minimums can mean more declines. Turn this off with Let my minimums grow in \
+            Autopilot's details; while Autopilot is off, it does not grow your saved minimums. Auto-accept starts \
+            off. If you separately enable it in Settings, it can tap Accept on a complete standalone offer that \
+            strictly meets every active saved and enabled learned minimum at 100% or any higher Autopilot bar, even \
+            in area mode, committing you to that delivery. Automatic acceptance leaves add-ons and unclear offers \
+            to you. Add-on filtering stays strict against saved minimums at the current bar; standalone learned \
+            floors do not apply to add-ons unless adopted as saved minimums.
             - It also declines a standalone offer from a store you put on your skip list (from an offer's details; \
             Settings → Skipped stores removes one), whatever it pays, when it reads that store's name on Dasher's \
             screen. An offer from two stores is declined when either is on the list; an offer whose store it cannot \
@@ -238,7 +245,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 14 October 2026 · for {app} 0.6.15
+            Beta privacy policy, effective 14 October 2026 · for {app} 0.6.18
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -316,7 +323,8 @@ final class LegalTexts {
             diagnostics or daily count, with three exceptions that read no words: the channel a new notification of \
             Dasher's came on, to post one reminder that the app is paused; after an update, which app is in front, \
             to reopen {app} only over its own screen or the home screen; and whether Android lets it install its \
-            own updates, since updates are checked for and installed before the notice is accepted too.
+            own updates. It checks for updates only once you accept the current notice (from 0.6.18), and accepting \
+            it runs the first check.
 
             ## Optional offer timing study
 
@@ -363,9 +371,10 @@ final class LegalTexts {
 
             - Your rules (pay per stop, per mile, per hour and max stops) and when your current minimums took \
             effect, your separate auto-accept choice (off by default), and Autopilot's settings: whether it is on, \
-            your acceptance goal (70%, 50% or pay first), its current bar, whether you have answered its goal \
-            question and whether Let my minimums grow is on (it is unless you turn it off). What else Autopilot \
-            keeps is under Autopilot and your acceptance rate below.
+            your goal (pay first, the default from 0.6.18, or an acceptance rate of 70% or 50%) and whether you \
+            picked it yourself in its goal question, its current bar, whether you have answered that question and \
+            whether Let my minimums grow is on (it is unless you turn it off). What else Autopilot keeps is under \
+            Autopilot and your acceptance rate below.
             - Your separate scoring-mode and acceptance-learning choices: area mode starts off; learning is on by \
             default (from 0.6.1, and turned on once then for earlier installs). Learned evidence starts empty: \
             deleted old lessons and historical decisions are not reconstructed. While filtering and learning are \
@@ -570,15 +579,15 @@ final class LegalTexts {
 
             Autopilot is on by default (from 0.6.2, and turned on once then for earlier installs) until you turn it \
             off. While it is on, it moves the bar (how much of your minimums an offer must pay, from 50% to 150%) \
-            between offers, only through the screen reader, using your decision history (including, for the rest of \
-            a dash, the scores of offers you accepted yourself in it), the wait-estimate records above and the \
-            acceptance rate Dasher shows. Turning it off puts the bar back to exactly your minimums. While it is on \
-            and Let my minimums grow is on, it also raises your minimums, at most 10% at a time, once the bars it \
-            recorded in your decision history have stayed at 103% or more for 30 offers over at least 2 days, but \
-            not while it is recovering toward your acceptance goal; how much they grow comes only from those bars, \
-            never from what you accepted or declined (bars an offer you accepted held up do not count). This growth \
-            waits while enabled learned floors exceed saved minimums; the acceptance learner retains its \
-            independent bests.
+            between offers, only through the screen reader, using your decision history (including the scores of \
+            offers you accepted yourself in the last 7 days, across dashes, from 0.6.18; before, for the rest of a \
+            dash), the wait-estimate records above and the acceptance rate Dasher shows. Turning it off puts the \
+            bar back to exactly your minimums. While it is on and Let my minimums grow is on, it also raises your \
+            minimums, at most 10% at a time, once the bars it recorded in your decision history have stayed at 103% \
+            or more for 30 offers over at least 2 days, but not while it is recovering toward your acceptance goal; \
+            how much they grow comes only from those bars, never from what you accepted or declined (bars an offer \
+            you accepted held up do not count). This growth waits while enabled learned floors exceed saved \
+            minimums; the acceptance learner retains its independent bests.
 
             - What is kept. Only the latest acceptance-rate reading: a whole percent, when Dasher showed it, and \
             the offer it was shown for as a numeric fingerprint (pay in cents, miles, minutes, stops and, for \
@@ -646,19 +655,21 @@ final class LegalTexts {
             Android's versions (not the phone's maker) and the minute it was decided. With Autopilot's state go \
             whether it is recovering toward your goal, its correction and, for Dasher's own reading, how many \
             minutes ago Dasher showed it. The dialog says what is sent; tapping Send is your choice to send it.
-            - **Share anonymous diagnostics after each dash**, only if you turn it on in Settings (it starts off, \
-            and no update turns it on). After each dash ends (Dasher shows the dash ended, you end it in Dasher \
-            with its End dash, or nothing of the dash was seen for 30 minutes), it sends one masked summary of at \
-            most 30,000 characters: the app and Android version and phone maker; how long the dash lasted (to the \
-            nearest 5 minutes) and how it ended; your switches and which rules are set, and whether screen reading, \
-            background offers and alerts were ready; Autopilot's bar and why it changed (never your acceptance \
-            rate); counts of offers by result, action and outcome; unreadable offers; declines still showing, by \
-            stage; decline-error recoveries; automatic accepts not sent, and why; the types of screen-read and \
-            notification errors with the place in the app's code where they happened; how Dasher's window was laid \
-            out; what Peek did, by fixed category; that dash's decisions, with times counted from the dash's start; \
-            masked log lines only around those problems; and any recent stop summary. Never coordinates, place \
-            names, or an install or device identifier. At most one a dash and three a day. Turning it off discards \
-            summaries not yet sent.
+            - **Share anonymous diagnostics after each dash**, only if you turn it on in Settings or with the \
+            switch at the end of the notice, "Share anonymous diagnostics after each dash (helps fix it for your \
+            phone)" (from 0.6.18; unchecked each time the notice shows, and accepting with it off changes nothing); \
+            it starts off, and no update turns it on. After each dash ends (Dasher shows the dash ended, you end it \
+            in Dasher with its End dash, or nothing of the dash was seen for 30 minutes), it sends one masked \
+            summary of at most 30,000 characters: the app and Android version and phone maker; how long the dash \
+            lasted (to the nearest 5 minutes) and how it ended; your switches and which rules are set, and whether \
+            screen reading, background offers and alerts were ready; Autopilot's bar and why it changed (never your \
+            acceptance rate); counts of offers by result, action and outcome; unreadable offers; declines still \
+            showing, by stage; decline-error recoveries; automatic accepts not sent, and why; the types of \
+            screen-read and notification errors with the place in the app's code where they happened; how Dasher's \
+            window was laid out; what Peek did, by fixed category; that dash's decisions, with times counted from \
+            the dash's start; masked log lines only around those problems; and any recent stop summary. Never \
+            coordinates, place names, or an install or device identifier. At most one a dash and three a day. \
+            Turning it off discards summaries not yet sent.
             - After a crash or a stop for not responding: with diagnostics after each dash on, the stop's summary \
             goes with the next one. Otherwise the homepage shows "{app} stopped unexpectedly last time" with Send \
             report, which opens the feedback dialog with Bug chosen and diagnostics attached, for that report only; \

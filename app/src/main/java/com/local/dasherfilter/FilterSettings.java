@@ -9,10 +9,16 @@ import java.util.List;
 final class FilterSettings {
     /** The most any minimum can be set to on its knob: $1,000 (in cents; a rate's cents per unit). */
     static final int MOST_CENTS = 100_000;
-    /** Autopilot's acceptance-rate goals in whole percent: keep a top tier, keep a tier, pay first. */
+    /**
+     * Autopilot's goals in whole percent: pay first (the default from 0.6.18; the owner, 14 October 2026: Autopilot's
+     * goal "is to arm wrestle with the dispatch algorithm to ratchet up earnings"), and the opt-in goals that protect
+     * the acceptance rate, 70% (a top tier) and 50% (a tier).
+     */
     static final int GOAL_TOP_TIER = 70;
     static final int GOAL_TIER = 50;
     static final int GOAL_PAY_FIRST = 0;
+    /** The goal a new install has, and the one anything unknown reads as: pay first (0.6.18; 70% before). */
+    static final int GOAL_DEFAULT = GOAL_PAY_FIRST;
     /** The bar that means "exactly your minimums". */
     static final int BAR_AT_MINIMUMS = 100;
 
@@ -41,7 +47,7 @@ final class FilterSettings {
 
     /**
      * The rules. Money minimums are held to [0, {@link #MOST_CENTS}], max stops to 0 or more, the goal to 70, 50 or 0
-     * (anything else is 70) and the bar to 1–200.
+     * (anything else is the default, pay first) and the bar to 1–200.
      */
     FilterSettings(boolean enabled, int flatCents, int perMileCents, int perMinuteCents, int maxStops,
                    boolean autopilot, int autopilotGoalPercent, int minimumScalePercent) {
@@ -65,15 +71,15 @@ final class FilterSettings {
         this.minimumScalePercent = Math.max(1, Math.min(200, minimumScalePercent));
     }
 
-    /** Rules with Autopilot off, its goal at the default 70% and the bar at exactly the minimums. */
+    /** Rules with Autopilot off, its goal at the default (pay first) and the bar at exactly the minimums. */
     static FilterSettings of(boolean enabled, int flatCents, int perMileCents, int perMinuteCents, int maxStops) {
-        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, false, GOAL_TOP_TIER,
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, false, GOAL_DEFAULT,
                 BAR_AT_MINIMUMS);
     }
 
-    /** 70, 50 and 0 (pay first) stand; anything else is the default, 70. */
+    /** 70, 50 and 0 (pay first) stand; anything else is the default, pay first (0.6.18; 70 before). */
     static int sanitizedGoal(int percent) {
-        return percent == GOAL_TOP_TIER || percent == GOAL_TIER || percent == GOAL_PAY_FIRST ? percent : GOAL_TOP_TIER;
+        return percent == GOAL_TOP_TIER || percent == GOAL_TIER || percent == GOAL_PAY_FIRST ? percent : GOAL_DEFAULT;
     }
 
     private static int money(int cents) {

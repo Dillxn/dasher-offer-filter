@@ -125,6 +125,7 @@ public class BundledNotesTest {
         both.addAll(notice(23));
         both.addAll(notice(24));
         both.addAll(notice(25));
+        both.addAll(notice(26));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -341,7 +342,8 @@ public class BundledNotesTest {
         since19.addAll(notice(23));
         since19.addAll(notice(24));
         since19.addAll(notice(25));
-        assertEquals("a reader of notice 19 sees 20's lines, then 21's, 22's, 23's, 24's and 25's", since19,
+        since19.addAll(notice(26));
+        assertEquals("a reader of notice 19 sees 20's lines, then 21's, 22's, 23's, 24's, 25's and 26's", since19,
                 BundledNotes.noticeChanges(19, true));
         for (String wrong : new String[] {"identifier", "track", "location", "earn more", "guarantee",
                 "only daily totals"}) {
@@ -438,17 +440,49 @@ public class BundledNotesTest {
      * 0.6.17 (the owner, 14 October 2026: "can we ascertain whether we are breaking terms or not?", then "Say it
      * plainly"): the account warning says what DoorDash's terms ban; the card is notice 25's lines.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.17", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(25, Consent.VERSION);
+    @Test public void release0617SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.17");
         assertEquals("the card says what notice 25 says", notice(25), lines);
     }
 
+    /**
+     * 0.6.18 (the owner, 14 October 2026: "no reason auto pilot should have dropped to %50 when the latest order is
+     * above that... it's goal is to arm wrestle with the dispatch algorithm to ratchet up earnings", then "Earnings
+     * first"): the card is notice 26's lines.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.18", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(26, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.18");
+        assertEquals("the card says what notice 26 says", notice(26), lines);
+    }
+
+    /**
+     * 0.6.18's notice (26): pay first by default, a 70% goal moved, the best accept of 7 days holds the bar, and only
+     * Dasher's usual decline question is confirmed; the diagnostics switch; one restart after a fault; update checks wait.
+     */
+    @Test public void notice26SaysPayFirstAndTheSevenDayFloor() {
+        List<String> lines = BundledNotes.noticeChanges(25);
+        assertEquals(notice(26), lines);
+        assertEquals(lines.toString(), 6, lines.size());
+        String notice = String.join(" ", lines);
+        for (String fact : new String[] {"pay first by default", "protect your acceptance rate",
+                "unless you had picked 50% or pay first", "brings 70% back", "last 7 days", "across dashes",
+                "until you change your goal or minimums", "confirmed only on Dasher's usual question",
+                "any other question is left to you and pauses auto-decline",
+                "switch to share anonymous diagnostics after each dash", "it starts off", "restarts once",
+                "a notification says offers aren't filtered", "update checks wait for this notice"}) {
+            assertTrue(fact, notice.contains(fact));
+        }
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
+    }
+
     /** 0.6.17's notice (25): DoorDash's terms ban tools like this one; nothing about how it works changed. */
     @Test public void notice25SaysWhatDoorDashsTermsBan() {
-        List<String> lines = BundledNotes.noticeChanges(24);
-        assertEquals(notice(25), lines);
+        List<String> lines = notice(25);
         assertEquals(lines.toString(), 2, lines.size());
         String notice = String.join(" ", lines);
         for (String fact : new String[] {"DoorDash's terms ban automated tools that read or collect data from its "

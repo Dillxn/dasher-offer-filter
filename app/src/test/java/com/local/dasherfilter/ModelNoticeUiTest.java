@@ -306,8 +306,8 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
             assertNull("answered", FilterStore.peekModelNotice(app));
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertEquals("Set up Autopilot asks for the goal", AutopilotText.CHOOSER_TITLE, title(chooser));
-            assertEquals("the top tier checked", 0, chooser.getListView().getCheckedItemPosition());
-            Shadows.shadowOf(chooser).clickOnItem(0);
+            assertEquals("pay first, the default (0.6.18), checked", 0, chooser.getListView().getCheckedItemPosition());
+            Shadows.shadowOf(chooser).clickOnItem(1);
             idle();
             FilterSettings on = FilterStore.load(app);
             assertTrue(on.autopilot);

@@ -41,8 +41,8 @@ final class AutopilotText {
      * Under the choices while Autopilot is on by default and no goal was chosen yet (0.6.2): it is already on, with the
      * suggested goal checked, and Not now keeps it so.
      */
-    static final String CHOOSER_ON_BY_DEFAULT = "Autopilot is on with the suggested goal. Choose another, or Not now to "
-            + "keep it. You can turn it off from its chip.";
+    static final String CHOOSER_ON_BY_DEFAULT = "Autopilot is on with the suggested goal, pay first. Choose another, or "
+            + "Not now to keep it. You can turn it off from its chip.";
     static final String CHOOSER_ABOUT = "About acceptance rate";
     static final String CHOOSER_NOT_NOW = "Not now";
     static final String ABOUT_ACCEPTANCE_RATE = "DoorDash computes acceptance rate over your recent offers (it "
@@ -275,26 +275,29 @@ final class AutopilotText {
 
     // ---- Goals ----
 
-    /** The chooser's item for a goal (and the details' "Goal:" line). */
+    /**
+     * The chooser's item for a goal (and the details' "Goal:" line): pay first, the default (0.6.18), and the opt-in
+     * goals worded as protecting the acceptance rate.
+     */
     static String goalLabel(int goal) {
         switch (FilterSettings.sanitizedGoal(goal)) {
+            case FilterSettings.GOAL_TOP_TIER:
+                return "Protect my acceptance rate — 70% or more (a top tier)";
             case FilterSettings.GOAL_TIER:
-                return "Keep a tier — acceptance rate 50% or more";
-            case FilterSettings.GOAL_PAY_FIRST:
-                return "Pay first — no acceptance-rate goal";
+                return "Protect my acceptance rate — 50% or more (a tier)";
             default:
-                return "Keep a top tier — acceptance rate 70% or more";
+                return "Pay first — push for better pay, no acceptance-rate goal";
         }
     }
 
-    /** The chooser's single-choice items, in {@link Autopilot#GOALS} order (70% first, preselected). */
+    /** The chooser's single-choice items, in {@link Autopilot#GOALS} order (pay first first, preselected). */
     static List<String> chooserItems() {
         List<String> items = new ArrayList<>();
         for (int goal : Autopilot.GOALS) items.add(goalLabel(goal));
         return Collections.unmodifiableList(items);
     }
 
-    /** The chooser item checked for the stored goal; 70% (the first) for anything else. */
+    /** The chooser item checked for the stored goal; pay first (the first) for anything else. */
     static int chooserIndex(int goal) {
         int index = Autopilot.GOALS.indexOf(FilterSettings.sanitizedGoal(goal));
         return Math.max(0, index);
@@ -553,14 +556,16 @@ final class AutopilotText {
     }
 
     /**
-     * While an offer the user accepted by hand holds the bar (0.6.11, {@link Autopilot.Plan#floorBinds}): "This dash the
-     * bar stays at 63% or more: you accepted an offer that scored 63% of your minimums. …"; null otherwise.
+     * While an offer the user accepted by hand holds the bar (0.6.11, {@link Autopilot.Plan#floorBinds}; across dashes
+     * from 0.6.18): "The bar stays at 63% or more: you accepted an offer that scored 63% of your minimums in the last 7
+     * days. …"; null otherwise.
      */
     static String detailsFloor(Status s) {
         Autopilot.Plan plan = s.plan;
         if (!s.on || plan == null || !plan.floorBinds()) return null;
-        return "This dash the bar stays at " + plan.floor + "% or more: you accepted an offer that scored " + plan.floor
-                + "% of your minimums. A new dash, or a change of your goal or minimums, lets Autopilot set it again.";
+        return "The bar stays at " + plan.floor + "% or more: you accepted an offer that scored " + plan.floor
+                + "% of your minimums in the last " + Autopilot.FLOOR_DAYS + " days. When that accept is "
+                + Autopilot.FLOOR_DAYS + " days old, or you change your goal or minimums, Autopilot sets it again.";
     }
 
     /**
@@ -890,6 +895,14 @@ final class AutopilotText {
     /** "on; goal 70%" / "on; pay first". */
     static String logOn(int goal) {
         return "on; " + goalWords(goal);
+    }
+
+    /**
+     * Once, when 0.6.18 moved a goal the user never chose to the default: "goal pay first by default (was the suggested
+     * 70%)".
+     */
+    static String logGoalDefault(int was) {
+        return "goal pay first by default (was the suggested " + FilterSettings.sanitizedGoal(was) + "%)";
     }
 
     /** "goal 50% (was 70%)"; pay first reads "pay first (was 70%)", and "goal 70% (was pay first)". */

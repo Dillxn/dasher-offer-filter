@@ -13,6 +13,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import java.util.List;
 import java.util.function.Consumer;
@@ -71,6 +72,10 @@ final class NoticePage {
             params.topMargin = ui.dp(14);
             body.addView(line, params);
         }
+        // Pilot diagnostics (0.6.18): asked here, opt-in, unchecked every time the notice shows.
+        Switch diagnostics = ui.toggle(body, Consent.DIAGNOSTICS_ASK, false);
+        diagnostics.setId(DIAGNOSTICS_ID);
+        ((LinearLayout.LayoutParams) diagnostics.getLayoutParams()).topMargin = ui.dp(18);
         TextView agreement = ui.text(Consent.AGREEMENT, 13, ui.inkSecondary, false);
         LinearLayout.LayoutParams agreementParams = Ui.matchWidth();
         agreementParams.topMargin = ui.dp(22);
@@ -88,7 +93,11 @@ final class NoticePage {
         body.addView(ui.button(Consent.NOT_NOW, false, notNow), notNowParams);
         LinearLayout.LayoutParams acceptParams = Ui.matchWidth();
         acceptParams.topMargin = ui.dp(10);
-        body.addView(ui.button(Consent.ACCEPT, true, accept), acceptParams);
+        body.addView(ui.button(Consent.ACCEPT, true, () -> {
+            // The notice's own ask (0.6.18): on, accepting turns Settings' switch on; off changes nothing.
+            if (diagnostics.isChecked()) Feedback.setAfterDash(context, true);
+            accept.run();
+        }), acceptParams);
         page.addView(body, Ui.matchWidth());
 
         // The ground takes what the screen has left, so the page ends on the road as the others do.
@@ -110,6 +119,8 @@ final class NoticePage {
     }
 
     static final String WHAT_CHANGED = "What changed";
+    /** The notice's diagnostics switch ({@link Consent#DIAGNOSTICS_ASK}). */
+    static final int DIAGNOSTICS_ID = 0x0F1F0026;
 
     /** "What changed" over its few lines, in a quiet box. */
     static View changesBox(Ui ui, List<String> lines) {

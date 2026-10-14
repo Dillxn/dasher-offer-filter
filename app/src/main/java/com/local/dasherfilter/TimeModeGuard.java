@@ -7,8 +7,9 @@ import java.util.List;
 /**
  * Earn by Time (0.6.5, from #DeclineNow; the owner chose it on 13 October 2026): in Dasher's time mode "You can decline
  * or unassign up to one offer every hour", and a second decline, or a timeout, ends the dash
- * (help.doordash.com/en-us/dashers/article/time-earnings-mode). {@link DeclineConfirmation} takes any "are you sure"
- * question as the decline question, so without this the app would confirm one that warns the dash will end.
+ * (help.doordash.com/en-us/dashers/article/time-earnings-mode). From 0.6.18 only a decline question whose wording the
+ * owner's reports have shown is confirmed ({@link DeclineConfirmation#knownPrompt}), and this guard stays as a second
+ * check: its phrases still pause even when the question's own line is a known one.
  *
  * <p>So, removing taps only: Dasher's question whose words say the dash will end, or that declines are limited per
  * hour, is never confirmed; the offer is handed back and auto-decline paused (as tapping the mascot pauses it), with
@@ -24,6 +25,12 @@ final class TimeModeGuard {
     static final long ENDED_AFTER_DECLINE_MS = 10_000;
     static final String WOULD_END_LINE = "Paused: Dasher said another decline would end this dash";
     static final String ENDED_LINE = "Paused: Dasher ended the dash right after a decline";
+    /**
+     * 0.6.18: Dasher's decline question was not one whose wording the owner's reports have shown
+     * ({@link DeclineConfirmation#knownPrompt}): never confirmed, the offer handed back, auto-decline paused. This guard's
+     * own phrases still pause first, even when the question is a known one.
+     */
+    static final String UNKNOWN_QUESTION_LINE = "Paused: Dasher asked something new before a decline";
     static final String PREFS = "time_mode_guard";
     static final String LINE = "line";
 

@@ -51,6 +51,7 @@ public class AcceptanceLearningAdapterTest {
     }
     @After public void cleanup() {
         AutopilotRuntime.executorForTests = null; AutopilotRuntime.afterInputsForTests = null;
+        AutopilotRuntime.wallClock = System::currentTimeMillis;
         AutopilotRuntime.forgetCache();
         controller.destroy(); OfferFilterService.nodeFetchForTests = null; OfferFilterService.forgetScreenState();
         OfferFilterService.scanLooperForTests = null; OfferFilterService.sawDasherBeside(0);
@@ -230,6 +231,10 @@ public class AcceptanceLearningAdapterTest {
         FilterStore.setAcceptanceLearning(app, false);
         AutopilotStore.clear(app); AutopilotRuntime.forgetCache();
         AutopilotRuntime.executorForTests = Runnable::run;
+        // 0.6.18: the floor's 7 days are counted on Autopilot's wall clock, so it must be the clock the app's own
+        // calls see here (Robolectric's), as the line's step is: a method reference to System.currentTimeMillis is
+        // not intercepted and reads the real clock, decades after the steps. (A dash bounded the floor before.)
+        AutopilotRuntime.wallClock = org.robolectric.shadows.ShadowSystem::currentTimeMillis;
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         List<Boolean> stepped = new ArrayList<>();
         AutopilotRuntime.afterInputsForTests = () -> {

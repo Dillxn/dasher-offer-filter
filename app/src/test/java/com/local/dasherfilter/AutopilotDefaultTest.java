@@ -21,9 +21,12 @@ import org.robolectric.shadows.ShadowAlertDialog;
 
 /**
  * Autopilot on by default (0.6.2; the owner, 12 October 2026): a new install, and once an install updating from an
- * earlier version, gets Autopilot on, with the goal chosen before or else 70%, the bar at exactly the minimums and no
- * jump; from then on the user's switch decides. The goal chooser still asks once, saying Autopilot is on already.
- * Every other suite runs as an install whose user kept Autopilot off (ConsentedTestApp).
+ * earlier version, gets Autopilot on, with the goal chosen before or else the suggested one, the bar at exactly the
+ * minimums and no jump; from then on the user's switch decides. The goal chooser still asks once, saying Autopilot is on
+ * already. Pay first is the default goal (0.6.18; the owner chose "Earnings first", 14 October 2026): a new install has
+ * it, and once an install updating whose goal the user never picked (a stored 70%, which can't be told from the
+ * suggested one) moves to it, while a picked goal (50%, pay first, or one marked chosen) stays. Every other suite runs as
+ * an install whose user kept Autopilot off (ConsentedTestApp).
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
@@ -47,7 +50,9 @@ public class AutopilotDefaultTest extends AndroidAdapterTestBase {
     public void aNewInstallHasAutopilotOnWithTheSuggestedGoalAtExactlyTheMinimums() {
         FilterSettings first = FilterStore.load(app);
         assertTrue(first.autopilot);
-        assertEquals(FilterSettings.GOAL_TOP_TIER, first.autopilotGoalPercent);
+        assertEquals("pay first is the suggested goal (0.6.18)", FilterSettings.GOAL_PAY_FIRST,
+                first.autopilotGoalPercent);
+        assertFalse("suggested, not picked", FilterStore.goalChosen(app));
         assertEquals(FilterSettings.BAR_AT_MINIMUMS, first.minimumScalePercent);
         assertFalse("no rule yet: nothing else is set", first.hasAnyRule());
         assertFalse("the goal was not asked yet", FilterStore.goalAsked(app));
@@ -57,6 +62,7 @@ public class AutopilotDefaultTest extends AndroidAdapterTestBase {
         assertTrue(log, log.contains("[autopilot] " + AutopilotText.LOG_ON_BY_DEFAULT));
         assertEquals("logged once", log.indexOf(AutopilotText.LOG_ON_BY_DEFAULT),
                 log.lastIndexOf(AutopilotText.LOG_ON_BY_DEFAULT));
+        assertFalse("a new install's goal moved from nothing: no line", log.contains("goal pay first by default"));
     }
 
     @Test
@@ -129,7 +135,8 @@ public class AutopilotDefaultTest extends AndroidAdapterTestBase {
             idle();
             FilterSettings kept = FilterStore.load(app);
             assertTrue("Not now keeps it on", kept.autopilot);
-            assertEquals(FilterSettings.GOAL_TOP_TIER, kept.autopilotGoalPercent);
+            assertEquals(FilterSettings.GOAL_PAY_FIRST, kept.autopilotGoalPercent);
+            assertFalse("Not now picks nothing", FilterStore.goalChosen(app));
             assertTrue(FilterStore.goalAsked(app));
 
             ShadowAlertDialog.reset();
@@ -142,10 +149,105 @@ public class AutopilotDefaultTest extends AndroidAdapterTestBase {
             assertTrue(find(content, AutopilotChip.class).performLongClick());
             chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertNull(findTextContaining(chooser.getWindow().getDecorView(), AutopilotText.CHOOSER_ON_BY_DEFAULT));
-            Shadows.shadowOf(chooser).clickOnItem(1);
+            Shadows.shadowOf(chooser).clickOnItem(2);
             idle();
             assertEquals(FilterSettings.GOAL_TIER, FilterStore.load(app).autopilotGoalPercent);
             assertTrue(FilterStore.load(app).autopilot);
+            assertTrue("a pick in the chooser is marked chosen", FilterStore.goalChosen(app));
         }
+    }
+
+    // ---- Pay first by default (0.6.18) ----
+
+    /** A 0.6.17 install as it stood: the rules saved, Autopilot on by its 0.6.2 default, the goal step not yet run. */
+    private void updatingFrom0617(int goal, boolean asked) {
+        FilterStore.save(app, FilterSettings.of(true, 250, 318, 0, 0));
+        rules.edit().remove(FilterStore.GOAL_DEFAULT_SCHEMA).remove("autopilot_goal_chosen")
+                .putBoolean("autopilot_on", true).putInt("autopilot_goal", goal)
+                .putBoolean("autopilot_goal_asked", asked).putInt("autopilot_bar_percent", 50).commit();
+        DiagnosticLog.clear(app);
+    }
+
+    @Test
+    public void theSuggestedSeventyMovesToPayFirstOnceKeepingTheBarAndTheFloor() {
+        // The owner's own state: 70%, the question answered (Not now or a tap: nothing before 0.6.18 told them
+        // apart), the bar pinned at 50%, recovering toward 70%, a hand accept's floor running since an hour ago.
+        updatingFrom0617(FilterSettings.GOAL_TOP_TIER, true);
+        AutopilotStore.setRecovering(app, true);
+        long since = System.currentTimeMillis() - 60 * 60_000L;
+        AutopilotStore.restartFloor(app, since);
+
+        FilterSettings updated = FilterStore.load(app);
+        assertEquals(FilterSettings.GOAL_PAY_FIRST, updated.autopilotGoalPercent);
+        assertTrue(updated.autopilot);
+        assertEquals("the bar moves only by Autopilot's commits", 50, updated.minimumScalePercent);
+        assertEquals(250, updated.flatCents);
+        assertEquals(318, updated.perMileCents);
+        assertFalse("no recovery toward the old goal", AutopilotStore.recovering(app));
+        assertEquals("the accepted floor restarts only at the user's own change", since,
+                AutopilotStore.floorSince(app));
+        assertTrue("asked stays asked", FilterStore.goalAsked(app));
+        assertFalse(FilterStore.goalChosen(app));
+        String log = DiagnosticLog.read(app);
+        String line = "[autopilot] " + AutopilotText.logGoalDefault(FilterSettings.GOAL_TOP_TIER);
+        assertTrue(log, log.contains(line));
+        assertEquals("goal pay first by default (was the suggested 70%)",
+                AutopilotText.logGoalDefault(FilterSettings.GOAL_TOP_TIER));
+
+        // Once only: the user's 70% picked from then on stands, and so does one written after the step.
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertTrue(FilterStore.goalChosen(app));
+        assertEquals(FilterSettings.GOAL_TOP_TIER, FilterStore.load(app).autopilotGoalPercent);
+        rules.edit().remove("autopilot_goal_chosen").putInt("autopilot_goal", FilterSettings.GOAL_TOP_TIER).commit();
+        assertEquals("the step never runs again", FilterSettings.GOAL_TOP_TIER,
+                FilterStore.load(app).autopilotGoalPercent);
+        log = DiagnosticLog.read(app);
+        assertEquals("logged once", log.indexOf(line), log.lastIndexOf(line));
+    }
+
+    @Test
+    public void aSeventyNeverAskedAndOneLeftWithAutopilotOffMoveToo() {
+        updatingFrom0617(FilterSettings.GOAL_TOP_TIER, false);
+        assertEquals(FilterSettings.GOAL_PAY_FIRST, FilterStore.load(app).autopilotGoalPercent);
+
+        rules.edit().clear().commit();
+        updatingFrom0617(FilterSettings.GOAL_TOP_TIER, true);
+        rules.edit().putBoolean("autopilot_on", false).commit();
+        FilterSettings off = FilterStore.load(app);
+        assertFalse("the user's off stands", off.autopilot);
+        assertEquals(FilterSettings.GOAL_PAY_FIRST, off.autopilotGoalPercent);
+        assertEquals(FilterSettings.BAR_AT_MINIMUMS, off.minimumScalePercent);
+    }
+
+    @Test
+    public void aGoalTheUserPickedStays() {
+        // 50% and pay first were only ever set in the chooser: kept, and marked chosen from now on.
+        updatingFrom0617(FilterSettings.GOAL_TIER, true);
+        AutopilotStore.setRecovering(app, true);
+        assertEquals(FilterSettings.GOAL_TIER, FilterStore.load(app).autopilotGoalPercent);
+        assertTrue(FilterStore.goalChosen(app));
+        assertTrue("its recovery is the user's goal's: kept", AutopilotStore.recovering(app));
+        assertFalse(DiagnosticLog.read(app).contains("goal pay first by default"));
+
+        rules.edit().clear().commit();
+        updatingFrom0617(FilterSettings.GOAL_PAY_FIRST, true);
+        assertEquals(FilterSettings.GOAL_PAY_FIRST, FilterStore.load(app).autopilotGoalPercent);
+        assertTrue(FilterStore.goalChosen(app));
+
+        // A 70% marked chosen (picked in 0.6.18's chooser, on a phone that went back to 0.6.17 and forward again).
+        rules.edit().clear().commit();
+        updatingFrom0617(FilterSettings.GOAL_TOP_TIER, true);
+        rules.edit().putBoolean("autopilot_goal_chosen", true).commit();
+        assertEquals(FilterSettings.GOAL_TOP_TIER, FilterStore.load(app).autopilotGoalPercent);
+        assertFalse(DiagnosticLog.read(app).contains("goal pay first by default"));
+    }
+
+    @Test
+    public void turningAutopilotOffKeepsTheGoalWithoutPickingIt() {
+        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 0));
+        AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_PAY_FIRST);
+        assertFalse("off is no pick of a goal", FilterStore.goalChosen(app));
+        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_PAY_FIRST);
+        assertTrue("a pick in the chooser turns it on", FilterStore.goalChosen(app));
     }
 }

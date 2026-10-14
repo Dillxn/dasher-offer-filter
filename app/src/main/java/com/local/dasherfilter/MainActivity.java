@@ -414,6 +414,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         forgetAnswers();
         OfferNotificationService.rulesChanged();
         OfferFilterService.requestCheckFromNotification();
+        // Nothing was scheduled or checked before (0.6.18): the first update check runs now.
+        Updater.noticeAccepted(this);
         refresh();
     }
 

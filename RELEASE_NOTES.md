@@ -1,3 +1,19 @@
+## 0.6.18 — Autopilot earnings first, and only Dasher's usual decline question confirmed
+
+Version 0.6.18 (code 110) answers the owner's report of 14 October 2026, "no reason auto pilot should have dropped to %50 when the latest order is above that... it's goal is to arm wrestle with the dispatch algorithm to ratchet up earnings", and his choice on the card, "Earnings first"; and his choice the same evening for Earn by Time: confirm only decline wording seen in his own reports, and pause on anything else.
+
+- **Pay first is the default goal.** New installs start with pay first (still keeping 1 offer in 5 passing). The goal question lists **Pay first** first and preselects it; the acceptance-rate goals stay as opt-in choices, **Protect my acceptance rate — 70% or more** and **— 50% or more**.
+- **Your goal, once.** A 70% goal moves to pay first once: nothing before 0.6.18 recorded whether 70% was picked or only the suggested goal kept (it was preselected, and Not now kept it), so it can't be told apart (best judgment, as the owner's own case is that one). A 50% or pay-first goal stays. One tap in the goal question (a long press on Autopilot's chip) brings 70% back, and from now on a goal you pick is remembered as yours.
+- **Your best accept holds the bar across dashes.** Autopilot's bar never goes below the best score of an offer you accepted yourself in the last 7 days, in every mode, even when your minimums are high for the offers coming. It used to last only the dash. An accept stops holding it 7 days later, so one great offer can't keep the bar above the market forever; changing your goal, minimums, max stops, mode or learning starts it over. It still never goes above 150%, and bars it held up still never grow your minimums.
+- **Only Dasher's usual decline question is confirmed.** The app taps the confirming Decline only when Dasher asks "Are you sure you want to decline this offer?", the wording the owner's own reports show (case, spacing and the final question mark aside). Any other question, including that line with words added, is never confirmed: the offer is left to you and auto-decline pauses ("Paused: Dasher asked something new before a decline") until you resume it, and the log keeps the question's words, masked, so the real wording of Earn by Time's question can be added once a report shows it. The Earn by Time guard still pauses on its own words even when the question is the usual one. The worst case is an extra pause, never an ended dash.
+- **Diagnostics, if you'd like.** The notice ends with one switch, off unless you turn it on: "Share anonymous diagnostics after each dash (helps fix it for your phone)". Accepting with it on turns on the same switch in Settings; with it off nothing changes. What is sent is unchanged.
+- **Screen reading restarts once after a fault.** If reading Dasher's screen hits an error, the app still stops filtering at once, then tries again about 5 seconds later. A second error in the same dash leaves it off. While it is off, a notification says offers aren't being filtered, and tapping it opens the homepage to fix it; it goes away when reading resumes.
+- **Update checks wait for the notice.** Nothing checks for updates until you accept the current notice; accepting it runs the first check.
+- **Notice 26.** Everyone sees the notice once more, with a short What changed box. Terms and Privacy are for 0.6.18.
+- Not changed: the learner, how your minimums grow, and auto-accept (never below 100%).
+
+No phone has run this build.
+
 ## 0.6.17 — A plainer warning about DoorDash's terms
 
 Version 0.6.17 (code 109) answers the owner's question of 14 October 2026, "can we ascertain whether we are breaking terms or not?", and his choice, "Say it plainly".

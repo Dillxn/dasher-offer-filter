@@ -262,8 +262,13 @@ final class Updater {
         return sessionId >= 0 && sessionId == prefs(context).getInt(SESSION, -1);
     }
 
-    /** Keeps the 15-minute periodic check scheduled while updates are enabled, and cancels all jobs otherwise. */
+    /**
+     * Keeps the 15-minute periodic check scheduled while updates are enabled, and cancels all jobs otherwise. Nothing is
+     * scheduled before the current notice is accepted (0.6.18, {@link #noticeAccepted}): no check leaves the phone
+     * before then.
+     */
     static void schedule(Context context) {
+        if (!Consent.accepted(context)) return;
         JobScheduler jobs = context.getSystemService(JobScheduler.class);
         if (jobs == null) return;
         if (!enabled(context)) {
@@ -280,6 +285,15 @@ final class Updater {
                     .build());
             DiagnosticLog.log(context, "update", "periodic scheduling result=" + result);
         }
+    }
+
+    /**
+     * The current notice was just accepted: the periodic check is scheduled and the first check runs now (0.6.18;
+     * before acceptance nothing is scheduled or checked).
+     */
+    static Future<?> noticeAccepted(Context context) {
+        schedule(context);
+        return check(context, UpdateCadence.Trigger.NOTICE_ACCEPTED, null);
     }
 
     /** Schedules a real one-shot retry job, no sooner than one minute from now. */
@@ -340,6 +354,13 @@ final class Updater {
      */
     static Future<?> check(Context context, UpdateCadence.Trigger trigger, Runnable done) {
         Context app = context.getApplicationContext();
+        // 0.6.18 (pilot safety, Q8): no update check, from any trigger, before the current notice is accepted (an
+        // install that accepted an earlier notice waits for this one too, as screen reading does); accepting it runs
+        // the first ({@link #noticeAccepted}).
+        if (!Consent.accepted(app)) {
+            if (done != null) MAIN.post(done);
+            return CompletableFuture.completedFuture(null);
+        }
         if (!BUSY.compareAndSet(false, true)) {
             if (trigger.manual()) {
                 synchronized (WAITING) {

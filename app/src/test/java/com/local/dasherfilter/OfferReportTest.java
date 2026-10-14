@@ -247,7 +247,7 @@ public class OfferReportTest {
         assertEquals(4, rules.getInt("maxStops"));
         // Rules alone: Autopilot as they say (off, the default goal, exactly the minimums), nothing worked out or read.
         assertFalse(rules.getBoolean("autopilot"));
-        assertEquals(70, rules.getInt("autopilotGoal"));
+        assertEquals("pay first, the default from 0.6.18", 0, rules.getInt("autopilotGoal"));
         assertEquals(100, rules.getInt("barPercent"));
         assertTrue(rules.isNull("autopilotMode"));
         assertFalse(rules.getBoolean("recovering"));

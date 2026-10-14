@@ -283,6 +283,15 @@ public final class OfferFilterService extends AccessibilityService {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean scannerFaulted;
+    /**
+     * How long after a fault the screen reader restarts itself, once a dash (0.6.18, pilot safety Q6: fail closed,
+     * retry once, say so while off).
+     */
+    static final long SCANNER_RESTART_MS = 5_000;
+    /** The dash ({@link Dashing#currentStart}, 0 for none) whose fault was given its one restart; none yet. */
+    private long scannerRestartedDash = Long.MIN_VALUE;
+    /** The one automatic restart after a fault, on the main thread. */
+    private final Runnable scannerRestart = this::restartAfterFault;
     private boolean restartStateLoaded;
     private HandlerThread scannerThread;
     /** The scanner thread's handler: everything below marked "scanner" is touched only there. */
@@ -1949,6 +1958,8 @@ public final class OfferFilterService extends AccessibilityService {
         launchHold.set(0);
         active = this;
         ReadingStopped.cancel(this);
+        ReadingStopped.cancelFault(this);
+        main.removeCallbacks(scannerRestart);
         // During an active dash the screen is not let time out, whatever app is in front (the owner: "Don't let it lock
         // mid-dash"), so Peek can still bring Dasher up; it never wakes or unlocks the phone, and the power button wins.
         // Only on fresh signs of the dash, or Dasher in front (window metadata only) showing a screen of it now.
@@ -1957,6 +1968,7 @@ public final class OfferFilterService extends AccessibilityService {
         screenAwake.start();
         watchScreenState();
         watchCameras();
+        // Nothing is scheduled before the current notice is accepted (Updater.schedule says no then).
         Updater.schedule(this);
         // What the retired GitHub connection and its report queues left goes once, off this thread.
         LegacyReportingCleanup.cleanUpSoon(this);
@@ -3092,6 +3104,7 @@ public final class OfferFilterService extends AccessibilityService {
         stopWaitEstimate();
         boolean first = !stopped;
         stopped = true;
+        main.removeCallbacks(scannerRestart);
         if (screenAwake != null) screenAwake.stop();
         // A Split tap's pairing ends with the screen reader that would have made this app's own start.
         int pairing = DasherSplit.pairing();
@@ -3216,6 +3229,19 @@ public final class OfferFilterService extends AccessibilityService {
         try { ScannerFailure.remember(this, error); } catch (RuntimeException ignored) { /* Still stop every tap. */ }
         try { DiagnosticLog.log(this, "accessibility", "scanner stopped: " + error.getClass().getSimpleName()); }
         catch (RuntimeException ignored) { /* Failure reporting cannot restart automation. */ }
+        // 0.6.18 (Q6): one automatic restart about 5 s later; a second fault in the same dash stays off. Either way a
+        // notification stays up while reading is off, until it resumes.
+        long dash;
+        try { dash = Math.max(0, Dashing.currentStart(this)); } catch (RuntimeException unknown) { dash = 0; }
+        boolean restart = scannerRestartedDash != dash;
+        if (restart) scannerRestartedDash = dash;
+        try {
+            DiagnosticLog.log(this, "accessibility", restart
+                    ? "screen reading restarts in " + SCANNER_RESTART_MS / 1000 + " s (once a dash)"
+                    : "screen reading stays off: a second fault this dash; turn screen reading off and on to reconnect");
+        } catch (RuntimeException ignored) { }
+        main.removeCallbacks(scannerRestart);
+        if (restart) main.postDelayed(scannerRestart, SCANNER_RESTART_MS);
         try { silencer.stop(); } catch (RuntimeException ignored) { /* Restore again on main. */ }
         onMain(() -> {
             try { OfferSilencer.restore(this); } catch (RuntimeException ignored) { }
@@ -3226,6 +3252,31 @@ public final class OfferFilterService extends AccessibilityService {
                 FilterStore.setLastStatus(this, "Screen reading stopped after an error. Turn screen reading off and on to reconnect.");
                 Toast.makeText(this, "Screen reading stopped; reconnect it in " + AppName.NAME, Toast.LENGTH_LONG).show();
             } catch (RuntimeException ignored) { }
+            try { ReadingStopped.faulted(this); } catch (RuntimeException ignored) { }
+        });
+    }
+
+    /**
+     * The one restart after a fault (0.6.18, Q6): reading resumes as a connection would begin it, the notification
+     * goes, and the log says so. Nothing when the reader stopped meanwhile or a new connection already took over.
+     */
+    private void restartAfterFault() {
+        if (stopped || !scannerFaulted || active != this) return;
+        scannerFaulted = false;
+        try { ReadingStopped.cancelFault(this); } catch (RuntimeException ignored) { }
+        // The marker is answered here, as a reconnect would answer it (its kind only, never a message).
+        String kind = "";
+        try { kind = ScannerFailure.take(this); } catch (RuntimeException ignored) { }
+        DiagnosticLog.log(this, "accessibility", "screen reading restarted after a fault"
+                + (kind.isEmpty() ? "" : " (" + kind + ")"));
+        FilterStore.setLastStatus(this, "Screen reading restarted after an error.");
+        if (screenAwake != null) screenAwake.start();
+        scanner.removeCallbacks(autopilotTick);
+        scanner.postDelayed(autopilotTick, Autopilot.TICK_MS);
+        onScanner(() -> {
+            if (stopped || scannerFaulted || !Consent.accepted(this)) return;
+            lookSafely();
+            watchWindows();
         });
     }
 
@@ -4369,7 +4420,12 @@ public final class OfferFilterService extends AccessibilityService {
         /** Dasher explicitly reported a failed request; no later idle frame can upgrade it optimistically. */
         DASHER_ERROR,
         /** Dasher's question said another decline ends the dash (Earn by Time, {@link TimeModeGuard}): never confirmed. */
-        DASH_WOULD_END
+        DASH_WOULD_END,
+        /**
+         * Dasher's question is not one whose wording the owner's reports have shown (0.6.18,
+         * {@link DeclineConfirmation#knownPrompt}): never confirmed, and auto-decline paused.
+         */
+        UNKNOWN_QUESTION
     }
 
     /**
@@ -4381,14 +4437,15 @@ public final class OfferFilterService extends AccessibilityService {
      */
     private void handBack(HandBack why, String detail, long now) {
         boolean alreadyConfirmed = declineState.confirmationTapped();
-        boolean givenUp = why == HandBack.NOT_TAPPED || why == HandBack.DASHER_ERROR || why == HandBack.DASH_WOULD_END;
+        boolean givenUp = why == HandBack.NOT_TAPPED || why == HandBack.DASHER_ERROR || why == HandBack.DASH_WOULD_END
+                || why == HandBack.UNKNOWN_QUESTION;
         takeover = new Takeover(declinedOffer, now, givenUp
                 ? DecisionLog.Action.CONFIRMATION_NOT_TAPPED : DecisionLog.Action.USER_TOOK_OVER);
         RestartSuppression.remember(this, declinedOffer, previousCountdown);
         takeoverGeneration = OfferNotificationService.generation();
         takeoverDisplayEligible = why != HandBack.NOT_TAPPED && why != HandBack.MINIMUMS_CHANGED
                 && why != HandBack.SCREEN_OFF && why != HandBack.DASHER_ERROR && why != HandBack.DASH_WOULD_END
-                && declinedEntry != null
+                && why != HandBack.UNKNOWN_QUESTION && declinedEntry != null
                 && !declinedEntry.addOn && !declinedDuringRoute;
         takeoverDisplayUntil = now + 60_000;
         takeoverTeaches = takeoverDisplayEligible && !alreadyConfirmed && acceptedTracker.waitedFor(declinedOffer);
@@ -4461,6 +4518,16 @@ public final class OfferFilterService extends AccessibilityService {
                 toast = "Dasher said another decline would end this dash. Offer left to you; auto-decline paused";
                 TimeModeGuard.pause(this, TimeModeGuard.WOULD_END_LINE);
                 break;
+            case UNKNOWN_QUESTION:
+                // The words are masked: the first report from a time-mode dash then shows the real wording to add.
+                DiagnosticLog.log(this, "decline", "unknown question: " + PersonalText.mask(detail));
+                DiagnosticLog.log(this, "confirm", "confirmation not tapped: Dasher's question is not one seen in "
+                        + "your reports; the offer is left to you, auto-decline paused");
+                status("Dasher asked something new before a decline, so this offer is yours and auto-decline is "
+                        + "paused.");
+                toast = "Dasher asked something new before a decline. Offer left to you; auto-decline paused";
+                TimeModeGuard.pause(this, TimeModeGuard.UNKNOWN_QUESTION_LINE);
+                break;
             case SCREEN_OFF:
                 DiagnosticLog.log(this, "accessibility", "screen off or locked" + halted);
                 status("Screen off or locked; this earlier offer is left to you.");
@@ -4483,6 +4550,7 @@ public final class OfferFilterService extends AccessibilityService {
                 : why == HandBack.MINIMUMS_CHANGED ? "the bar changed"
                 : why == HandBack.DASHER_ERROR ? "Dasher reported a decline error"
                 : why == HandBack.DASH_WOULD_END ? "Dasher said another decline would end the dash"
+                : why == HandBack.UNKNOWN_QUESTION ? "Dasher asked something new before a decline"
                 : "Dasher's question was not confirmed"), Peek.Outcome.LEFT_WITH_USER);
     }
 
@@ -8138,6 +8206,12 @@ public final class OfferFilterService extends AccessibilityService {
         if (TimeModeGuard.endsDash(confirmation.text) && !episode.wasConfirmed()) {
             // Earn by Time: another decline would end the dash. Never confirmed (TimeModeGuard; wording guessed).
             handBack(HandBack.DASH_WOULD_END, "found in " + confirmation.where, now);
+            return false;
+        }
+        if (!DeclineConfirmation.knownPrompt(confirmation.text) && !episode.wasConfirmed()) {
+            // 0.6.18: only a question worded as the owner's reports have shown it is confirmed; any other is handed
+            // back and pauses auto-decline (the worst case an extra pause, never an ended dash).
+            handBack(HandBack.UNKNOWN_QUESTION, DeclineConfirmation.unknownPrompt(confirmation.text), now);
             return false;
         }
         int selected = DeclineConfirmation.select(confirmation.text, confirmation.declineLabels);

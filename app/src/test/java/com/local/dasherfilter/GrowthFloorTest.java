@@ -13,8 +13,9 @@ import static org.junit.Assert.assertNull;
 /**
  * Bars an accept held up never grow the minimums (0.6.11, keeping the owner's 12 October rule that the saved minimums
  * never rise by themselves from an accept): a line whose bar a hand accept could have held (the accept came before it,
- * at most 24 hours before, and scored at least its bar) counts as 100 toward growth. A bar Autopilot's own value rule
- * set above every accept's score still counts, and so does an accept from more than a day before.
+ * at most 7 days before, the accepted floor's window from 0.6.18 (a day while it lasted a dash), and scored at least its
+ * bar) counts as 100 toward growth. A bar Autopilot's own value rule set above every accept's score still counts, and
+ * so does an accept from more than 7 days before.
  */
 public final class GrowthFloorTest {
     private static final long HOUR = 60 * 60_000L;
@@ -72,12 +73,14 @@ public final class GrowthFloorTest {
     }
 
     @Test
-    public void anAcceptMoreThanADayBeforeHoldsNothing() {
-        assertNotNull(evidence(new Autopilot.HandAccept(oldest() - 25 * HOUR, 140)));
+    public void anAcceptMoreThanSevenDaysBeforeHoldsNothing() {
+        // 0.6.18: the floor carries across dashes for 7 days, so an accept 2 days before still held the bars.
+        assertNull(evidence(new Autopilot.HandAccept(oldest() - 48 * HOUR, 140)));
+        assertNotNull(evidence(new Autopilot.HandAccept(oldest() - 7 * 24 * HOUR - HOUR, 140)));
         // An accept after every line held none of them.
         assertNotNull(evidence(new Autopilot.HandAccept(NOW, 140)));
-        // Exactly a day before the oldest line still holds it, and so the lowest is 100.
-        assertNull(evidence(new Autopilot.HandAccept(oldest() - 24 * HOUR, 140)));
+        // Exactly 7 days before the oldest line still holds it, and so the lowest is 100.
+        assertNull(evidence(new Autopilot.HandAccept(oldest() - 7 * 24 * HOUR, 140)));
     }
 
     @Test
@@ -95,6 +98,7 @@ public final class GrowthFloorTest {
                 Long.MAX_VALUE));
         assertNull("no floor this dash, but yesterday's accept held the bars", plan.growth);
         assertEquals(-1, plan.floor);
-        assertEquals(24 * HOUR, Growth.HELD_HORIZON_MS);
+        assertEquals("the accepted floor's 7 days (0.6.18)", 7 * 24 * HOUR, Growth.HELD_HORIZON_MS);
+        assertEquals(Autopilot.FLOOR_WINDOW_MS, Growth.HELD_HORIZON_MS);
     }
 }

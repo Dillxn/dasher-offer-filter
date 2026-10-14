@@ -162,6 +162,111 @@ public class TimeModeGuardTest {
         }
     }
 
+    // ---- Only the known question is confirmed (0.6.18, the owner's option A, 14 October 2026, 19:36 UTC) ----
+
+    /** A decline question with this prompt line in place of Dasher's usual one, and its usual figures and buttons. */
+    private AccessibilityNodeInfo questionAsking(String prompt, AccessibilityNodeInfo declineOffer) {
+        AccessibilityNodeInfo root = node(null, false);
+        Shadows.shadowOf(root).addChild(node(prompt, false));
+        Shadows.shadowOf(root).addChild(node("Does not lower acceptance rate", false));
+        Shadows.shadowOf(root).addChild(node("50%", false));
+        Shadows.shadowOf(root).addChild(declineOffer);
+        Shadows.shadowOf(root).addChild(button("Go back"));
+        Shadows.shadowOf(root).addChild(node("0:24", false));
+        return root;
+    }
+
+    /** {@code prompt} is never confirmed: the offer is the user's and auto-decline pauses with the new line. */
+    private String handedBackAndPaused(String prompt) {
+        TimeModeGuard.resumed(app);
+        FilterStore.save(app, FilterStore.load(app).withEnabled(true));
+        DiagnosticLog.clear(app);
+        if (controller != null) controller.destroy();
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        pass(300);
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        List<Long> confirmTaps = taps(confirm, true);
+        show(service, questionAsking(prompt, confirm));
+        for (int i = 0; i < 40; i++) pass(50);
+
+        assertEquals(prompt + ": never confirmed", 0, confirmTaps.size());
+        DecisionLog.Entry line = DecisionLog.recent(app, 1).get(0);
+        assertEquals(DecisionLog.Action.CONFIRMATION_NOT_TAPPED, line.action);
+        assertEquals(DecisionLog.Outcome.YOURS, DecisionLog.outcome(line));
+        assertFalse("auto-decline paused", FilterStore.load(app).enabled);
+        assertEquals("its rules kept", 2000, FilterStore.load(app).flatCents);
+        assertEquals(TimeModeGuard.UNKNOWN_QUESTION_LINE, TimeModeGuard.line(app));
+        assertEquals("Paused: Dasher asked something new before a decline", TimeModeGuard.UNKNOWN_QUESTION_LINE);
+        assertEquals("Dasher asked something new before a decline. Offer left to you; auto-decline paused",
+                ShadowToast.getTextOfLatestToast());
+        return DiagnosticLog.read(app);
+    }
+
+    @Test
+    public void dashersUsualQuestionIsStillConfirmed() {
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        pass(300);
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        List<Long> confirmTaps = taps(confirm, true);
+        show(service, questionAsking("  ARE YOU SURE you want to decline   this offer…", confirm));
+        assertEquals("case, spacing and the final ellipsis aside, the known line", 1, confirmTaps.size());
+        assertTrue(FilterStore.load(app).enabled);
+        assertNull(TimeModeGuard.line(app));
+    }
+
+    @Test
+    public void aGuessedTimeModeQuestionTheGuardDoesNotListIsHandedBackAndPauses() {
+        String question = "Skip this offer? Time mode allows a limited number of skips";
+        assertFalse("the guard's phrases miss it", TimeModeGuard.endsDash(Collections.singletonList(question)));
+        String log = handedBackAndPaused(question);
+        assertTrue(log, log.contains("[decline] unknown question: Skip this offer? Time mode allows a limited number "
+                + "of skips"));
+        assertTrue(log, log.contains("confirmation not tapped: Dasher's question is not one seen in your reports"));
+    }
+
+    @Test
+    public void aBareAreYouSureOnceTakenForTheQuestionNowPauses() {
+        handedBackAndPaused("Are you sure?");
+    }
+
+    @Test
+    public void aBareDeclineOfferQuestionOnceTakenForTheQuestionNowPauses() {
+        handedBackAndPaused("Decline offer?");
+    }
+
+    @Test
+    public void theKnownLineWithWordsAddedPauses() {
+        handedBackAndPaused("Are you sure you want to decline this offer? You have 2 declines left today");
+    }
+
+    @Test
+    public void theUnknownQuestionIsLoggedMasked() {
+        String log = handedBackAndPaused("Are you sure you want to decline Sam's offer at 100 Example St?");
+        int at = log.indexOf("[decline] unknown question: ");
+        assertTrue(log, at >= 0);
+        String line = log.substring(at, log.indexOf('\n', at) < 0 ? log.length() : log.indexOf('\n', at));
+        assertFalse(line, line.contains("100 Example St"));
+        assertEquals(PersonalText.mask("Are you sure you want to decline Sam's offer at 100 Example St?"),
+                line.substring("[decline] unknown question: ".length()));
+    }
+
+    @Test
+    public void theGuardStillPausesWhenTheQuestionIsTheKnownOne() {
+        // timeModeQuestion's prompt line is Dasher's usual one; its other line is one of the guard's phrases.
+        OfferFilterService service = service();
+        show(service, offer("$7.90", "0:35"));
+        pass(300);
+        AccessibilityNodeInfo confirm = button("Decline offer");
+        List<Long> confirmTaps = taps(confirm, true);
+        show(service, timeModeQuestion(confirm));
+        for (int i = 0; i < 40; i++) pass(50);
+        assertEquals(0, confirmTaps.size());
+        assertEquals("the guard's own line, not the unknown question's", TimeModeGuard.WOULD_END_LINE,
+                TimeModeGuard.line(app));
+    }
+
     private AccessibilityNodeInfo timeModeQuestion(AccessibilityNodeInfo declineOffer) {
         // Made-up wording: no time-mode report has shown Dasher's real question yet.
         AccessibilityNodeInfo root = node(null, false);
