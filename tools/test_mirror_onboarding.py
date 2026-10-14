@@ -97,13 +97,15 @@ class MirrorOnboardingTest(unittest.TestCase):
     def test_public_notices_and_existing_verification_links(self):
         for destination in ("https://offerfilter.org/privacy/", "https://offerfilter.org/terms/",
                             "https://offerfilter.org/license/", "/verification.json", "/signing-receipt.txt",
-                            "/OfferFilter.apk", "https://offerfilter.org/#help"):
+                            mirror.DOWNLOAD, "https://offerfilter.org/#help"):
             with self.subTest(destination=destination):
                 self.assertIn(destination, self.page.links)
         stale = [link for link in self.page.links if "app-source" in (link or "") or "github.io" in (link or "")]
         self.assertEqual([], stale, "legal texts are published on offerfilter.org, not a stale source snapshot")
-        self.assertEqual("OfferFilter-" + self.published["versionName"] + ".apk",
-                         self.page.links["/OfferFilter.apk"]["download"])
+        # The Download link is the feedback service's counted link, which sends the browser on to /OfferFilter.apk here.
+        self.assertEqual("https://nwglojlrzfbsibtoqjzc.supabase.co/functions/v1/offer-filter-feedback/download",
+                         mirror.DOWNLOAD)
+        self.assertNotIn("/OfferFilter.apk", self.page.links, "no uncounted direct link")
 
     def test_a_legal_page_the_website_does_not_serve_yet_links_to_its_source_copy(self):
         asked = []

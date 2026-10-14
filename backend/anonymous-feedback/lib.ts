@@ -129,9 +129,10 @@ export function validate(body: Record<string, unknown>, origin: string | null): 
 }
 
 /**
- * What a count is: "daily", an install of the app checking in once a UTC day, or "download", a press of the install
- * page's Download button. A count is not feedback: it carries no words, and it is kept as a daily total (its token
- * and its network's day-keyed value only briefly, so it counts once).
+ * What a count is: "daily", an install of the app checking in once a UTC day, or "download", the app downloaded
+ * through the counted download link (or, from pages loaded before it, a press of the install page's Download button
+ * sent as a POST). A count is not feedback: it carries no words, and it is kept as a daily total (its token and its
+ * network's day-keyed value only briefly, so it counts once).
  */
 export const COUNT_EVENTS: ReadonlySet<string> = new Set(["daily", "download"]);
 
@@ -209,6 +210,38 @@ export function validateCount(body: Record<string, unknown>, origin: string | nu
   const appVersion = countText(body, "appVersion", APP_VERSION);
   const appVersionCode = integer(given(body, "appVersionCode"), 1, 10_000_000);
   return { event, countToken, first, appVersion, appVersionCode };
+}
+
+/**
+ * Where the counted download link sends every fetch, counted or not: the signed APK on the update server, the file
+ * the app's own updates come from.
+ */
+export const APK_URL = "https://dash-offer-filter-build.onrender.com/OfferFilter.apk";
+
+/** Whether a request is for the counted download link (this function's address and then /download). */
+export function isDownloadPath(pathname: string): boolean {
+  return /\/download\/?$/.test(pathname);
+}
+
+/**
+ * What fetches a link for a preview, an index or a script rather than for a person: such a fetch of the download link
+ * is sent on to the file and never counted. Only a fetch's own User-Agent is read for it, and it is never kept.
+ */
+const ROBOT = new RegExp(
+  "bot|crawl|spider|slurp|preview|externalhit|facebookcatalog|meta-external|embedly|iframely|vkshare|headless|" +
+    "lighthouse|google-inspectiontool|googleother",
+  "i",
+);
+
+/**
+ * Whether a fetch of the download link counts as a download: a GET from a browser (its User-Agent begins
+ * "Mozilla/", as every browser's does), not a robot's, and not a fetch made ahead of a tap (a prefetch or prerender,
+ * named by Sec-Purpose or Purpose). Everything else is sent on to the file all the same.
+ */
+export function countsAsDownload(method: string, userAgent: string | null, purpose: string | null): boolean {
+  if (method !== "GET") return false;
+  if (!userAgent || !userAgent.startsWith("Mozilla/") || ROBOT.test(userAgent)) return false;
+  return !(purpose && /prefetch|prerender/i.test(purpose));
 }
 
 function ipv4(text: string): number[] | null {
