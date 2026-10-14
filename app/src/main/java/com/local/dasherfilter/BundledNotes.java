@@ -28,6 +28,14 @@ final class BundledNotes {
     private static final Map<Integer, List<String>> NOTICE = new LinkedHashMap<>();
     private static final Map<String, List<String>> RELEASES = new LinkedHashMap<>();
 
+    /** Notice 24's lines, also 0.6.14's card: pay per stop counts the pickup. */
+    private static final String[] PICKUP_COUNTED = {
+            "Pay per stop now counts every stop Dasher shows, the pickup included: $5 a stop asks $10 of a single order "
+                    + "and $15 of three stops.",
+            "Your number wasn't changed, so a single order now asks twice what it did; set it to what you want per "
+                    + "stop.",
+            "Learning's best pay per stop counts the pickup too."};
+
     static {
         // What changed in the notice since the one before it. Two or three short lines, plain words. Notice 14 was
         // first published with 0.5.0; its reader last accepted notice 13. Notice 15 comes with 0.5.1.
@@ -108,12 +116,15 @@ final class BundledNotes {
                 "It starts over at your next dash or when you change your goal or minimums.",
                 "In split screen during a delivery, the app moves the divider to give the map more room, and puts it "
                         + "back afterward. Move it yourself and it stops for that dash.");
-        // 0.6.12 (the owner, 13 October 2026: "swap overall payout for pay per stop"): the pay minimum is per stop.
+        // 0.6.12 (the owner, 13 October 2026: "swap overall payout for pay per stop"): the pay minimum is per stop. Its
+        // rule C counting (each stop but the pickup) was superseded by 0.6.14, so its lines no longer describe it.
         notice(23,
-                "Minimum pay is now pay per stop: each stop after the first pickup counts, so a 3-stop offer asks "
-                        + "twice your number.",
-                "Single orders are judged exactly as before; your number didn't change.",
+                "Minimum pay is now pay per stop, so an offer with more stops must pay more; your number didn't "
+                        + "change.",
                 "Learning keeps your best pay per stop.");
+        // 0.6.14 (the owner, 14 October 2026: "i don't want the pay per stop to not count the pickup"): every stop
+        // counts, the pickup included; the saved number is unchanged ("it doesn't need to do any halving").
+        notice(24, PICKUP_COUNTED);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -234,14 +245,14 @@ final class BundledNotes {
                 "In split screen, the navigating app gets more room during a delivery.",
                 "The acceptance meter stays on one line at every width.");
         release("0.6.12",
-                "Minimum pay is now pay per stop: each stop after the first pickup counts, so a 3-stop offer asks "
-                        + "twice your number.",
-                "Single orders are judged exactly as before; your number didn't change.",
+                "Minimum pay is now pay per stop, so an offer with more stops must pay more; your number didn't "
+                        + "change.",
                 "Learning keeps your best pay per stop.",
                 "Fewer empty gaps on the homepage, and the time-of-day chart comes back after each new offer.",
                 "No second card of ours beside Dasher's own offer notification: Dasher rings for offers itself.");
         release("0.6.13",
                 "A customer's name shown alone on a pickup screen is now masked in reports.");
+        release("0.6.14", PICKUP_COUNTED);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

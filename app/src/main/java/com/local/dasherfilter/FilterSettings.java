@@ -21,8 +21,9 @@ final class FilterSettings {
     final AcceptedFloors accepted;
     final boolean enabled;
     /**
-     * Minimum pay per stop, in cents (each stop after the first pickup, {@link AreaScore#payUnits}; 0.6.12). The field
-     * and its prefs key keep their old names ("flat"): the saved number is unchanged, a single order asks it once.
+     * Minimum pay per stop, in cents (each stop, the pickup included, {@link AreaScore#payUnits}; 0.6.12, the pickup
+     * counted from 0.6.14). The field and its prefs key keep their old names ("flat"), and the saved number never
+     * changed: a single order (Dasher's two stops) asks it twice, three stops three times.
      */
     final int flatCents;
     /** Minimum pay per mile, in cents per mile. */
@@ -148,13 +149,14 @@ final class FilterSettings {
     }
 
     /**
-     * Exact scoring policy identity; the changing bar and action switches are deliberately separate. ":ps" marks the
-     * pay minimum as pay per stop (0.6.12), so no plan or rules key from the minimum pay matches.
+     * Exact scoring policy identity; the changing bar and action switches are deliberately separate. ":pst" marks the
+     * pay minimum as pay per stop with the pickup counted (0.6.14; 0.6.12's rule C was ":ps"), so no plan or rules key
+     * from the minimum pay or rule C matches.
      */
     String scoringKey() {
         return flatCents + ":" + perMileCents + ":" + perMinuteCents + ":" + maxStops + ":"
                 + scoreByArea + ":" + acceptanceLearning + ":" + (acceptanceLearning ? accepted.stableKey() : "off")
-                + ":ps";
+                + ":pst";
     }
 
     FilterSettings withScoreByArea(boolean on) {

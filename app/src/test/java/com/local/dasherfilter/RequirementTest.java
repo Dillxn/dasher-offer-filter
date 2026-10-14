@@ -14,7 +14,7 @@ import static org.junit.Assert.assertTrue;
  * with the starter minimums: $4.00, $1.00 a mile and 25¢ a minute ($15 an hour).
  */
 public final class RequirementTest {
-    private static final FilterSettings STARTERS = FilterSettings.of(true, 400, 100, 25, 0);
+    private static final FilterSettings STARTERS = FilterSettings.of(true, 200, 100, 25, 0);
 
     private static OfferSnapshot offer(Integer pay, Double miles, Integer minutes) {
         return new OfferSnapshot(pay, miles, minutes, 2);
@@ -82,7 +82,7 @@ public final class RequirementTest {
 
     @Test
     public void overMaxStopsIsThetaZeroAndDeclinesAtEveryBar() {
-        FilterSettings rules = FilterSettings.of(true, 400, 100, 25, 3);
+        FilterSettings rules = FilterSettings.of(true, 200, 100, 25, 3);
         OfferSnapshot fourStops = new OfferSnapshot(9900, 5.0, 20, 4);
         assertEquals(0, AreaScore.passThreshold(rules, fourStops));
         for (int bar = 1; bar <= 200; bar++) {
@@ -143,7 +143,7 @@ public final class RequirementTest {
 
     @Test
     public void theHigherUserMinimumsGiveTheirOwnThetas() {
-        FilterSettings higher = FilterSettings.of(true, 500, 125, 35, 0);
+        FilterSettings higher = FilterSettings.of(true, 250, 125, 35, 0);
         int[] thetas = new int[WINDOW.length];
         for (int i = 0; i < WINDOW.length; i++) thetas[i] = AreaScore.passThreshold(higher, windowOffer(i));
         java.util.Arrays.sort(thetas);
@@ -161,7 +161,7 @@ public final class RequirementTest {
 
     @Test
     public void theOwnersMigratedMinimumsPassNoneOfTheWindowAtOneHundredAndFourAtFifty() {
-        FilterSettings owner = FilterSettings.of(true, 2040, 400, 48, 0);
+        FilterSettings owner = FilterSettings.of(true, 1020, 400, 48, 0);
         int highest = 0, at100 = 0, at50 = 0;
         for (int i = 0; i < WINDOW.length; i++) {
             int theta = AreaScore.passThreshold(owner, windowOffer(i));

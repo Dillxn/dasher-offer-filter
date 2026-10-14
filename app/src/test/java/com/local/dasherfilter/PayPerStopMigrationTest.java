@@ -24,9 +24,11 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The 0.6.12 move to pay per stop on real stored preferences: once, the saved number unchanged, a stored learned pay
- * best counted as one stop, "minimums since" restamped, one log line; and every 2-stop offer Dillon captured on 12
- * October judged exactly as the minimum pay judged it. Also the decision history's "payPer" and the knob's words.
+ * The 0.6.12 move to pay per stop on real stored preferences: once, a stored learned pay best counted as one stop,
+ * "minimums since" restamped, one log line; and every 2-stop offer Dillon captured on 12 October judged exactly as the
+ * minimum pay judged it at half the number per stop. A 0.6.11 install now also takes 0.6.14's step
+ * (PayPerStopPickupMigrationTest): the pickup counts, the number unchanged, and the best's stops rise by one. Also the
+ * decision history's "payPer" and the knob's words.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {35, 36})
@@ -60,24 +62,27 @@ public class PayPerStopMigrationTest {
                 .putInt(FilterStore.ACCEPTED_PAY, learnedPay).putLong("minimums_since", BEFORE).commit();
     }
 
-    @Test public void theSavedNumberStaysAndCountsPerStopOnce() {
+    @Test public void theMinimumPayBecomesPayPerStopOnce() {
         install0611(1300, 1500);
         FilterSettings rules = FilterStore.load(app);
+        // Both steps keep the number (0.6.14: a single order now asks it twice).
         assertEquals("the number is unchanged", 1300, rules.flatCents);
         assertEquals(1500, rules.accepted.highestPayCents);
-        assertEquals("a stored best counts as one stop", 1, rules.accepted.payUnits);
-        assertEquals(1, prefs().getInt(FilterStore.ACCEPTED_PAY_UNITS, 0));
-        assertEquals(1, prefs().getInt(FilterStore.PAY_PER_STOP_SCHEMA, 0));
-        assertEquals("evidence restarts", NOW, FilterStore.minimumsSince(app));
+        assertEquals("a stored best counts as one stop after the pickup: two stops", 2, rules.accepted.payUnits);
+        assertEquals(2, prefs().getInt(FilterStore.ACCEPTED_PAY_UNITS, 0));
+        assertEquals(2, prefs().getInt(FilterStore.PAY_PER_STOP_SCHEMA, 0));
+        // Both steps restart the evidence, each strictly after the one before (0.6.14's one millisecond later).
+        assertEquals("evidence restarts", NOW + 1, FilterStore.minimumsSince(app));
         String log = DiagnosticLog.read(app);
         assertTrue(log, log.contains(FilterStore.payPerStopLog(1300)));
-        assertTrue(log, log.contains("minimum pay $13.00 now counts per stop after the first pickup (single orders "
-                + "unchanged)"));
+        assertTrue(log, log.contains("minimum pay $13.00 is now a per-stop minimum"));
+        assertFalse(log, log.contains("after the first pickup"));
+        assertTrue(log, log.contains(FilterStore.PICKUP_COUNTED_LOG));
 
         // Idempotent: a second load changes nothing and logs nothing more.
         FilterStore.wallClock = () -> NOW + 60_000;
         assertEquals(1300, FilterStore.load(app).flatCents);
-        assertEquals(NOW, FilterStore.minimumsSince(app));
+        assertEquals(NOW + 1, FilterStore.minimumsSince(app));
         String again = DiagnosticLog.read(app);
         assertEquals(again, log.split("pay per stop:", -1).length, again.split("pay per stop:", -1).length);
     }
@@ -92,7 +97,7 @@ public class PayPerStopMigrationTest {
         prefs().edit().clear().commit();
         DiagnosticLog.clear(app);
         FilterStore.load(app);
-        assertEquals(1, prefs().getInt(FilterStore.PAY_PER_STOP_SCHEMA, 0));
+        assertEquals(2, prefs().getInt(FilterStore.PAY_PER_STOP_SCHEMA, 0));
         assertFalse(DiagnosticLog.read(app).contains("pay per stop:"));
     }
 
@@ -113,7 +118,8 @@ public class PayPerStopMigrationTest {
                 OfferSnapshot offer = new OfferSnapshot(pay, miles, minutes, 2);
                 for (int[] r : rulesSets) {
                     for (int bar : new int[] {82, 100, 119}) {
-                        FilterSettings rules = FilterSettings.of(true, r[0], r[1], r[2], 0)
+                        // 0.6.14 counts the pickup: half the minimum pay a stop (even here) asks the same of 2 stops.
+                        FilterSettings rules = FilterSettings.of(true, r[0] / 2, r[1], r[2], 0)
                                 .withMinimumScalePercent(bar);
                         // The minimum pay's own requirement: the highest of flat, miles × per mile, minutes × rate.
                         java.math.BigDecimal ask = java.math.BigDecimal.valueOf(r[0])
@@ -138,13 +144,15 @@ public class PayPerStopMigrationTest {
         DecisionLog.Entry entry = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts,
                 OfferRule.evaluate(facts, rules), DecisionLog.Action.PASSES, false, Collections.<String>emptyList());
         JSONObject json = entry.toJson();
-        assertEquals("stop", json.getJSONObject("rules").getString("payPer"));
+        assertEquals("stops", json.getJSONObject("rules").getString("payPer"));
         assertEquals(2, json.getJSONObject("rules").getJSONObject("accepted").getInt("payUnits"));
         DecisionLog.Entry back = DecisionLog.Entry.fromJson(json);
         assertNotNull(back.scoringRules);
         assertEquals(rules.scoringKey(), back.scoringRules.scoringKey());
         assertEquals(2, back.scoringRules.accepted.payUnits);
 
+        json.getJSONObject("rules").put("payPer", "stop");
+        assertNull("judged by rule C (0.6.12–0.6.13): no replayable rules", DecisionLog.Entry.fromJson(json).scoringRules);
         json.getJSONObject("rules").remove("payPer");
         assertNull("judged by the minimum pay: no replayable rules", DecisionLog.Entry.fromJson(json).scoringRules);
     }

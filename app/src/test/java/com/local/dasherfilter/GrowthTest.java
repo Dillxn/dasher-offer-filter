@@ -351,7 +351,8 @@ public final class GrowthTest {
                 .withAccepted(new AcceptedFloors(1000,1000,10,1000,40));
         assertTrue(Growth.learningDominates(learnedOnly)); assertNull(Growth.grown(learnedOnly,10));
         FilterSettings pay=rules(400,0,0,110).withAcceptanceLearning(true)
-                .withAccepted(new AcceptedFloors(1000,0,0,0,0));
+                .withAccepted(new AcceptedFloors(1000,2,0,0,0,0));
+        // A best of $10.00 for 2 stops asks $10.01 of 2 stops, the pickup included (0.6.14).
         assertEquals(1102,AreaScore.requiredPay(pay,new OfferSnapshot(2000,10.0,40,2),110));
         assertNull(Growth.grown(pay,10));
         assertNotNull(Growth.grown(pay.withAcceptanceLearning(false),10));

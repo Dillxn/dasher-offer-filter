@@ -69,7 +69,7 @@ import static org.junit.Assert.assertTrue;
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class AutopilotCommitAdapterTest {
     /** The starter minimums: $4 an offer, $1 a mile, $0.25 a minute ($15 an hour). */
-    private static final FilterSettings STARTER = FilterSettings.of(true, 400, 100, 25, 0);
+    private static final FilterSettings STARTER = FilterSettings.of(true, 200, 100, 25, 0);
     /** 6.6 mi and 27 min ask $6.75 at 100%: per hour asks the most. */
     private static final String ROUTE = "2 stops (6.6 mi) • 27 min";
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);
@@ -280,7 +280,7 @@ public final class AutopilotCommitAdapterTest {
 
     /** The user pauses auto-decline: the rules saved with it off, and a read asked for, as the mascot's pause does. */
     private void pause() {
-        FilterStore.save(app, FilterSettings.of(false, 400, 100, 25, 0));
+        FilterStore.save(app, FilterSettings.of(false, 200, 100, 25, 0));
         OfferFilterService.requestCheckForRules();
         pass(1_000);
         assertTrue(log(), log().contains("[screen] not reading Dasher while paused (auto-decline is off)"));

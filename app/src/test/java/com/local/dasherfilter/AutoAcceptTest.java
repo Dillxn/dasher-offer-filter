@@ -5,9 +5,9 @@ import static org.junit.Assert.*;
 
 public final class AutoAcceptTest {
     private final OfferSnapshot offer = new OfferSnapshot(2000, 4.0, 20, 2);
-    private final FilterSettings rules = FilterSettings.of(true, 1000, 100, 20, 4);
+    private final FilterSettings rules = FilterSettings.of(true, 500, 100, 20, 4);
     /** The starter minimums: $4.00, $1.00 a mile, 25¢ a minute ($15 an hour). */
-    private static final FilterSettings STARTERS = FilterSettings.of(true, 400, 100, 25, 0);
+    private static final FilterSettings STARTERS = FilterSettings.of(true, 200, 100, 25, 0);
 
     @Test public void optInCompleteStandaloneAndKeepAreAllRequired() {
         assertTrue(AutoAccept.eligible(offer, rules, true, false, false, 30));
@@ -33,7 +33,7 @@ public final class AutoAcceptTest {
         OfferSnapshot probe = new OfferSnapshot(200, 15.0, 40, 2);
         assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(probe, stopsOnly).result);
         assertFalse(AutoAccept.eligible(probe, stopsOnly, true, false, false, 30));
-        assertTrue(AutoAccept.eligible(new OfferSnapshot(1600, 15.0, 40, 2), stopsOnly.withMinimums(400, 100, 0),
+        assertTrue(AutoAccept.eligible(new OfferSnapshot(1600, 15.0, 40, 2), stopsOnly.withMinimums(200, 100, 0),
                 true, false, false, 30));
     }
 
@@ -71,11 +71,11 @@ public final class AutoAcceptTest {
     }
 
     @Test public void theRulesKeyIsTheMinimumsMaxStopsSwitchAndBar() {
-        assertEquals("true:1000:100:20:4:false:false:off:ps:100", AutoAccept.rulesKey(rules));
+        assertEquals("true:500:100:20:4:false:false:off:pst:100", AutoAccept.rulesKey(rules));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimumScalePercent(99)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimums(1001, 100, 20)));
-        assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimums(1000, 101, 20)));
-        assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimums(1000, 100, 21)));
+        assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimums(500, 101, 20)));
+        assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMinimums(500, 100, 21)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withMaxStops(3)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withEnabled(false)));
         assertNotEquals(AutoAccept.rulesKey(rules), AutoAccept.rulesKey(rules.withScoreByArea(true)));
@@ -84,7 +84,7 @@ public final class AutoAcceptTest {
                 AutoAccept.rulesKey(rules.withAccepted(new AcceptedFloors(1,0,0,0,0))));
         assertNotEquals(AutoAccept.rulesKey(rules.withAcceptanceLearning(true)),
                 AutoAccept.rulesKey(rules.withAcceptanceLearning(true).withAccepted(new AcceptedFloors(1,0,0,0,0))));
-        assertEquals("true:400:100:25:0:false:false:off:ps:82", AutoAccept.rulesKey(new FilterSettings(true, 400, 100, 25, 0, true, 70,
+        assertEquals("true:400:100:25:0:false:false:off:pst:82", AutoAccept.rulesKey(new FilterSettings(true, 400, 100, 25, 0, true, 70,
                 82)));
     }
 
@@ -104,7 +104,7 @@ public final class AutoAcceptTest {
         a.observe(offer, "same", rules, 30, 1, 1000, false);
         assertEquals(AutoAccept.State.WAIT, a.observe(offer, "changed", rules, 29, 1, 1800, false));
         assertEquals(AutoAccept.State.WAIT, a.observe(offer, "changed", rules, 29, 2, 2600, false));
-        assertEquals(AutoAccept.State.BLOCKED, a.observe(offer, "changed", rules.withMinimums(1050, 100, 20), 28, 2,
+        assertEquals(AutoAccept.State.BLOCKED, a.observe(offer, "changed", rules.withMinimums(525, 100, 20), 28, 2,
                 3400, false));
     }
 

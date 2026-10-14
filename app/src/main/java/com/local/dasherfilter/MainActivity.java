@@ -74,7 +74,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     static final String START_LINE = "Tap to start with typical minimums";
     static final String STARTER_TITLE = "Start with typical minimums?";
-    static final String STARTER_TEXT = "$4.00 per offer · $1.00 per mile · $15 per hour of trip time. These are "
+    static final String STARTER_TEXT = "$2.00 per stop ($4.00 for a single order) · $1.00 per mile · $15 per hour "
+            + "of trip time. These are "
             + "typical of Cincinnati offers seen in October 2026. Drag any knob to change them.";
     static final String STARTER_USE = "Use these";
     static final String STARTER_OWN = "Set my own";
@@ -1457,7 +1458,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * With no rule yet: "Start with typical minimums?" "Use these" saves $4.00, $1.00 a mile and $15 an hour (auto-decline
+     * With no rule yet: "Start with typical minimums?" "Use these" saves $2.00 a stop, $1.00 a mile and $15 an hour (auto-decline
      * stays paused; the mascot turns it on) and asks for Autopilot's goal; "Set my own" makes the hollow knobs beckon
      * (in a window too short for them, it says how to reach them).
      */
@@ -1474,7 +1475,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * Typical minimums ($4.00, $1.00 a mile, $15 an hour), max stops and the switch as they are, logged as chosen from
+     * Typical minimums ($2.00 a stop, $1.00 a mile, $15 an hour), max stops and the switch as they are, logged as chosen from
      * {@code where}. With Autopilot on its bar goes back to exactly 100% first, so its plan for them starts there (the
      * owner's decision D1). Minimums that are the typical ones already change nothing: the bar stays where Autopilot
      * has it and no change is noted (nothing was changed).
@@ -1506,7 +1507,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
     }
 
-    /** "Typical minimums set: $4/stop · $1/mi · $15/hr". */
+    /** "Typical minimums set: $2/stop · $1/mi · $15/hr". */
     private static String typicalSet() {
         return "Typical minimums set: " + DecisionLog.shortMoney(Autopilot.STARTER_FLAT_CENTS) + "/stop · "
                 + DecisionLog.shortMoney(Autopilot.STARTER_PER_MILE_CENTS) + "/mi · "

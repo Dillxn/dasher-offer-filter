@@ -82,7 +82,7 @@ public class AutopilotFloorRuntimeTest {
      * 50%.
      */
     private void pinned() {
-        FilterStore.save(app, FilterSettings.of(true, 500, 318, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 250, 318, 0, 0));
         FilterSettings decided = FilterStore.load(app).withMinimumScalePercent(50);
         for (int i = 98; i >= 0; i--) {
             line(new OfferSnapshot(500 + i, 7.2, 27, 2), wall - (5 + 3L * i) * MIN, decided);
@@ -219,7 +219,7 @@ public class AutopilotFloorRuntimeTest {
         userLater();
         FilterSettings before = FilterStore.load(app);
         // $5.10 a ride asks nothing more of 7.2 mi: his offer still scores 63, but the change is his.
-        FilterStore.save(app, before, before.withMinimums(510, 318, 0));
+        FilterStore.save(app, before, before.withMinimums(255, 318, 0));
         AutopilotRuntime.rulesChanged(app);
         releasedWith("you changed your minimums");
     }
@@ -342,7 +342,7 @@ public class AutopilotFloorRuntimeTest {
         zone = new MiddayZone(wall);
         long since = wall - 3 * 24 * HOUR;
         FilterStore.wallClock = () -> since;
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 3));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 112));
         FilterStore.wallClock = () -> wall;
@@ -373,7 +373,7 @@ public class AutopilotFloorRuntimeTest {
         assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
         assertEquals(150, bar());
         assertEquals("commit 112% -> 150% (you accepted an offer at this score)", lastCommit());
-        assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertArrayEquals(new int[] {200, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
         assertNull(AutopilotStore.lastGrowth(app));
     }
 }

@@ -94,8 +94,8 @@ final class MinimumsDetails {
         List<String> values = new ArrayList<>();
         if (best.highestPayCents > 0) values.add(best.payUnits == 1
                 ? "Best pay per stop " + DecisionLog.money(best.highestPayCents) + " (learned pay asks one cent more)"
-                : "Best pay per stop: " + DecisionLog.money(best.highestPayCents) + " for " + (best.payUnits + 1)
-                        + " stops, " + best.payUnits + " after the first pickup (learned pay asks one cent more)");
+                : "Best pay per stop: " + DecisionLog.money(best.highestPayCents) + " for " + best.payUnits
+                        + " stops, the pickup included (learned pay asks one cent more)");
         if (best.hasPerMile()) values.add("Best mileage rate: " + DecisionLog.money(best.milePay)
                 + " for " + miles(best.miles) + " mi");
         if (best.hasPerMinute()) values.add("Best time rate: " + DecisionLog.money(best.minutePay)
@@ -158,7 +158,7 @@ final class MinimumsDetails {
     }
 
     /**
-     * "Pay per stop — set $26.00 (3 stops: 2 × $13.00, the first pickup not counted) · used ≈$21.32", "Per mile — set
+     * "Pay per stop — set $15.00 (3 stops: 3 × $5.00) · used ≈$12.30", "Per mile — set
      * $6.60 (6.6 mi × $1.00) · used ≈$5.42", or unread ("Pay per stop — $13.00 a stop; stops not read (at least
      * $13.00)").
      */
@@ -175,8 +175,7 @@ final class MinimumsDetails {
         String how = axis == AreaScore.MILE ? " (" + miles(facts.miles) + " mi × " + DecisionLog.money(rate) + ")"
                 : axis == AreaScore.MINUTE ? " (" + facts.minutes + " min × " + perHour(rate) + ")"
                 : AreaScore.payUnits(facts.stops) == 1 ? "" : " (" + facts.stops + " stops: "
-                        + AreaScore.payUnits(facts.stops) + " × " + DecisionLog.money(rate)
-                        + ", the first pickup not counted)";
+                        + AreaScore.payUnits(facts.stops) + " × " + DecisionLog.money(rate) + ")";
         String line = name + " — set " + amount(set, approximate) + how;
         if (bar == FilterSettings.BAR_AT_MINIMUMS) return line;
         approximate[0] = true;

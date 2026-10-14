@@ -156,7 +156,7 @@ final class Growth {
     static boolean learningDominates(FilterSettings rules) {
         if (rules == null || !rules.acceptanceLearning) return false;
         AcceptedFloors proof = rules.accepted;
-        // The learned pay ask for one stop after the first pickup, best pay ÷ its units + 1¢, beats pay per stop.
+        // The learned pay ask for one stop (the pickup counts as one), best pay ÷ its units + 1¢, beats pay per stop.
         return proof.highestPayCents > 0
                 && (long) proof.highestPayCents + proof.payUnits > (long) rules.flatCents * proof.payUnits
                 || proof.hasPerMile() && BigDecimal.valueOf(rules.perMileCents)

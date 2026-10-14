@@ -169,7 +169,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         // Split screen by night (a dash after dark), the whole screen by day: both skies pictured.
         Appearance.choose(app, split ? Appearance.Mode.NIGHT : Appearance.Mode.DAY);
         dasherInstalled();
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 0));
         DecisionLog.Entry latest = declinedEntry();
         DecisionLog.record(app, latest);
         sweep(name + "-setup", widthDp, split, fontScale, latest, true, setupFromDp);
@@ -429,7 +429,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         AutopilotRuntime.executorForTests = Runnable::run;
         Appearance.choose(app, Appearance.Mode.NIGHT);
         dasherInstalled();
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 3));
         DecisionLog.record(app, declinedEntry());
         servicesUp();
         AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
@@ -619,7 +619,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         RuntimeEnvironment.setFontScale(2f);
         AutopilotRuntime.executorForTests = Runnable::run;
         dasherInstalled();
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 3));
         servicesUp();
         AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         String[] agos = {"just now", "1 min ago", "12 min ago", "59 min ago", "1 h ago"};
@@ -715,7 +715,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         AutopilotRuntime.executorForTests = Runnable::run;
         Appearance.choose(app, Appearance.Mode.NIGHT);
         dasherInstalled();
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 3));
         DecisionLog.record(app, declinedEntry());
         servicesUp();
         AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);

@@ -46,7 +46,7 @@ public final class StalledDeclineTest {
     @Before public void setup() {
         app = RuntimeEnvironment.getApplication();
         Updater.setEnabled(app, false);
-        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         DiagnosticLog.clear(app);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
@@ -306,7 +306,7 @@ public final class StalledDeclineTest {
         List<Long> declined = taps(decline);
         // As the homepage's knob does: save, then ask for the rules' read (queued behind the read under way).
         duringNextRead(() -> {
-            FilterStore.save(app, FilterStore.load(app).withMinimums(500, 0, 0));
+            FilterStore.save(app, FilterStore.load(app).withMinimums(250, 0, 0));
             OfferFilterService.requestCheckForRules();
         });
         show(offered);
@@ -324,7 +324,7 @@ public final class StalledDeclineTest {
     @Test public void aStricterMinimumSavedDuringTheFirstReadStillDeclinesUnderIt() {
         AccessibilityNodeInfo offered = offer("$7.90", "0:35");
         List<Long> declined = taps(decline);
-        duringNextRead(() -> FilterStore.save(app, FilterStore.load(app).withMinimums(2500, 0, 0)));
+        duringNextRead(() -> FilterStore.save(app, FilterStore.load(app).withMinimums(1250, 0, 0)));
         show(offered);
         pass(300);
         assertEquals("declined once, by the read under the rules now saved, within the quiet gap", 1, declined.size());

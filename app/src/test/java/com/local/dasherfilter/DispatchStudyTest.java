@@ -13,7 +13,8 @@ import org.robolectric.annotation.Config;
 @Config(sdk = {35, 36})
 public class DispatchStudyTest {
     static final long WALL = 1_800_000_000_000L;
-    static FilterSettings rules(int pay) { return FilterSettings.of(true, pay, 0, 0, 0); }
+    // The single-order ask; pay per stop is half, a single order being 2 stops, the pickup included (0.6.14).
+    static FilterSettings rules(int pay) { return FilterSettings.of(true, pay / 2, 0, 0, 0); }
     static OfferSnapshot offer(int pay) { return new OfferSnapshot(pay, 3.0, 15, 2); }
     private static void waiting(DispatchStudy m, long at) {
         m.screen(at, WALL + at, 1, true, DasherScene.WAITING, null, false, false, rules(1000), false);
@@ -75,7 +76,7 @@ public class DispatchStudyTest {
         for (boolean enabled : new boolean[] {true, false}) {
             DispatchStudy m = new DispatchStudy(); waiting(m, 0); ticks(m, 5000, 10_000);
             m.screen(300_000, WALL + 300_000, 1, false, DasherScene.WAITING, null, false, false,
-                    FilterSettings.of(enabled, 1000, 0, 0, 0), false);
+                    FilterSettings.of(enabled, 500, 0, 0, 0), false);
             assertEquals(10_000, m.rows.get(0).observedMs);
             assertEquals(enabled ? DispatchStudy.Reason.COVERAGE_LOST : DispatchStudy.Reason.PAUSED,
                     m.rows.get(0).reason);

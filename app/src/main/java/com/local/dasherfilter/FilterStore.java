@@ -83,11 +83,13 @@ final class FilterStore {
     private static final int AUTOPILOT_SCHEMA_NOW = 1;
     /**
      * The pay minimum is pay per stop (0.6.12; the owner, 13 October 2026: "swap overall payout for pay per stop"): 1
-     * once {@link #initializePayPerStop} has run. The saved number is unchanged; it now counts for each stop after the
-     * first pickup.
+     * once {@link #initializePayPerStop}'s first step has run (0.6.12's rule C, max(1, stops − 1), the saved number
+     * unchanged); 2 once its second step has run (0.6.14; the owner, 14 October 2026: "i don't want the pay per stop to
+     * not count the pickup"): every stop counts, the pickup included; the saved number is unchanged.
      */
     static final String PAY_PER_STOP_SCHEMA = "pay_per_stop_schema";
-    private static final int PAY_PER_STOP_SCHEMA_NOW = 1;
+    private static final int PAY_PER_STOP_SCHEMA_RULE_C = 1;
+    private static final int PAY_PER_STOP_SCHEMA_NOW = 2;
     /**
      * Test seam: whether {@link #initializeAutopilot} turns Autopilot on. On in the app. Tests written before 0.6.2 run
      * as an install whose user keeps Autopilot off (ConsentedTestApp turns this off); AutopilotDefaultTest turns it
@@ -97,7 +99,7 @@ final class FilterStore {
     static final String AREA_MODE = "area_mode_v3";
     static final String ACCEPTANCE_LEARNING = "acceptance_learning_v3";
     static final String ACCEPTED_PAY = "accepted_v3_pay";
-    /** The pay best's stops after the first pickup ({@link AreaScore#payUnits}; 0.6.12); 1 when absent. */
+    /** The pay best's stops, the pickup included ({@link AreaScore#payUnits}; 0.6.14); 1 when absent. */
     static final String ACCEPTED_PAY_UNITS = "accepted_v3_pay_units";
     static final String ACCEPTED_MILE_PAY = "accepted_v3_mile_pay";
     static final String ACCEPTED_MILES = "accepted_v3_miles";
@@ -187,21 +189,22 @@ final class FilterStore {
     }
 
     /**
-     * Pay per stop (0.6.12), once: the saved pay minimum keeps its number and now counts for each stop after the first
-     * pickup, so a single order is judged exactly as before. A stored learned pay best counts as one stop. With a money
+     * Pay per stop's first step (0.6.12's rule C, max(1, stops − 1)), once: the saved pay minimum keeps its number and
+     * becomes a per-stop minimum. A stored learned pay best counts as one unit. Always followed at once by
+     * {@link #initializePickupCounted}, which makes every stop count (0.6.14). With a money
      * minimum or a learned pay best, "minimums since" moves to now: lines judged by the minimum pay say nothing about
      * pay per stop ({@link Growth}). Adoption, the learned raise's note, growth records, auto-accept, auto-decline and
      * Autopilot stay as they are. One fixed line in the diagnostic log, outside the lock; never Autopilot's runtime
      * (whose lock is taken before this class's).
      */
-    private static void initializePayPerStop(Context context, SharedPreferences prefs) {
-        if (prefs.getInt(PAY_PER_STOP_SCHEMA, 0) >= PAY_PER_STOP_SCHEMA_NOW) return;
+    private static void initializeRuleC(Context context, SharedPreferences prefs) {
+        if (prefs.getInt(PAY_PER_STOP_SCHEMA, 0) >= PAY_PER_STOP_SCHEMA_RULE_C) return;
         int flat;
         boolean stored = false;
         synchronized (FilterStore.class) {
-            if (prefs.getInt(PAY_PER_STOP_SCHEMA, 0) >= PAY_PER_STOP_SCHEMA_NOW) return;
+            if (prefs.getInt(PAY_PER_STOP_SCHEMA, 0) >= PAY_PER_STOP_SCHEMA_RULE_C) return;
             for (String key : RULE_KEYS) stored |= prefs.contains(key);
-            SharedPreferences.Editor edit = prefs.edit().putInt(PAY_PER_STOP_SCHEMA, PAY_PER_STOP_SCHEMA_NOW);
+            SharedPreferences.Editor edit = prefs.edit().putInt(PAY_PER_STOP_SCHEMA, PAY_PER_STOP_SCHEMA_RULE_C);
             flat = prefs.getInt(FLAT, 0);
             int learnedPay = prefs.getInt(ACCEPTED_PAY, 0);
             if (learnedPay > 0 && !prefs.contains(ACCEPTED_PAY_UNITS)) edit.putInt(ACCEPTED_PAY_UNITS, 1);
@@ -214,11 +217,68 @@ final class FilterStore {
         if (stored && context != null) DiagnosticLog.log(context, "rules", payPerStopLog(flat));
     }
 
-    /** The migration's one line: "pay per stop: minimum pay $13.00 now counts per stop after the first pickup …". */
+    /**
+     * Pay per stop (0.6.12, the pickup counted from 0.6.14), once each, in order: rule C's step, then the pickup's.
+     */
+    private static void initializePayPerStop(Context context, SharedPreferences prefs) {
+        initializeRuleC(context, prefs);
+        initializePickupCounted(context, prefs);
+    }
+
+    /**
+     * Rule C's one line: "pay per stop: minimum pay $13.00 is now a per-stop minimum". From 0.6.14 the pickup step's
+     * line ({@link #PICKUP_COUNTED_LOG}) always follows it and says how stops are counted.
+     */
     static String payPerStopLog(int flatCents) {
         return "pay per stop: " + (flatCents > 0 ? "minimum pay " + DecisionLog.money(flatCents)
-                + " now counts per stop after the first pickup (single orders unchanged)" : "no pay minimum set");
+                + " is now a per-stop minimum" : "no pay minimum set");
     }
+
+    /**
+     * Pay per stop counts the pickup (0.6.14), once, after rule C's step: every stop Dasher shows counts, the pickup
+     * included, so a single order (Dasher's two stops) asks the number twice (the owner, 14 October 2026: "if I say I
+     * want $5 per stop then a single pickup and single dropoff dash would require $10"). The saved number is untouched.
+     * A stored learned pay best's units become units + 1 (its stop count rises by one under the new count, so its floor
+     * stays the accepted pay ÷ that offer's own stops + 1¢), in the learned raise's note too, so the note still matches.
+     * With a money minimum or a learned pay best, "minimums since" moves to now ({@link Growth}). One fixed line in the
+     * diagnostic log, outside the lock, none on a new install; never Autopilot's runtime.
+     */
+    private static void initializePickupCounted(Context context, SharedPreferences prefs) {
+        if (prefs.getInt(PAY_PER_STOP_SCHEMA, 0) >= PAY_PER_STOP_SCHEMA_NOW) return;
+        boolean stored = false;
+        synchronized (FilterStore.class) {
+            if (prefs.getInt(PAY_PER_STOP_SCHEMA, 0) >= PAY_PER_STOP_SCHEMA_NOW) return;
+            for (String key : RULE_KEYS) stored |= prefs.contains(key);
+            SharedPreferences.Editor edit = prefs.edit().putInt(PAY_PER_STOP_SCHEMA, PAY_PER_STOP_SCHEMA_NOW);
+            int flat = prefs.getInt(FLAT, 0);
+            int learnedPay = prefs.getInt(ACCEPTED_PAY, 0);
+            if (learnedPay > 0) {
+                edit.putInt(ACCEPTED_PAY_UNITS, Math.max(1, prefs.getInt(ACCEPTED_PAY_UNITS, 1)) + 1);
+                String note = pickupCountedRaise(prefs.getString(LEARNED_RAISE, null));
+                if (note != null) edit.putString(LEARNED_RAISE, note);
+                else edit.remove(LEARNED_RAISE);
+            }
+            if (flat > 0 || prefs.getInt(PER_MILE, 0) > 0 || prefs.getInt(PER_MINUTE, 0) > 0 || learnedPay > 0) {
+                policyChangedSince(prefs, edit);
+            }
+            edit.commit();
+        }
+        if (stored && context != null) DiagnosticLog.log(context, "rules", PICKUP_COUNTED_LOG);
+    }
+
+    /** The learned raise's note with its pay best's units + 1, or null when there is no note or it is unreadable. */
+    private static String pickupCountedRaise(String raw) {
+        if (raw == null) return null;
+        try {
+            JSONObject json = new JSONObject(raw);
+            if (json.optInt("pay", 0) > 0) json.put("payUnits", Math.max(1, json.optInt("payUnits", 1)) + 1);
+            return json.toString();
+        } catch (JSONException malformed) { return null; }
+    }
+
+    /** The pickup step's one line (0.6.14). */
+    static final String PICKUP_COUNTED_LOG = "pay per stop now counts every stop, the pickup included (number "
+            + "unchanged, so a single order asks twice what it did)";
 
     /** "Minimums since" for an install that has none yet (one from before 0.5.1, or a new one): now. */
     private static void stampMinimumsSince(SharedPreferences prefs) {
@@ -484,6 +544,8 @@ final class FilterStore {
         private final boolean storedAutopilot;
         private final boolean storedGoal;
         private final boolean storedBar;
+        /** The pay-per-stop step already stored (a downgrade and upgrade): never moved back. */
+        private final int storedPayPerStop;
 
         private Migration(Map<String, ?> stored) {
             boolean anyRule = false;
@@ -519,6 +581,7 @@ final class FilterStore {
             storedAutopilot = stored.containsKey(AUTOPILOT_ON);
             storedGoal = stored.containsKey(AUTOPILOT_GOAL);
             storedBar = stored.containsKey(AUTOPILOT_BAR);
+            storedPayPerStop = integer(stored.get(PAY_PER_STOP_SCHEMA), 0);
         }
 
         /** The migration of these stored values (prefs "offer_filter", as {@code getAll()} returns them). */
@@ -553,8 +616,11 @@ final class FilterStore {
             if (!storedBar) edit.putInt(AUTOPILOT_BAR, FilterSettings.BAR_AT_MINIMUMS);
             edit.putInt(RULES_MODEL, MODEL);
             // Rules moved to model 2 here are judged per stop from the start (0.6.12): their notice and line say what
-            // changed, and the minimums' time is stamped with them; the pay-per-stop step has nothing left to say.
-            edit.putInt(PAY_PER_STOP_SCHEMA, PAY_PER_STOP_SCHEMA_NOW);
+            // changed, and the minimums' time is stamped with them; rule C's step has nothing left to say. The pickup
+            // step (0.6.14) still runs after and says that every stop now counts.
+            // A phone that went back to an older version and forward again keeps the step it had: the pickup step
+            // runs once only.
+            edit.putInt(PAY_PER_STOP_SCHEMA, Math.max(storedPayPerStop, PAY_PER_STOP_SCHEMA_RULE_C));
             if (notice()) {
                 edit.putString(MODEL_NOTICE, noticeJson())
                         .putString(LAST_STATUS, stamped("Rules simplified for " + RELEASE));
@@ -1100,8 +1166,8 @@ final class FilterStore {
     }
 
     /**
-     * What {@code bests} ask in the knobs' units, Adopt's arithmetic: {⌈(pay + 1¢) ÷ its stops after the first
-     * pickup⌉, ⌈pay ÷ miles⌉, ⌈pay ÷ minutes⌉}.
+     * What {@code bests} ask in the knobs' units, Adopt's arithmetic: {⌈(pay + 1¢) ÷ its stops, the pickup
+     * included⌉, ⌈pay ÷ miles⌉, ⌈pay ÷ minutes⌉}.
      */
     private static int[] adoptedAsks(AcceptedFloors a) {
         return new int[] {

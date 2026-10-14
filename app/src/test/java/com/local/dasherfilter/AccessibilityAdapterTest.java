@@ -52,7 +52,7 @@ public class AccessibilityAdapterTest {
     public void setup() {
         app = RuntimeEnvironment.getApplication();
         Updater.setEnabled(app, false);
-        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         DecisionLog.forgetCache();
         OfferSilencer.forgetCache();
         // Reads run on the main looper here, so each event is read before show() returns; ScannerThreadTest runs
@@ -880,7 +880,7 @@ public class AccessibilityAdapterTest {
     @Test
     public void pauseRevokesPendingConfirmation() {
         show(offer("$7.90"));
-        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 1000, 0, 0, 0));
 
         AccessibilityNodeInfo confirm = node("Decline offer", true);
         show(confirmation(confirm));
@@ -926,7 +926,7 @@ public class AccessibilityAdapterTest {
     public void pausedNothingOfDasherIsReadSoNothingIsDeclinedOrRecorded() {
         // Paused is the safe mode (the 6 October 2026 incident): not one node of Dasher's is read, so an offer is
         // neither declined nor written to the history, and the status says so.
-        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 1000, 0, 0, 0));
         AccessibilityNodeInfo root = offer("$7.90");
         show(root);
         assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
@@ -1007,7 +1007,7 @@ public class AccessibilityAdapterTest {
 
     @Test
     public void acceptingAStandaloneOfferRecordsItsAcceptanceAndRoute() {
-        FilterSettings rules = FilterSettings.of(true, 2000, 0, 0, 0);
+        FilterSettings rules = FilterSettings.of(true, 1000, 0, 0, 0);
         FilterStore.save(app, rules);
         show(offer("$25.00"));
         AccessibilityEvent tap = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_CLICKED);
@@ -1037,7 +1037,7 @@ public class AccessibilityAdapterTest {
     @Test
     public void aConfirmedAcceptanceTeachesNothingAndStillCountsAfterReload() {
         // Autopilot's bar at 75%: an acceptance changes neither it nor the minimums.
-        FilterSettings rules = FilterSettings.of(true, 2000, 0, 0, 0);
+        FilterSettings rules = FilterSettings.of(true, 1000, 0, 0, 0);
         FilterStore.save(app, rules);
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 75));
@@ -1060,7 +1060,7 @@ public class AccessibilityAdapterTest {
     public void anAcceptanceBelowTheMinimumsIsTheUsersAndSurvivesHistoryReload() {
         // $25.00 against a $30 minimum is 83% of it: it passes only Autopilot's 82% bar, so it is left to the user,
         // whose own Accept is counted as theirs, at the bar it was decided at.
-        FilterSettings rules = FilterSettings.of(true, 3000, 0, 0, 0);
+        FilterSettings rules = FilterSettings.of(true, 1500, 0, 0, 0);
         FilterStore.save(app, rules);
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
@@ -1086,7 +1086,7 @@ public class AccessibilityAdapterTest {
     @Test
     public void anAcceptanceThatCannotBeCountedSaysWhyInTheLog() {
         // Counted: the log says how it was seen, and nothing of learning.
-        FilterSettings rules = FilterSettings.of(true, 2000, 0, 0, 0);
+        FilterSettings rules = FilterSettings.of(true, 1000, 0, 0, 0);
         FilterStore.save(app, rules);
         show(offer("$25.00"));
         userTaps("Accept");
@@ -1128,7 +1128,7 @@ public class AccessibilityAdapterTest {
     @Test
     public void aManualDeclineCountsAsTheUsersOnceTheNextOfferArrivesAndTeachesNothing() {
         // For $14.00 over 7.2 mi, $1.50/mi asks $10.80 and the $7 minimum asks $7: it passes.
-        FilterSettings rules = FilterSettings.of(true, 700, 150, 0, 0);
+        FilterSettings rules = FilterSettings.of(true, 350, 150, 0, 0);
         FilterStore.save(app, rules);
         show(offer("$14.00"));
         assertTrue("it passes the rules", Shadows.shadowOf(decline).getPerformedActions().isEmpty());
@@ -1149,7 +1149,7 @@ public class AccessibilityAdapterTest {
 
     @Test
     public void aDeclineJustBeforeEndingTheDashCountsNothing() {
-        FilterSettings rules = FilterSettings.of(true, 700, 150, 0, 0);
+        FilterSettings rules = FilterSettings.of(true, 350, 150, 0, 0);
         FilterStore.save(app, rules);
         show(offer("$14.00"));
         userTaps("Decline");
@@ -1163,7 +1163,7 @@ public class AccessibilityAdapterTest {
 
     @Test
     public void theAppsOwnDeclinesAreNeverTheUsersAndNothingIsReadWhilePaused() {
-        FilterSettings rules = FilterSettings.of(true, 2000, 0, 0, 0);
+        FilterSettings rules = FilterSettings.of(true, 1000, 0, 0, 0);
         FilterStore.save(app, rules);
         show(offer("$7.90"));
         assertFalse("the app declines the failing offer", Shadows.shadowOf(decline).getPerformedActions().isEmpty());
@@ -1174,7 +1174,7 @@ public class AccessibilityAdapterTest {
         assertNoLesson(line(790));
 
         // Auto-decline paused: nothing of Dasher's is read, so a decline by hand then has no line to count on.
-        FilterSettings paused = FilterSettings.of(false, 700, 150, 0, 0);
+        FilterSettings paused = FilterSettings.of(false, 350, 150, 0, 0);
         FilterStore.save(app, paused);
         int lines = DecisionLog.recent(app, 50).size();
         show(offer("$14.00"));
@@ -1308,7 +1308,7 @@ public class AccessibilityAdapterTest {
     @Test
     public void anOfferWhoseTotalAndPlusAmountTogetherStillFailIsDeclinedAtOnce() {
         // The report's rules and its "+$1 · $7.35" screen: pay is $7.35, $8.35 or $1, all below $10.
-        FilterStore.save(app, FilterSettings.of(true, 1000, 100, 0, 3));
+        FilterStore.save(app, FilterSettings.of(true, 500, 100, 0, 3));
         show(partialOffer("+$1", "$7.35", "incl. tips", "2 stops (7.1 mi) • 23 min",
                 "Guaranteed earnings for completing the offer."));
         assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
@@ -1321,7 +1321,7 @@ public class AccessibilityAdapterTest {
 
     @Test
     public void anOfferWithAPlusAmountThatMayPassIsLeftToTheDasher() {
-        FilterSettings rules = FilterSettings.of(true, 1000, 100, 0, 3);
+        FilterSettings rules = FilterSettings.of(true, 500, 100, 0, 3);
         FilterStore.save(app, rules);
         show(partialOffer("+$1", "$10.60", "incl. tips", "2 stops (5.3 mi) • 30 min"));
         assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());

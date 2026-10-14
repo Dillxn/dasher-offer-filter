@@ -74,7 +74,7 @@ public class NeverStarveStressTest {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);
-        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         DiagnosticLog.clear(app);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
@@ -610,7 +610,7 @@ public class NeverStarveStressTest {
 
     @Test
     public void pausedNothingOfDasherIsReadNotOneNode() {
-        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 1000, 0, 0, 0));
         OfferFilterService service = service();
         cost(2);
         AccessibilityNodeInfo root = mapScreen();
@@ -643,7 +643,7 @@ public class NeverStarveStressTest {
         assertEquals(log, 1, count(log, "[screen] not reading Dasher while paused (auto-decline is off)"));
 
         // Resumed: the offer is read and declined at once.
-        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         OfferFilterService.requestCheckFromNotification();
         idle();
         assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
@@ -658,7 +658,7 @@ public class NeverStarveStressTest {
         assertTrue("over the wait for offers the tab takes touches", tabTakesTouches(service));
         int reads = service.contentReads;
         int roots = service.rootFetches;
-        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 1000, 0, 0, 0));
         OfferFilterService.requestCheckForRules();
         idle();
         // Paused with nothing changed since the last read: the read the pause asked for is not made, and what the last
@@ -682,7 +682,7 @@ public class NeverStarveStressTest {
         assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
 
         // Resumed (a rules check, 150 ms after the pause's at the soonest): read again; the offer is declined.
-        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         OfferFilterService.requestCheckForRules();
         pass(OfferFilterService.QUIET_SCAN_GAP_MS);
         assertEquals(1, Shadows.shadowOf(decline).getPerformedActions().size());
@@ -692,7 +692,7 @@ public class NeverStarveStressTest {
     public void pausedAndAnyWindowChangedTheTabTakesNoTouchesThoughDasherSentNothing() {
         OfferFilterService service = service();
         show(service, smallIdle());
-        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 1000, 0, 0, 0));
         OfferFilterService.requestCheckForRules();
         idle();
         assertTrue(tabTakesTouches(service));

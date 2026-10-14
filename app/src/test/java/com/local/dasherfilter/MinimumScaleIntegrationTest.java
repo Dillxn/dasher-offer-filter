@@ -34,7 +34,7 @@ import static org.junit.Assert.*;
 @LooperMode(LooperMode.Mode.PAUSED)
 public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
     /** $10, $2 a mile, $0.30 a minute, at most 3 stops (their $1 a stop folds into minimum pay: 2 × $1 < $10). */
-    private static final FilterSettings RULES = FilterSettings.of(true, Math.max(1000, 2 * 100), 200, 30, 3);
+    private static final FilterSettings RULES = FilterSettings.of(true, Math.max(1000, 2 * 100) / 2, 200, 30, 3);
 
     /** Autopilot on, and the bar it moved to: as a commit between offers leaves it. */
     private void autopilotBarAt(int bar) {
@@ -70,15 +70,15 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
         autopilotBarAt(97);
         FilterSettings current = FilterStore.load(app);
         for (FilterSettings copy : new FilterSettings[] {current.withEnabled(false), current.withMaxStops(2),
-                current.withMinimums(1100, 250, 40), current.withMinimums(new int[] {1100, 250, 40})}) {
+                current.withMinimums(550, 250, 40), current.withMinimums(new int[] {1100, 250, 40})}) {
             assertEquals(97, copy.minimumScalePercent);
             assertTrue(copy.autopilot);
         }
         // Saving other minimums or max stops keeps the bar: only Autopilot (or turning it off) moves it.
-        FilterStore.save(app, current.withMinimums(1100, 250, 40).withMaxStops(2));
+        FilterStore.save(app, current.withMinimums(550, 250, 40).withMaxStops(2));
         FilterSettings saved = FilterStore.load(app);
         assertEquals(97, saved.minimumScalePercent);
-        assertArrayEquals(new int[] {1100, 250, 40, 0, 0, 0}, saved.minimums());
+        assertArrayEquals(new int[] {550, 250, 40, 0, 0, 0}, saved.minimums());
         assertEquals(2, saved.maxStops);
         FilterStore.save(app, saved.withEnabled(false));
         assertEquals("pausing keeps the bar", 97, FilterStore.load(app).minimumScalePercent);
@@ -176,7 +176,7 @@ public class MinimumScaleIntegrationTest extends AndroidAdapterTestBase {
         // Equal $10 asks from minimum pay, per mile (4 mi × $2.50) and per minute (20 min × $0.50) make the skyline's
         // recorded score and the bar directly comparable in this synthetic preview; their $5 a stop folds into minimum
         // pay (2 × $5 = $10).
-        FilterSettings previewRules = FilterSettings.of(true, Math.max(1000, 2 * 500), 250, 50, 3);
+        FilterSettings previewRules = FilterSettings.of(true, Math.max(1000, 2 * 500) / 2, 250, 50, 3);
         FilterStore.save(app, previewRules);
         autopilotBarAt(97);
         FilterSettings atBar = FilterStore.load(app);

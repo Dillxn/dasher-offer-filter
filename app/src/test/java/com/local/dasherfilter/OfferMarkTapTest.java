@@ -41,7 +41,7 @@ import static org.junit.Assert.assertTrue;
 @Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 public class OfferMarkTapTest extends AndroidAdapterTestBase {
-    private static final FilterSettings RULES = FilterSettings.of(true, 500, 300, 20, 3);
+    private static final FilterSettings RULES = FilterSettings.of(true, 250, 300, 20, 3);
     /** The newest offer is mark 0, the older one mark 1. */
     private static final int NEWEST = 0;
     private static final int OLDER = 1;

@@ -49,11 +49,11 @@ public class AcceptanceEvidenceTest {
      * The user's own kind of rules: $13, $3.85 a mile, $0.41 a minute ($24.60 an hour), at most 3 stops. Their $4.75 a
      * stop folds into minimum pay as 2 × $4.75 = $9.50, below the $13 already asked.
      */
-    private static final FilterSettings RULES = FilterSettings.of(true, Math.max(1300, 2 * 475), 385, 41, 3);
+    private static final FilterSettings RULES = FilterSettings.of(true, Math.max(1300, 2 * 475) / 2, 385, 41, 3);
     /** $7, $1.50 a mile: a $14.00 offer for 7.2 mi passes (it needs $10.80). */
-    private static final FilterSettings PER_MILE = FilterSettings.of(true, 700, 150, 0, 0);
+    private static final FilterSettings PER_MILE = FilterSettings.of(true, 350, 150, 0, 0);
     /** $20 at least: a $7.90 offer fails, a $25.00 one passes. */
-    private static final FilterSettings TWENTY = FilterSettings.of(true, 2000, 0, 0, 0);
+    private static final FilterSettings TWENTY = FilterSettings.of(true, 1000, 0, 0, 0);
 
     private Application app;
     private ServiceController<OfferFilterService> controller;
@@ -468,7 +468,7 @@ public class AcceptanceEvidenceTest {
         FilterStore.save(app, RULES.withEnabled(false));
         FilterStore.save(app, RULES);
         String report = DiagnosticLog.report(app);
-        contains(report, "flat cents=1300");
+        contains(report, "flat cents=650");
         assertFalse(report, Pattern.compile("(?i)learning \\(|learning last turned|adaptive minimum|last reset=")
                 .matcher(report).find());
     }

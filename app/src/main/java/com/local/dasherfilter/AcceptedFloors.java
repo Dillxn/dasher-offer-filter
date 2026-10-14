@@ -4,13 +4,13 @@ import java.math.BigDecimal;
 import java.util.Objects;
 
 /** Independent numeric bests from confirmed manual standalone offers; no projected or rounded rates are stored.
- * The pay best is pay per stop (0.6.12): the pay of the accepted offer with the best pay for each stop after the first
- * pickup, kept with that offer's units ({@link AreaScore#payUnits}), never as a rounded rate. */
+ * The pay best is pay per stop (0.6.12): the pay of the accepted offer with the best pay for each stop, the pickup
+ * included (0.6.14), kept with that offer's units ({@link AreaScore#payUnits}), never as a rounded rate. */
 final class AcceptedFloors {
     static final AcceptedFloors NONE = new AcceptedFloors(0, 0, 0, 0, 0);
     /** The pay of the best pay-per-stop offer accepted, in cents; 0 when none. */
     final int highestPayCents;
-    /** That offer's stops after the first pickup ({@link AreaScore#payUnits}); 1 when none or from before 0.6.12. */
+    /** That offer's stops, the pickup included ({@link AreaScore#payUnits}); 1 when none or from before 0.6.12. */
     final int payUnits;
     final int milePay;
     final double miles;

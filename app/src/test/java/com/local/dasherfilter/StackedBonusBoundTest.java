@@ -47,7 +47,7 @@ public final class StackedBonusBoundTest {
     @Test public void reportedOffersFailTheirMinimumsEvenWithEveryObservedBonus() {
         // The reported rules as 0.5.0 keeps them: $19.50 pay with $12.75 a stop folded in (2 × $12.75 = $25.50),
         // $4.09 a mile and 59¢ a minute, at most 3 stops.
-        FilterSettings rules = FilterSettings.of(true, 2550, 409, 59, 3);
+        FilterSettings rules = FilterSettings.of(true, 1275, 409, 59, 3);
         OfferSnapshot[] reads = {screenshot(),
                 offer("$11.00", "3 stops (8.4 mi) • 42 min", "Pick up 2 orders", "Multiple dropoffs (2 stops)"),
                 offer("$11.85", "3 stops (7.6 mi) • 34 min", "Pick up 2 orders", "Multiple dropoffs (2 stops)")};
@@ -62,10 +62,11 @@ public final class StackedBonusBoundTest {
     }
 
     @Test public void aCentShortDeclinesButMeetingTheCeilingAlwaysRemainsReview() {
-        // The screenshot's 3 stops ask pay per stop twice (0.6.12): $7.51 a stop asks $15.02, $7.50 asks $15.00.
-        FilterSettings rules = FilterSettings.of(true, 751, 0, 0, 3);
+        // The screenshot's 3 stops ask pay per stop three times, the pickup included (0.6.14): $5.01 a stop asks
+        // $15.03, $5.00 asks $15.00.
+        FilterSettings rules = FilterSettings.of(true, 501, 0, 0, 3);
         assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(screenshot(), rules).result);
-        rules = FilterSettings.of(true, 750, 0, 0, 3);
+        rules = FilterSettings.of(true, 500, 0, 0, 3);
         OfferRule.Decision decision = OfferRule.evaluate(screenshot(), rules);
         assertEquals(OfferRule.Result.REVIEW, decision.result);
         assertEquals(-1, decision.scorePercent);
@@ -75,16 +76,16 @@ public final class StackedBonusBoundTest {
                 OfferRule.evaluate(screenshot(), rules.withMinimumScalePercent(101)).result);
         assertEquals(OfferRule.Result.REVIEW,
                 OfferRule.evaluate(screenshot(), rules.withMinimumScalePercent(99)).result);
-        // Below 100 it follows the bar: ⌈0.99 × $15.16⌉ = $15.01 is more than the $15.00 ceiling.
+        // Below 100 it follows the bar: ⌈0.99 × 3 × $5.06⌉ = $15.03 is more than the $15.00 ceiling.
         OfferRule.Decision lowered = OfferRule.evaluate(screenshot(),
-                FilterSettings.of(true, 758, 0, 0, 3).withMinimumScalePercent(99));
+                FilterSettings.of(true, 506, 0, 0, 3).withMinimumScalePercent(99));
         assertEquals(OfferRule.Result.DECLINE, lowered.result);
-        assertEquals(1501, lowered.requiredCents);
+        assertEquals(1503, lowered.requiredCents);
         assertEquals("pay at most $15.00 with its +$ amount; 99% bar: dollars per stop", lowered.reason);
     }
 
     @Test public void aRaisedBarCannotTurnTheCeilingIntoADecline() {
-        // 3 stops: 2 × $5.00 = $10.00 (0.6.12).
+        // 3 stops: 3 × $5.00 = $15.00, the pickup included (0.6.14), exactly the ceiling.
         FilterSettings rules = FilterSettings.of(true, 500, 0, 0, 3);
         for (int bar : new int[] {100, 120, 150}) {
             OfferRule.Decision decision = OfferRule.evaluate(screenshot(), rules.withMinimumScalePercent(bar));

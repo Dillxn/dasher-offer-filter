@@ -34,8 +34,9 @@ public final class AutopilotTextTest {
 
     // ---- Fixtures ----
 
+    /** {@code flat}: what a single order (2 stops, the pickup included, 0.6.14) asks; pay per stop is half. */
     private static FilterSettings rules(int flat, int mile, int minute, int maxStops, int goal, int bar) {
-        return new FilterSettings(true, flat, mile, minute, maxStops, true, goal, bar);
+        return new FilterSettings(true, flat / 2, mile, minute, maxStops, true, goal, bar);
     }
 
     /** Typical minimums: $4.00, $1.00 a mile, $15 an hour. */
@@ -233,8 +234,8 @@ public final class AutopilotTextTest {
         assertEquals("Even at the lowest bar (50%) only 0 of your last 20 offers pass. Lower a minimum.",
                 AutopilotText.detailsPinned(open));
         assertEquals(Arrays.asList("Change goal", "Turn off", "Close"), AutopilotText.detailsButtons(open));
-        assertTrue(AutopilotText.typicalMinimums(FilterSettings.of(true, 400, 100, 25, 3)));
-        assertFalse(AutopilotText.typicalMinimums(FilterSettings.of(true, 400, 100, 30, 0)));
+        assertTrue(AutopilotText.typicalMinimums(FilterSettings.of(true, 200, 100, 25, 3)));
+        assertFalse(AutopilotText.typicalMinimums(FilterSettings.of(true, 200, 100, 30, 0)));
         assertFalse(AutopilotText.typicalMinimums(null));
     }
 
@@ -254,12 +255,12 @@ public final class AutopilotTextTest {
         Autopilot.Plan payFirst = plan(starters(0, 100), window(20), null, 100);
         Autopilot.Plan floor = plan(owner(0, 100), window(20), null, 100);
         Object[][] cases = {
-                {status(FilterSettings.of(true, 400, 100, 25, 0), null, null, null), "Autopilot off."},
+                {status(FilterSettings.of(true, 200, 100, 25, 0), null, null, null), "Autopilot off."},
                 {new AutopilotText.Status(starters(70, 82), false, recovering, null, null, NOW),
                         "Autopilot waits for screen reading."},
                 {status(rules(0, 0, 0, 3, 70, 100), null, null, null),
                         "Autopilot needs a pay, per-mile or hourly minimum."},
-                {status(new FilterSettings(false, 400, 100, 25, 0, true, 70, 82), recovering, null, null),
+                {status(new FilterSettings(false, 200, 100, 25, 0, true, 70, 82), recovering, null, null),
                         "Autopilot bar 82 percent. Auto-decline paused."},
                 {status(starters(70, 100), null, null, null), "Autopilot bar 100 percent. Checking your offers."},
                 {status(starters(70, 100), learning, null, null),
@@ -524,7 +525,7 @@ public final class AutopilotTextTest {
                     for (FilterSettings minimums : Arrays.asList(starters(goal, 100), owner(goal, 100))) {
                         Autopilot.Plan plan = plan(minimums, lines, reading, 100);
                         for (int bar : new int[] {50, 51, 82, 99, 100, 101, 119, 150}) {
-                            FilterSettings at = rules(minimums.flatCents, minimums.perMileCents,
+                            FilterSettings at = rules(minimums.flatCents * 2, minimums.perMileCents,
                                     minimums.perMinuteCents, 0, goal, bar);
                             statuses.add(status(at, plan, reading, null));
                             statuses.add(new AutopilotText.Status(at, false, plan, reading, null, NOW));
@@ -535,8 +536,8 @@ public final class AutopilotTextTest {
         }
         statuses.add(status(starters(70, 100), null, null, null));
         statuses.add(status(rules(0, 0, 0, 3, 70, 100), null, null, null));
-        statuses.add(status(new FilterSettings(false, 400, 100, 25, 0, true, 70, 82), null, null, null));
-        statuses.add(status(FilterSettings.of(true, 400, 100, 25, 0), null, null, null));
+        statuses.add(status(new FilterSettings(false, 200, 100, 25, 0, true, 70, 82), null, null, null));
+        statuses.add(status(FilterSettings.of(true, 200, 100, 25, 0), null, null, null));
         java.util.Set<AutopilotText.Status.Kind> kinds = java.util.EnumSet.noneOf(AutopilotText.Status.Kind.class);
         java.util.regex.Pattern bar = java.util.regex.Pattern.compile("Auto (\\d+)%( ▲)?");
         for (AutopilotText.Status s : statuses) {
@@ -571,7 +572,7 @@ public final class AutopilotTextTest {
                 AutopilotText.statusLine(needs));
         assertEquals("Auto", AutopilotText.chip(needs));
 
-        FilterSettings paused = new FilterSettings(false, 400, 100, 25, 0, true, 70, 82);
+        FilterSettings paused = new FilterSettings(false, 200, 100, 25, 0, true, 70, 82);
         assertEquals("Auto-decline paused",
                 AutopilotText.statusLine(status(paused, plan, null, null)));
 
@@ -583,7 +584,7 @@ public final class AutopilotTextTest {
 
     @Test
     public void off() {
-        FilterSettings off = FilterSettings.of(true, 400, 100, 25, 0);
+        FilterSettings off = FilterSettings.of(true, 200, 100, 25, 0);
         AutopilotText.Status s = status(off, plan(starters(70, 100), window(20), null, 100), dasher(55, 12),
                 null);
         assertEquals(AutopilotText.Status.Kind.OFF, s.kind);
@@ -695,7 +696,7 @@ public final class AutopilotTextTest {
 
         // The homepage's words for an offer that passed only by the lowered bar, and which lines those are.
         assertEquals("Passed below your minimums", AutopilotText.PASSED_BELOW_MINIMUMS);
-        FilterSettings at82 = FilterSettings.of(true, 400, 100, 25, 3).withAutopilot(true, 70)
+        FilterSettings at82 = FilterSettings.of(true, 200, 100, 25, 3).withAutopilot(true, 70)
                 .withMinimumScalePercent(82);
         assertTrue("$5.75 against $6.75: 85%, passed by the 82% bar",
                 AutopilotText.passedBelowMinimums(line(facts, at82)));
@@ -704,7 +705,7 @@ public final class AutopilotTextTest {
         assertFalse("a decline is no pass", AutopilotText.passedBelowMinimums(line(new OfferSnapshot(300, 6.6, 27, 2),
                 at82)));
         assertFalse("at exactly the minimums nothing passes below them", AutopilotText.passedBelowMinimums(
-                line(facts, FilterSettings.of(true, 400, 100, 25, 3))));
+                line(facts, FilterSettings.of(true, 200, 100, 25, 3))));
         assertFalse(AutopilotText.passedBelowMinimums(null));
     }
 

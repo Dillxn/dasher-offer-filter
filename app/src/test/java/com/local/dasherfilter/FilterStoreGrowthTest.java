@@ -105,20 +105,22 @@ public class FilterStoreGrowthTest {
                 .putInt("autopilot_bar_percent", 112).commit();
         assertFalse(prefs().contains("minimums_since"));
         FilterSettings rules = FilterStore.load(app);
-        assertEquals("its older lines say nothing of which minimums judged them", clock,
+        // Rule C's step and the pickup's (0.6.14) each restart it, the second a millisecond after the first.
+        assertEquals("its older lines say nothing of which minimums judged them", clock + 1,
                 prefs().getLong("minimums_since", 0));
         assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, rules.minimums());
         assertTrue("and Let my minimums grow is on for it", FilterStore.minimumsGrow(app));
         clock += DAY;
         FilterStore.load(app);
-        assertEquals("once", clock - DAY, FilterStore.minimumsSince(app));
+        assertEquals("once", clock - DAY + 1, FilterStore.minimumsSince(app));
 
         // 0.4.x: the 0.5.0 migration builds its scale into the minimums, which take effect then.
         prefs().edit().clear().putBoolean("enabled", true).putInt("flat", 1300).putInt("mile", 385)
                 .putInt("minute", 41).putInt("minimum_scale_percent", 90).commit();
         clock += DAY;
         assertArrayEquals(new int[] {1170, 347, 37, 0, 0, 0}, FilterStore.load(app).minimums());
-        assertEquals(clock, FilterStore.minimumsSince(app));
+        // Then the pickup's step (0.6.14) restarts it a millisecond later.
+        assertEquals(clock + 1, FilterStore.minimumsSince(app));
     }
 
     // ---- The growth's compare-and-set ----

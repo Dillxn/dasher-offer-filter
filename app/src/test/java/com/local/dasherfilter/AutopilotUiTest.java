@@ -124,7 +124,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     /** These minimums, auto-decline on, no max stops; Autopilot as it was. */
     private void minimums(int flat, int mile, int minute) {
-        FilterStore.save(app, FilterSettings.of(true, flat, mile, minute, 0));
+        // The single-order ask; pay per stop is half, a single order being 2 stops, the pickup included (0.6.14).
+        FilterStore.save(app, FilterSettings.of(true, flat / 2, mile, minute, 0));
     }
 
     /**
@@ -280,7 +281,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
      */
     @Test
     public void theChipAloneSaysAutopilotsBarOrOffAndTheRadarsButtonIsTheLearners() {
-        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
+        FilterStore.save(app, FilterSettings.of(true, 350, 150, 30, 3));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -305,7 +306,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             FilterSettings saved = FilterStore.load(app);
             assertFalse(saved.autopilot);
             assertEquals(100, saved.minimumScalePercent);
-            assertArrayEquals("the minimums stay", new int[] {700, 150, 30, 0, 0, 0}, saved.minimums());
+            assertArrayEquals("the minimums stay", new int[] {350, 150, 30, 0, 0, 0}, saved.minimums());
             assertTrue(drawnWords(star).contains(MinimumsStarView.LEARN_TITLE));
             assertNull("off: no status line", shownLineStarting(content, "Autopilot "));
         }
@@ -315,7 +316,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     @Test
     public void aTapWhileOffAsksWhatMattersMoreWithTheTopTierCheckedAndOneTapTurnsItOn() {
-        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
+        FilterStore.save(app, FilterSettings.of(true, 350, 150, 30, 3));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
@@ -392,7 +393,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     @Test
     public void aboutAcceptanceRateExplainsInTheOwnersWordsAndLeavesTheChoiceOpen() {
-        FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
+        FilterStore.save(app, FilterSettings.of(true, 350, 150, 30, 3));
         AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TIER);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
@@ -474,7 +475,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertEquals("Needs a minimum", autopilotLine(content));
             assertEquals("Auto", find(content, AutopilotChip.class).getText().toString());
 
-            FilterStore.save(app, FilterSettings.of(false, 400, 100, 25, 0));
+            FilterStore.save(app, FilterSettings.of(false, 200, 100, 25, 0));
             assertEquals("Auto-decline paused", autopilotLine(content));
 
             // No plan yet for these rules: the connection's still waits to be worked out.
@@ -920,7 +921,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             FilterSettings off = FilterStore.load(app);
             assertFalse(off.autopilot);
             assertEquals(100, off.minimumScalePercent);
-            assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, off.minimums());
+            assertArrayEquals(new int[] {200, 100, 25, 0, 0, 0}, off.minimums());
             assertEquals(AutopilotText.TOAST_OFF, ShadowToast.getTextOfLatestToast());
             assertNull("off: the line goes", shownLineStarting(content, "Autopilot "));
             find(content, AutopilotChip.class).performClick();
@@ -950,7 +951,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
     @Test
     public void whenEvenTheLowestBarPassesTooFewTheDetailsOfferTypicalMinimumsFromExactlyTheMinimums() {
         setUpForDashing();
-        FilterStore.save(app, FilterSettings.of(true, 2040, 400, 48, 3));
+        FilterStore.save(app, FilterSettings.of(true, 1020, 400, 48, 3));
         history(0, 20);
         reading(9, 1);
         AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
@@ -971,12 +972,12 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             details.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();
             idle();
             FilterSettings typical = FilterStore.load(app);
-            assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, typical.minimums());
+            assertArrayEquals(new int[] {200, 100, 25, 0, 0, 0}, typical.minimums());
             assertEquals("max stops stay", 3, typical.maxStops);
             assertTrue("and auto-decline", typical.enabled);
             assertTrue("and Autopilot", typical.autopilot);
             assertEquals("the bar back at exactly the minimums", 100, typical.minimumScalePercent);
-            assertEquals("Typical minimums set: $4/stop · $1/mi · $15/hr", ShadowToast.getTextOfLatestToast());
+            assertEquals("Typical minimums set: $2/stop · $1/mi · $15/hr", ShadowToast.getTextOfLatestToast());
             AutopilotStore.Change change = AutopilotStore.lastChange(app);
             assertEquals(50, change.from);
             assertEquals(100, change.to);
@@ -1002,7 +1003,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
     @Test
     public void pinnedWithTheTypicalMinimumsAlreadyTheDetailsOfferTheGoalAndTheBarStays() {
         setUpForDashing();
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 2));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 2));
         FilterSettings rules = FilterStore.load(app);
         for (int i = PAY.length - 1; i >= 0; i--) {
             OfferSnapshot facts = new OfferSnapshot(PAY[i], MILES[i], MINUTES[i], 3);
@@ -1037,7 +1038,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             idle();
             FilterSettings after = FilterStore.load(app);
             assertEquals("the bar stays where Autopilot put it", 50, after.minimumScalePercent);
-            assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, after.minimums());
+            assertArrayEquals(new int[] {200, 100, 25, 0, 0, 0}, after.minimums());
             AutopilotStore.Change last = AutopilotStore.lastChange(app);
             assertEquals("no change noted that the user never made", committed.at, last.at);
             assertEquals(committed.why, last.why);
@@ -1350,7 +1351,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
     @Test
     public void theButtonAndTheChipAgreeInColorWhenPinnedWithNoGoal() {
         setUpForDashing();
-        FilterStore.save(app, FilterSettings.of(true, 4000, 800, 96, 3));
+        FilterStore.save(app, FilterSettings.of(true, 2000, 800, 96, 3));
         history(0, 20);
         AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_PAY_FIRST);
         AutopilotRuntime.commitIfDue(app);
@@ -1384,7 +1385,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             refreshed();
             assertEquals("Auto learning", hosted.getText().toString());
             assertEquals(View.ACCESSIBILITY_LIVE_REGION_NONE, hosted.getAccessibilityLiveRegion());
-            FilterStore.save(app, FilterSettings.of(false, 400, 100, 25, 0));
+            FilterStore.save(app, FilterSettings.of(false, 200, 100, 25, 0));
             refreshed();
             assertEquals("Autopilot bar 100 percent. Auto-decline paused. Opens Autopilot details.",
                     String.valueOf(hosted.getContentDescription()));
@@ -1410,8 +1411,9 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             AlertDialog starter = ShadowAlertDialog.getLatestAlertDialog();
             assertOwnsItsTouches(starter);
             assertEquals("Start with typical minimums?", title(starter));
-            assertEquals("$4.00 per offer · $1.00 per mile · $15 per hour of trip time. These are typical of "
-                    + "Cincinnati offers seen in October 2026. Drag any knob to change them.", message(starter));
+            assertEquals("$2.00 per stop ($4.00 for a single order) · $1.00 per mile · $15 per hour of trip time. These "
+                    + "are typical of Cincinnati offers seen in October 2026. Drag any knob to change them.",
+                    message(starter));
             assertEquals("Use these", starter.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString());
             assertEquals("Set my own", starter.getButton(AlertDialog.BUTTON_NEGATIVE).getText().toString());
             assertFalse("asking saves nothing", FilterStore.load(app).hasAnyRule());
@@ -1419,7 +1421,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             starter.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             idle();
             FilterSettings saved = FilterStore.load(app);
-            assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, saved.minimums());
+            assertArrayEquals(new int[] {200, 100, 25, 0, 0, 0}, saved.minimums());
             assertEquals(0, saved.maxStops);
             assertFalse("auto-decline stays paused: the mascot turns it on", saved.enabled);
             assertFalse("Autopilot waits for the user's answer", saved.autopilot);
@@ -1462,7 +1464,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             starter.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             idle();
             FilterSettings saved = FilterStore.load(app);
-            assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, saved.minimums());
+            assertArrayEquals(new int[] {200, 100, 25, 0, 0, 0}, saved.minimums());
             assertFalse(saved.enabled);
             assertTrue(saved.autopilot);
             assertEquals("the bar back at exactly the minimums", 100, saved.minimumScalePercent);
@@ -1501,7 +1503,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     @Test
     public void theFirstTimeTheMascotTurnsAutoDeclineOnWithAMoneyMinimumTheGoalIsAskedOnce() {
-        FilterStore.save(app, FilterSettings.of(false, 700, 150, 30, 0));
+        FilterStore.save(app, FilterSettings.of(false, 350, 150, 30, 0));
         assertFalse(FilterStore.goalAsked(app));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
@@ -1549,7 +1551,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         minimums(400, 100, 25);
         history(0, 20);
         reading(74, 1);
-        FilterStore.save(app, FilterSettings.of(false, 400, 100, 25, 0));
+        FilterStore.save(app, FilterSettings.of(false, 200, 100, 25, 0));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
@@ -1614,7 +1616,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue("Autopilot stays on", kept.autopilot);
             assertEquals(FilterSettings.GOAL_TOP_TIER, kept.autopilotGoalPercent);
             assertEquals("its bar moves only at its next safe point", bar, kept.minimumScalePercent);
-            assertArrayEquals(new int[] {2040, 400, 48, 0, 0, 0}, kept.minimums());
+            assertArrayEquals(new int[] {1020, 400, 48, 0, 0, 0}, kept.minimums());
             assertEquals("and then back to exactly the minimums: an empty history is learning", "CLEARED",
                     AutopilotStore.jump(app));
             Autopilot.Plan plan = AutopilotRuntime.latest();
@@ -1632,7 +1634,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     @Test
     public void theTicketSaysWhenAnOfferPassedOnlyByAutopilotsBarAndWhenDecliningWasFree() {
-        FilterSettings rules = FilterSettings.of(true, 400, 100, 25, 3).withAutopilot(true, 70)
+        FilterSettings rules = FilterSettings.of(true, 200, 100, 25, 3).withAutopilot(true, 70)
                 .withMinimumScalePercent(82);
         // The spec's example: $5.75 for 6.6 mi and 27 min asks $6.75 at the minimums, $5.54 at an 82% bar.
         OfferSnapshot facts = new OfferSnapshot(575, 6.6, 27, 2);
@@ -1643,7 +1645,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         DecisionLog.record(app, DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, decision,
                 DecisionLog.Action.PASSES, true, Collections.singletonList("$5.75")).withTime(at)
                 .withStep(new DecisionLog.Step(DecisionLog.StepKind.AR_EXEMPT, at + 10, "")));
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 3));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -1680,7 +1682,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     @Test
     public void anOfferThatMetTheMinimumsSaysOnlyItsScore() {
-        FilterSettings rules = FilterSettings.of(true, 400, 100, 25, 3);
+        FilterSettings rules = FilterSettings.of(true, 200, 100, 25, 3);
         OfferSnapshot facts = new OfferSnapshot(900, 6.6, 27, 2);
         OfferRule.Decision decision = OfferRule.evaluate(facts, rules);
         assertEquals("meets your minimums", decision.reason);
@@ -1707,7 +1709,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     @Test
     public void settingsGainNoAutopilotRowAndAutoAcceptAsksInItsNewWords() {
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 0));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);

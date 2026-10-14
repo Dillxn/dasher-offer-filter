@@ -38,7 +38,7 @@ public class NotificationConsolidationTest extends AndroidAdapterTestBase {
     private NativeNotifications nativeAlerts;
 
     @Before public void start() {
-        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         FilterStore.setPeek(app, false);
         ComponentName home = new ComponentName("com.doordash.driverapp", "com.doordash.driverapp.Home");
         org.robolectric.shadows.ShadowPackageManager packages = Shadows.shadowOf(app.getPackageManager());
@@ -315,7 +315,7 @@ public class NotificationConsolidationTest extends AndroidAdapterTestBase {
 
     @Test public void aRuleChangeReevaluatesWithoutClearingTheLastAlert() {
         StatusBarNotification source = post(true, true);
-        FilterStore.save(app, FilterSettings.of(false, 4000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
         OfferNotificationService.rulesChanged();
         Shadows.shadowOf(Looper.getMainLooper()).idle();
         nativeOnly(source);

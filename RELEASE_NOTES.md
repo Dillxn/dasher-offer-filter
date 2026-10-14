@@ -1,3 +1,18 @@
+## 0.6.14 — Pay per stop counts the pickup
+
+Version 0.6.14 (code 106) answers the owner's ask of 14 October 2026: "i don't want the pay per stop to not count the pickup", and, asked whether to halve his number, "it doesn't need to do any halving or any post artificial anything. it should be simple. if I say I want $5 per stop then a single pickup and single dropoff dash would require $10. if I have 3 stops, whatever the makeup, then it would require $15."
+
+- **Every stop counts.** Pay per stop now counts every stop Dasher shows, the pickup included: `n = stops`. $5 a stop asks $10.00 of a single order (Dasher's 2 stops) and $15.00 of 3 stops. 0.6.12's rule C (`max(1, stops − 1)`) is gone, and the 0.6.12 notice, its What's new card and its log line no longer describe it.
+- **Your number wasn't changed**, so a single order now asks twice what it did under 0.6.12–0.6.13; set it to what you want per stop.
+- **Stops not read.** Still declined only when the pay misses one stop's worth (or another minimum); otherwise left for review, as before.
+- **Learning.** A learned pay best's stops rise by one (a single-order best counts as 2 stops), so its learned ask stays the accepted pay ÷ that offer's own stops + 1¢ and doesn't double.
+- **Once, at the update.** "Minimums since" moves to now when a money minimum or learned pay best is set, so Autopilot's growth starts its evidence over; one line in the log. Decision history from 0.6.12–0.6.13 is explained under the current rules and never pooled with new lines.
+- **Typical minimums** become $2.00 a stop, $1.00 a mile and $15 an hour, so they still ask a single order the typical $4.00 they were measured as. Only the suggestion changed; a saved number is never touched.
+- **Words.** The ticket's details show "Pay per stop — set $15.00 (3 stops: 3 × $5.00)", and "(2 stops: 2 × $2.00)" for a single order.
+- Notice 24; Terms and Privacy for 0.6.14.
+
+No phone has run this build.
+
 ## 0.6.13 — A customer's name alone is masked in reports
 
 Version 0.6.13 (code 105). 0.6.11's Share report kept a customer's first name and last initial unmasked: a pickup screen lists the customer as a label of its own, after "Help", with no heading before it. A label that is only a first name (or two) and a last initial ("Sam P", "Noel G.") now reads [name], as a whole label and as an item of a log line's labels, so a report also cleans lines already on the phone. Circle K and Big Y keep their names. Decisions read raw labels and are unchanged. PRIVACY already says customer names become [name]; this masks more, never less, so no notice. Fix by the beta launch thread (29c3543), reviewed and applied by the release thread.
@@ -6,10 +21,10 @@ Version 0.6.13 (code 105). 0.6.11's Share report kept a customer's first name an
 
 Version 0.6.12 (code 104) answers the owner's ask of 13 October 2026: "we also need to swap overall payout for pay per stop I think" (he chose Swap: the pay knob becomes a pay-per-stop minimum; max stops, $/mi and $/hr unchanged).
 
-- **Pay per stop.** The pay minimum now counts for each stop after the first pickup: `n = max(1, stops − 1)`. Dasher counts a single order as 2 stops, so single orders are judged exactly as before; a 3-stop offer asks twice the number, 4 stops three times. Your saved number did not change (a downgrade reads it back as the old minimum pay). Decided on best judgment: "after the first pickup" rather than Dasher's raw count with the number halved, which would have changed the number and loosened offers whose stops weren't read.
+- **Pay per stop.** The pay minimum now counts per stop under rule C: `n = max(1, stops − 1)` (superseded in 0.6.14). Dasher counts a single order as 2 stops, so single orders are judged exactly as before; a 3-stop offer asks twice the number, 4 stops three times. Your saved number did not change (a downgrade reads it back as the old minimum pay). Decided on best judgment: rule C rather than Dasher's raw count with the number halved, which would have changed the number and loosened offers whose stops weren't read.
 - **Stops not read.** An offer whose stops weren't read is declined when its pay misses even one stop's worth (or another minimum), exactly as before; one that would have passed now goes to review. Add-ons judge their combined route the same way, so an add-on whose combined stops weren't read is more often left to you.
 - **Learning keeps your best pay per stop.** An accept you make teaches pay only when its stops were read; the learned ask scales with the offer's stops, and Adopt sets pay per stop to that best (rounded up). A best stored before counts as one stop.
-- **Words.** The knob reads "$4.00/stop" ("Pay / stop" while unset); "Below your pay per stop"; the ticket's details show "Pay per stop — set $26.00 (3 stops: 2 × $13.00, the first pickup not counted)". Reports name the field payPerStopCents. Lines decided before 0.6.12 keep their own words and are explained under the current rules.
+- **Words.** The knob reads "$4.00/stop" ("Pay / stop" while unset); "Below your pay per stop"; the ticket's details showed rule C's units ("3 stops: 2 × $13.00"; 0.6.14 shows "3 stops: 3 × $13.00"). Reports name the field payPerStopCents. Lines decided before 0.6.12 keep their own words and are explained under the current rules.
 - **Once, at the update.** "Minimums since" moves to now when a money minimum or learned pay best is set, so Autopilot's growth starts its evidence over; nothing else changes (one line in the log).
 - **Fewer gaps on the homepage** (the owner: "still awkward negative space gaps in 5.11 layout"). On a full screen the Autopilot/acceptance row keeps its whole width until the buttons rise beside it (so the meter's whole label fits at 411 dp), and buttons on a row of their own spread across it. Beside Dasher nothing moved.
 - **The time chart comes back** (the owner: "not seeing time chart anymore"). An older bar picked on the skyline used to stay picked through later offers, holding the offer clock's row; a new offer now returns the skyline to the newest (unless that offer's ticket is open).

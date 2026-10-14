@@ -15,7 +15,8 @@ import static org.junit.Assert.assertTrue;
  */
 public final class AreaScoreTest {
     /** The README's rules as 0.5.0 keeps them: $13 pay, $3.85 a mile, 41¢ a minute ($24.60 an hour). */
-    private static final FilterSettings USER = FilterSettings.of(true, 1300, 385, 41, 3);
+    /** $6.50 a stop: a single order (2 stops, the pickup included, 0.6.14) asks $13.00. */
+    private static final FilterSettings USER = FilterSettings.of(true, 650, 385, 41, 3);
 
     private static BigDecimal cents(String value) {
         return new BigDecimal(value);
@@ -46,7 +47,7 @@ public final class AreaScoreTest {
 
     @Test
     public void theRequirementIsTheHighestSetAskWorkedExactly() {
-        // $15.00, 6 mi, 25 min: $13.00, 6 × $3.85 = $23.10, 25 × 41¢ = $10.25.
+        // $15.00, 6 mi, 25 min: 2 × $6.50 = $13.00, 6 × $3.85 = $23.10, 25 × 41¢ = $10.25.
         OfferSnapshot offer = new OfferSnapshot(1500, 6.0, 25, 2);
         same(cents("2310"), AreaScore.required100(USER, offer));
         same(cents("2310"), AreaScore.knownRequired100(USER, offer));
@@ -57,12 +58,12 @@ public final class AreaScoreTest {
         assertEquals(64, AreaScore.passThreshold(USER, offer));
         assertEquals(64, AreaScore.percent(USER, offer));
         assertEquals("Score 64%", AreaScore.label(64));
-        // Max stops never changes the score; over it, θ is 0. Four stops ask pay per stop 3 × $13.00 = $39.00
-        // (0.6.12): ⌊150000 ÷ 3900⌋.
-        assertEquals(38, AreaScore.scorePercent(USER, new OfferSnapshot(1500, 6.0, 25, 4)));
+        // Max stops never changes the score; over it, θ is 0. Four stops ask pay per stop 4 × $6.50 = $26.00
+        // (0.6.14): ⌊150000 ÷ 2600⌋.
+        assertEquals(57, AreaScore.scorePercent(USER, new OfferSnapshot(1500, 6.0, 25, 4)));
         assertEquals(0, AreaScore.passThreshold(USER, new OfferSnapshot(1500, 6.0, 25, 4)));
         // A minimum that is off asks nothing, so pay and per hour decide a short trip.
-        FilterSettings noMile = FilterSettings.of(true, 1300, 0, 41, 0);
+        FilterSettings noMile = FilterSettings.of(true, 650, 0, 41, 0);
         same(cents("1300"), AreaScore.required100(noMile, offer));
         assertEquals(AreaScore.PAY, AreaScore.asks(noMile, offer).axis);
         same(cents("1640"), AreaScore.required100(noMile, new OfferSnapshot(1500, 6.0, 40, 2)));
@@ -108,8 +109,8 @@ public final class AreaScoreTest {
     @Test
     public void theFixedAsksAreProductsOfARateAndAReadAmount() {
         OfferSnapshot offer = new OfferSnapshot(1500, 6.0, 25, 3);
-        // Pay per stop: 3 stops are 2 after the first pickup (0.6.12).
-        same(cents("2600"), AreaScore.fixedFloor(AreaScore.PAY, 1300, offer));
+        // Pay per stop: every stop counts, the pickup included (0.6.14): 3 stops ask it 3 times.
+        same(cents("3900"), AreaScore.fixedFloor(AreaScore.PAY, 1300, offer));
         assertNull("unread stops", AreaScore.fixedFloor(AreaScore.PAY, 1300, new OfferSnapshot(1500, 6.0, 25, null)));
         same(cents("2310"), AreaScore.fixedFloor(AreaScore.MILE, 385, offer));
         same(cents("1025"), AreaScore.fixedFloor(AreaScore.MINUTE, 41, offer));
@@ -126,7 +127,8 @@ public final class AreaScoreTest {
 
     @Test
     public void aPlusCeilingGivesThetaOnlyBelowOneHundredPercent() {
-        FilterSettings rules = FilterSettings.of(true, 1000, 100, 0, 3);
+        // $5.00 a stop: the single order's 2 stops ask $10.00 (0.6.14).
+        FilterSettings rules = FilterSettings.of(true, 500, 100, 0, 3);
         assertEquals("⌊100 × 835 ÷ 1000⌋", 83,
                 AreaScore.passThreshold(rules, new OfferSnapshot(null, 7.1, 23, 2, 835)));
         assertEquals("a ceiling at the minimums never declines", Integer.MAX_VALUE,

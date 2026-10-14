@@ -127,7 +127,8 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
      */
     private static List<DecisionLog.Entry> offers(int count, int passing) {
         List<DecisionLog.Entry> lines = new ArrayList<>();
-        for (int i = 0; i < count; i++) lines.add(line(i < passing ? 2500 : 1200, 5.0, 20 + i % 20, 2 + i));
+        // $45.00 passes the owner's $20.40 a stop, which a single order (2 stops) asks twice (0.6.14).
+        for (int i = 0; i < count; i++) lines.add(line(i < passing ? 4500 : 1200, 5.0, 20 + i % 20, 2 + i));
         return lines;
     }
 
@@ -367,7 +368,7 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
             idle();
             assertNull("answered", FilterStore.peekModelNotice(app));
             FilterSettings typical = FilterStore.load(app);
-            assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, typical.minimums());
+            assertArrayEquals(new int[] {200, 100, 25, 0, 0, 0}, typical.minimums());
             assertEquals("max stops stay", 3, typical.maxStops);
             assertTrue("and the switch", typical.enabled);
             assertEquals("Autopilot's bar is back at exactly the minimums", 100, typical.minimumScalePercent);
@@ -385,7 +386,7 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
             assertNotNull(plan);
             assertEquals("the plan for them starts from 100", 100, plan.current);
             assertEquals(typical.rulesKey(), plan.rulesKey);
-            assertEquals("Typical minimums set: $4/stop · $1/mi · $15/hr", ShadowToast.getTextOfLatestToast());
+            assertEquals("Typical minimums set: $2/stop · $1/mi · $15/hr", ShadowToast.getTextOfLatestToast());
             AlertDialog chooser = ShadowAlertDialog.getLatestAlertDialog();
             assertEquals("then the goal chooser", AutopilotText.CHOOSER_TITLE, title(chooser));
             assertEquals("its stored goal checked", 0, chooser.getListView().getCheckedItemPosition());
@@ -399,7 +400,7 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
     @Test
     public void typicalMinimumsAlreadyHearThePassCheckButAreNotOfferedThemAgain() {
         prefs().edit()
-                .putBoolean("enabled", true).putInt("flat", 400).putInt("mile", 100).putInt("minute", 25)
+                .putBoolean("enabled", true).putInt("flat", 200).putInt("mile", 100).putInt("minute", 25)
                 .putInt("per_stop", 0).putInt("per_item", 0).putInt("hotspot_proximity_hundredths", 0)
                 .putInt("minimum_scale_percent", 100).putInt("max_stops", 0)
                 .putBoolean("rising_offers", false).putBoolean("score_by_area", true)
@@ -420,7 +421,7 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
             notice.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             idle();
             assertNull(FilterStore.peekModelNotice(app));
-            assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
+            assertArrayEquals(new int[] {200, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
             assertFalse(DiagnosticLog.read(app).contains("typical minimums chosen"));
         }
     }

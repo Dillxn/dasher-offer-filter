@@ -40,12 +40,12 @@ public final class LegalTextsTest {
      * The beta texts' effective identities, also read by ConsentGateTest. Only a text changed in substance gets
      * a new identity in its header; then tools/legal_texts.py regenerates the app's matching copy.
      */
-    static final String TERMS_EFFECTIVE = "13 October 2026";
+    static final String TERMS_EFFECTIVE = "14 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.12";
+    static final String TERMS_VERSION = "0.6.14";
     /** Privacy's new study scope is published separately; unchanged Terms keep their own effective identity. */
-    static final String PRIVACY_EFFECTIVE = "13 October 2026";
-    static final String PRIVACY_VERSION = "0.6.12";
+    static final String PRIVACY_EFFECTIVE = "14 October 2026";
+    static final String PRIVACY_VERSION = "0.6.14";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -100,9 +100,11 @@ public final class LegalTextsTest {
         // 0.5.0's minimums, Autopilot and auto-accept (finalSpec.privacyConsent, TERMS).
         for (String fact : new String[] {"It compares each offer with your active minimums: pay per stop, pay per mile "
                 + "and pay per hour of Dasher's time estimate, plus an optional maximum number of stops.",
-                // 0.6.12: pay per stop, each stop after the first pickup; single orders as before.
-                "is asked for each stop after the first pickup: once for a single order, which Dasher counts as two "
-                        + "stops, twice for three stops",
+                // 0.6.14: pay per stop counts every stop, the pickup included; the number unchanged.
+                "is asked for each stop Dasher shows, the pickup included (from 0.6.14): twice for a single order, "
+                        + "which Dasher counts as two stops, three times for three stops",
+                "so $5 a stop asks $10 of a single order and $15 of three stops",
+                "your number was not changed, so a single order asks twice what it did",
                 "When an offer's stops are not read, it stays for review unless its pay misses even one stop's worth",
                 // 0.6.2: on by default, turned on once for earlier installs, and turned off from its chip.
                 "Autopilot is on by default (from 0.6.2, and turned on once then for earlier installs, keeping a "

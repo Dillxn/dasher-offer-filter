@@ -11,9 +11,9 @@ import static org.junit.Assert.*;
  * minimums themselves.
  */
 public final class MinimumScaleTest {
-    /** Each minimum asks $10.00 of 5 mi and 20 min. */
+    /** Each minimum asks $10.00 of 5 mi, 20 min and 2 stops ($5.00 a stop, the pickup included). */
     private static FilterSettings even() {
-        return FilterSettings.of(true, 1000, 200, 50, 0);
+        return FilterSettings.of(true, 500, 200, 50, 0);
     }
 
     private static OfferSnapshot offer(int pay) {
@@ -61,7 +61,7 @@ public final class MinimumScaleTest {
 
     @Test public void everyMinimumIsStillMetOnItsOwnAtAnyBar() {
         // Per mile asks $20.00 of 5 mi; a 97% bar asks $19.40 however well pay and per hour do.
-        FilterSettings rules = FilterSettings.of(true, 1000, 400, 0, 0).withMinimumScalePercent(97);
+        FilterSettings rules = FilterSettings.of(true, 500, 400, 0, 0).withMinimumScalePercent(97);
         OfferSnapshot weakMileage = new OfferSnapshot(1500, 5.0, 20, 2);
         assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(weakMileage, rules).result);
         assertEquals(1940, OfferRule.evaluate(weakMileage, rules).requiredCents);
@@ -83,13 +83,13 @@ public final class MinimumScaleTest {
         assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(new OfferSnapshot(1000, 5.0, 20, 4), rules).result);
         assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(new OfferSnapshot(null, 5.0, 20, 2), rules).result);
         assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(new OfferSnapshot(1000, 5.0, 20, null), rules).result);
-        // Three stops ask pay per stop twice, $20.00 (0.6.12): 20¢ at a 1% bar.
-        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(20, 5.0, 20, 3), rules).result);
-        assertEquals(20, OfferRule.evaluate(new OfferSnapshot(20, 5.0, 20, 3), rules).requiredCents);
+        // Three stops ask pay per stop three times, $15.00, the pickup included (0.6.14): 15¢ at a 1% bar.
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(new OfferSnapshot(15, 5.0, 20, 3), rules).result);
+        assertEquals(15, OfferRule.evaluate(new OfferSnapshot(15, 5.0, 20, 3), rules).requiredCents);
     }
 
     @Test public void aPayCeilingIsJudgedAtTheLowerOfTheBarAndOneHundredAndNeverPasses() {
-        FilterSettings at97 = FilterSettings.of(true, 1000, 0, 0, 0).withMinimumScalePercent(97);
+        FilterSettings at97 = FilterSettings.of(true, 500, 0, 0, 0).withMinimumScalePercent(97);
         assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluate(new OfferSnapshot(null, 5.0, 20, 2, 970), at97).result);
         OfferRule.Decision below = OfferRule.evaluate(new OfferSnapshot(null, 5.0, 20, 2, 969), at97);
         assertEquals(OfferRule.Result.DECLINE, below.result);
@@ -107,7 +107,7 @@ public final class MinimumScaleTest {
 
     @Test public void addOnsKeepTheTwoPartRuleWithBothPartsScaledTogether() {
         // The combined 3-stop route asks pay per stop twice (0.6.12): $5.00 a stop asks $10.00, as its 5 mi do.
-        FilterSettings rules = FilterSettings.of(true, 500, 200, 0, 0).withMinimumScalePercent(97);
+        FilterSettings rules = FilterSettings.of(true, 250, 200, 0, 0).withMinimumScalePercent(97);
         AddOnOffer near = AddOnOffer.parse(new OfferSnapshot(776, 4.0, 20, 2),
                 Arrays.asList("Add to route", "+$1.94", "+1 mi", "+5 min", "+1 stop"));
         OfferRule.Decision kept = OfferRule.evaluateAddOn(near, rules);

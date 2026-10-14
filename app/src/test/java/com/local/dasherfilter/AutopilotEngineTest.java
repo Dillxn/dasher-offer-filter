@@ -40,8 +40,9 @@ public final class AutopilotEngineTest {
 
     // ---- Fixtures ----
 
+    /** {@code flat}: what a single order (2 stops, the pickup included, 0.6.14) asks; pay per stop is half. */
     private static FilterSettings rules(int flat, int mile, int minute, int goal, int bar) {
-        return new FilterSettings(true, flat, mile, minute, 0, true, goal, bar);
+        return new FilterSettings(true, flat / 2, mile, minute, 0, true, goal, bar);
     }
 
     private static FilterSettings starters(int goal) {
@@ -446,7 +447,7 @@ public final class AutopilotEngineTest {
 
     @Test
     public void autopilotOffOrNoMoneyMinimumHoldsExactlyTheMinimums() {
-        FilterSettings off = FilterSettings.of(true, 400, 100, 25, 0);
+        FilterSettings off = FilterSettings.of(true, 200, 100, 25, 0);
         Autopilot.Plan offPlan = plan(off, window(), busy(), dasher(9), false, 100);
         assertEquals(Autopilot.Mode.OFF, offPlan.mode);
         assertEquals(100, offPlan.target);
@@ -460,7 +461,7 @@ public final class AutopilotEngineTest {
 
     @Test
     public void maxStopsCountsAsDeclinedAtEveryBar() {
-        FilterSettings threeStops = new FilterSettings(true, 400, 100, 25, 3, true, 70, 100);
+        FilterSettings threeStops = new FilterSettings(true, 200, 100, 25, 3, true, 70, 100);
         List<Autopilot.OfferRecord> lines = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
             lines.add(line(new OfferSnapshot(PAY[i], MILES[i], MINUTES[i], i < 10 ? 4 : 2), 5 + 3L * i));
@@ -884,7 +885,7 @@ public final class AutopilotEngineTest {
         assertEquals(79, twenty.need);
         assertEquals(3, plan.generation);
         assertEquals(NOW, plan.computedAt);
-        assertEquals("true:400:100:25:0:false:false:off:ps:true:70:proof:0:0:0x0.0p0:0:0:1", plan.rulesKey);
+        assertEquals("true:200:100:25:0:false:false:off:pst:true:70:proof:0:0:0x0.0p0:0:0:1", plan.rulesKey);
     }
 
     // ---- Commit reasons and the plan's other figures ----

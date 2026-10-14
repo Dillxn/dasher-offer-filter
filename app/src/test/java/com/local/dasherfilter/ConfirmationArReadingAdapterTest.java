@@ -54,7 +54,7 @@ import static org.junit.Assert.assertTrue;
 public final class ConfirmationArReadingAdapterTest {
     private static final Rect SCREEN = new Rect(0, 0, 1080, 2040);
     /** $20 at least: a $7.90 offer fails, a $25.00 one passes. */
-    private static final FilterSettings TWENTY = FilterSettings.of(true, 2000, 0, 0, 0);
+    private static final FilterSettings TWENTY = FilterSettings.of(true, 1000, 0, 0, 0);
     private static final String QUESTION = "Are you sure you want to decline this offer?";
 
     private Application app;

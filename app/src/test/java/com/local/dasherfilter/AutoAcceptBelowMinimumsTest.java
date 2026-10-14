@@ -42,7 +42,7 @@ import static org.junit.Assert.assertTrue;
 @LooperMode(LooperMode.Mode.PAUSED)
 public final class AutoAcceptBelowMinimumsTest {
     /** The starter minimums: $4 an offer, $1 a mile, $0.25 a minute ($15 an hour). */
-    private static final FilterSettings STARTER = FilterSettings.of(true, 400, 100, 25, 0);
+    private static final FilterSettings STARTER = FilterSettings.of(true, 200, 100, 25, 0);
     /** 6.6 mi and 27 min ask $6.75 at 100%: per hour asks the most. */
     private static final String ROUTE = "2 stops (6.6 mi) • 27 min";
 

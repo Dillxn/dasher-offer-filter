@@ -609,8 +609,10 @@ final class MinimumsStarView extends View {
             double[] cents = new double[NAMES.length];
             Arrays.fill(cents, Double.NaN);
             // Pay per stop: the offer's pay as it would be for the example's stops (unread stops: not drawn there).
-            Integer units = AreaScore.payUnits(offer.stops), exampleUnits = AreaScore.payUnits(example.stops);
-            if (units != null) cents[AreaScore.PAY] = pay * (exampleUnits == null ? 1 : exampleUnits) / units;
+            // The offer's own pay per stop (AreaScore.payPerStop, the requirement's count), times the example's stops.
+            java.math.BigDecimal perStop = AreaScore.payPerStop(offer.payCents, offer.stops);
+            Integer exampleUnits = AreaScore.payUnits(example.stops);
+            if (perStop != null) cents[AreaScore.PAY] = perStop.doubleValue() * (exampleUnits == null ? 1 : exampleUnits);
             if (offer.miles != null && offer.miles > 0) cents[AreaScore.MILE] = pay * example.miles / offer.miles;
             if (offer.minutes != null && offer.minutes > 0) {
                 cents[AreaScore.MINUTE] = pay * example.minutes / offer.minutes;
@@ -739,6 +741,9 @@ final class MinimumsStarView extends View {
     }
 
     double learnedAsks(int axis) { return learnedCents[axis]; }
+
+    /** Cents recent offer {@code m}'s mark stands at on spoke {@code axis}, for the example; NaN where none (for tests). */
+    double markCents(int m, int axis) { return marks.get(m)[axis]; }
 
     /** "pay $4.00 per stop", "per mile $1.00", "per hour of trip time 15 dollars per hour", or "... off". */
     private String spokeSaid(int axis) {
@@ -1674,8 +1679,8 @@ final class MinimumsStarView extends View {
     }
 
     /**
-     * The example offer's amount of spoke {@code axis}'s unit when the knob was taken: its stops after the first pickup
-     * for pay per stop (1 for the homepage's two stops), else miles...
+     * The example offer's amount of spoke {@code axis}'s unit when the knob was taken: its stops, the pickup included,
+     * for pay per stop (2 for the homepage's two stops), else miles...
      */
     private double units(int axis) {
         switch (axis) {

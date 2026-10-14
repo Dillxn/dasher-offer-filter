@@ -152,7 +152,9 @@ public class ModelMigrationTest {
         assertTrue(log, log.contains("[rules] rules model 2: flat 1950 -> 2040 (per stop 1275 folded, buffer 80% "
                 + "built in); mile 500 -> 400; minute 60 -> 48; retired: per item 1790, score by area, adaptive "
                 + "(learned values cleared), hotspot no; auto-accept turned off; paused no\n"));
-        assertEquals(log, 1, count(log, "[rules]"));
+        // The move's line, then 0.6.14's: pay per stop now counts every stop.
+        assertEquals(log, 2, count(log, "[rules]"));
+        assertEquals(log, 1, count(log, FilterStore.PICKUP_COUNTED_LOG));
     }
 
     @Test public void readmeRulesAtOneHundredPercentStayAsTheyWereWithThePerStopNotice() throws Exception {
@@ -351,7 +353,8 @@ public class ModelMigrationTest {
             FilterStore.peekModelNotice(app);
         }
         assertEquals(after, prefs().getAll());
-        assertEquals(log(), 1, count(log(), "[rules]"));
+        // The move's line, then 0.6.14's: pay per stop now counts every stop.
+        assertEquals(log(), 2, count(log(), "[rules]"));
     }
 
     @Test public void aKeyAnOlderVersionWritesAfterADowngradeIsMovedAgain() throws Exception {
@@ -371,7 +374,8 @@ public class ModelMigrationTest {
         assertEquals(90, rules.minimumScalePercent);
         assertEquals(800, readNotice().getInt("perStop"));
         assertEquals(1600, readNotice().getInt("foldedFlat"));
-        assertEquals(log(), 2, count(log(), "[rules]"));
+        assertEquals(log(), 3, count(log(), "[rules]"));
+        assertEquals(log(), 1, count(log(), FilterStore.PICKUP_COUNTED_LOG));
     }
 
     @Test public void aCrashBeforeTheEditLandsLeavesTheOldRulesAndTheNextLoadFinishes() {
@@ -398,7 +402,8 @@ public class ModelMigrationTest {
         assertNotNull(FilterStore.peekModelNotice(app));
         assertTrue(app.getSharedPreferences(FilterStore.RETIRED_MANUAL_DECLINES, Context.MODE_PRIVATE)
                 .getAll().isEmpty());
-        assertEquals(log(), 1, count(log(), "[rules]"));
+        // The move's line, then 0.6.14's: pay per stop now counts every stop.
+        assertEquals(log(), 2, count(log(), "[rules]"));
     }
 
     @Test public void aSaveBeforeTheFirstLoadIsNeverFoldedOrScaledAgain() {

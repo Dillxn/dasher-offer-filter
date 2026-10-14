@@ -8,7 +8,8 @@ import org.junit.Test;
 public class QualifyingWaitTest {
     private static final long WALL = 1_800_000_000_000L;
     private static OfferSnapshot offer(int pay) { return new OfferSnapshot(pay, 3.0, 15, 2); }
-    private static FilterSettings rules(int pay) { return FilterSettings.of(true, pay, 0, 0, 0); }
+    // The single-order ask; pay per stop is half, a single order being 2 stops, the pickup included (0.6.14).
+    private static FilterSettings rules(int pay) { return FilterSettings.of(true, pay / 2, 0, 0, 0); }
     private static List<QualifyingWait.Sample> history() {
         List<QualifyingWait.Sample> rows = new ArrayList<>();
         for (int pay : new int[] {500, 1000, 1200, 1400, 700}) {
@@ -109,7 +110,7 @@ public class QualifyingWaitTest {
     }
     @Test public void theSharedStrictRuleDecidesEachArrival() {
         // $8.00 for 1 mi and 15 min against $10.00 minimum pay and $1.00 per mile: every minimum must be met.
-        FilterSettings settings = FilterSettings.of(true, 1000, 100, 0, 0);
+        FilterSettings settings = FilterSettings.of(true, 500, 100, 0, 0);
         List<QualifyingWait.Sample> rows = new ArrayList<>();
         for (int i = 0; i < 5; i++) rows.add(new QualifyingWait.Sample(WALL, 120_000,
                 new OfferSnapshot(800, 1.0, 15, 2)));

@@ -163,7 +163,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Learning is on by default.", "Your Dasher account.",
                 "At your own risk.", "Not while driving.", "Your data.", "A daily count is on by default.",
                 "Optional offer timing study."), java.util.Arrays.asList(leads));
-        assertEquals("pay per stop renews the notice (after the floor and the divider's 22)", 23, Consent.VERSION);
+        assertEquals("the pickup counted renews the notice (after pay per stop's 23)", 24, Consent.VERSION);
         String does = Consent.POINTS[2][1];
         for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
                 "It taps Decline and its confirmation on offers that fail your chosen rules.",
@@ -194,9 +194,10 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "In split screen during a delivery it moves the divider, using the divider's own controls, to give the "
                         + "navigating app more room, and puts it back afterward; move it yourself and it stops for that "
                         + "dash.",
-                // 0.6.12 (notice 23): the pay minimum is per stop after the first pickup; single orders as before.
-                "Your pay minimum is per stop: an offer must pay it for each stop after the first pickup, so a stacked "
-                        + "offer must pay more; a single order is judged as before.",
+                // 0.6.14 (notice 24): the pay minimum is per stop, the pickup included; the number unchanged.
+                "Your pay minimum is per stop, the pickup included: an offer must pay it for each stop Dasher shows, "
+                        + "so $5 a stop asks $10 of a single order and $15 of three stops. Your number wasn't changed, "
+                        + "so a single order now asks twice what it did; set it to what you want per stop.",
                 "It can briefly turn offer sound down.",
                 "During a dash it keeps your unlocked screen from timing out; it never wakes or unlocks it."}) {
             assertTrue(fact, does.contains(fact));
@@ -365,9 +366,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // Version 13 described reports through GitHub; 14 describes accountless feedback and its opt-in diagnostics,
         // Autopilot and the acceptance-rate reading, the screen hold and the dated beta terms; 15, the minimums'
         // growth; 20, the anonymous daily count; 21, the store skip list and the cost per mile; 22, the bar an accepted
-        // offer holds and the divider moved during a delivery; 23, pay per stop. A phone that accepted 14 (0.5.0) sees
-        // it again too.
-        assertEquals(23, Consent.VERSION);
+        // offer holds and the divider moved during a delivery; 23, pay per stop; 24, the pickup counted. A phone that
+        // accepted 14 (0.5.0) sees it again too.
+        assertEquals(24, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

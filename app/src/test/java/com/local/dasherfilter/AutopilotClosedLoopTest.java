@@ -137,8 +137,8 @@ public final class AutopilotClosedLoopTest {
         Random shuffle = new Random(seed * 1_000_037L + 3);
         Random questions = new Random(seed * 1_000_039L + 4);
         boolean autopilot = goal != OFF;
-        FilterSettings rules = autopilot ? new FilterSettings(true, 400, 100, 25, 0, true, goal, 100)
-                : FilterSettings.of(true, 400, 100, 25, 0);
+        FilterSettings rules = autopilot ? new FilterSettings(true, 200, 100, 25, 0, true, goal, 100)
+                : FilterSettings.of(true, 200, 100, 25, 0);
         int goalToReach = goal > 0 ? goal : FilterSettings.GOAL_TOP_TIER;
 
         // DoorDash's last 100 offers, startAr of them accepted, in a seeded order.

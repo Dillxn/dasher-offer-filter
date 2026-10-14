@@ -8,7 +8,7 @@ import java.math.RoundingMode;
 /** Shared exact three-axis floors, strict/area requirements and stable drawing geometry.
  * Decimal route facts and learned rate pairs remain rational through aggregation and the bar. Only the final
  * required pay rounds up to a cent. Display projections never decide a result. The pay axis is pay per stop (0.6.12):
- * it asks its rate for each stop after the first pickup ({@link #payUnits}). */
+ * it asks its rate for each stop, the pickup included ({@link #payUnits}). */
 final class AreaScore {
     static final int PAY = 0, MILE = 1, MINUTE = 2, STOP = 3, HOTSPOT = 4, ITEM = 5, AXES = 6;
     static final float SPREAD = 30;
@@ -207,13 +207,30 @@ final class AreaScore {
     }
 
     /**
-     * How many times the pay-per-stop minimum applies to an offer of {@code stops} stops: rule C (0.6.12), each stop
-     * after the first pickup, {@code max(1, stops − 1)}. Dasher counts a single order as two stops (its pickup and its
-     * drop-off), so a single order asks the number once, exactly as the minimum pay did before; three stops ask it
-     * twice, four three times. Null when the stops were not read (a read of 0 counts as unread).
+     * How many times the pay-per-stop minimum applies to an offer of {@code stops} stops: each stop, the pickup
+     * included (0.6.14), Dasher's own count. Dasher counts a single order as two stops (its pickup and its drop-off), so
+     * a single order asks the number twice; three stops ask it three times. Null when the stops were not read (a read of
+     * 0 counts as unread). 0.6.12's rule C was {@code max(1, stops − 1)}.
      */
     static Integer payUnits(Integer stops) {
-        return stops == null || stops < 1 ? null : Math.max(1, stops - 1);
+        return stops == null || stops < 1 ? null : stops;
+    }
+
+    /**
+     * An offer's pay per stop, in cents: its pay ÷ {@link #payUnits} (every stop, the pickup included, 0.6.14), the same
+     * count the requirement uses, so $7.50 over 2 stops is 375 ($3.75 a stop), never 0.6.12's $7.50. Null when the pay
+     * or the stops were not read.
+     */
+    static BigDecimal payPerStop(Integer payCents, Integer stops) {
+        Integer units = payUnits(stops);
+        return payCents == null || units == null ? null
+                : BigDecimal.valueOf(payCents).divide(BigDecimal.valueOf(units), 6, RoundingMode.HALF_EVEN);
+    }
+
+    /** "$3.75 a stop" for $7.50 over 2 stops (a fraction of a cent dropped, never shown higher); null when unread. */
+    static String payPerStopText(Integer payCents, Integer stops) {
+        BigDecimal cents = payPerStop(payCents, stops);
+        return cents == null ? null : DecisionLog.money(cents.setScale(0, RoundingMode.FLOOR).longValue()) + " a stop";
     }
 
     /** The learned pay ask for {@code units} stops: the best pay per stop × units, plus a cent. */

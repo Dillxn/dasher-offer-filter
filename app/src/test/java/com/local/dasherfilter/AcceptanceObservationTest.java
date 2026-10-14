@@ -41,7 +41,7 @@ public class AcceptanceObservationTest {
      * The user's own kind of rules: $13, $3.85 a mile, $0.41 a minute ($24.60 an hour), at most 3 stops. Their $4.75 a
      * stop folds into minimum pay as 2 × $4.75 = $9.50, below the $13 already asked.
      */
-    private static final FilterSettings RULES = FilterSettings.of(true, Math.max(1300, 2 * 475), 385, 41, 3);
+    private static final FilterSettings RULES = FilterSettings.of(true, Math.max(1300, 2 * 475) / 2, 385, 41, 3);
 
     private Application app;
     private ServiceController<OfferFilterService> controller;
@@ -250,7 +250,7 @@ public class AcceptanceObservationTest {
     @Test public void qualifyingShoppingOfferAcceptedThroughAnEventlessPickupKeepsItsItemsAndChangesNoRule() {
         // Captured numeric offer shape, synthetic rule setup: this is not the missing phone node tree. $14.70 for
         // 6.8 mi and 33 min needs $10.00 (its minimum pay) under these.
-        FilterSettings rules = FilterSettings.of(true, 1000, 100, 20, 3);
+        FilterSettings rules = FilterSettings.of(true, 500, 100, 20, 3);
         FilterStore.save(app, rules);
         show(waiting());
         AccessibilityNodeInfo shopping = offer("$14.70", "2 stops (6.8 mi) • 33 min", "0:35");
@@ -291,7 +291,7 @@ public class AcceptanceObservationTest {
 
     @Test public void automaticRequestObservedWithoutAnotherEventIsCountedAsAutomatic() {
         controller.get().onServiceConnected();
-        FilterSettings rules = FilterSettings.of(true, 1000, 0, 0, 0);
+        FilterSettings rules = FilterSettings.of(true, 500, 0, 0, 0);
         FilterStore.save(app, rules);
         FilterStore.setAutoAcceptEnabled(app, true);
         show(waiting());

@@ -57,8 +57,9 @@ public class AcceptanceLearningStoreTest {
         assertEquals(1420, after.accepted.highestPayCents);
         FilterStore.LearnedRaise raise = FilterStore.learnedRaise(app);
         assertNotNull(raise);
-        assertEquals(1421, raise.flat); assertEquals(237, raise.mile); assertEquals(60, raise.minute);
-        assertEquals("$14.21/stop · $2.37/mi · $36/hr · yours $7.00/stop · $1.50/mi · $18/hr", LearnedRaiseCard.line(raise));
+        // Pay per stop counts the pickup (0.6.14): $14.20 for 2 stops asks ⌈($14.20 + 1¢) ÷ 2⌉ a stop.
+        assertEquals(711, raise.flat); assertEquals(237, raise.mile); assertEquals(60, raise.minute);
+        assertEquals("$7.11/stop · $2.37/mi · $36/hr · yours $7.00/stop · $1.50/mi · $18/hr", LearnedRaiseCard.line(raise));
         assertNull("nothing was adopted", FilterStore.pendingAdoption(app));
         // OK closes the note; the learned minimums still apply and the saved ones stay.
         FilterStore.closeLearnedRaise(app, raise.id);
@@ -98,7 +99,7 @@ public class AcceptanceLearningStoreTest {
         assertNull("forgotten once it could not show", FilterStore.learnedRaise(app));
         learn(new OfferSnapshot(2000, 6.0, 24, 2));
         FilterStore.LearnedRaise next = FilterStore.learnedRaise(app);
-        assertNotNull(next); assertEquals(2001, next.flat);
+        assertNotNull(next); assertEquals("⌈($20.00 + 1¢) ÷ 2 stops⌉", 1001, next.flat);
         FilterStore.resetAccepted(app);
         assertNull(FilterStore.learnedRaise(app));
     }
@@ -135,7 +136,8 @@ public class AcceptanceLearningStoreTest {
         FilterStore.save(app, FilterStore.load(app).withMinimums(new int[] {5000, 5000, 5000, 0, 0, 0}));
         assertEquals(FilterStore.AcceptedLesson.SAVED, learn(OFFER));
         assertEquals(FilterStore.AcceptedLesson.UNCHANGED, learn(OFFER));
-        assertEquals(FilterStore.AcceptedLesson.RAISED, learn(new OfferSnapshot(6000, 6.0, 24, 2)));
+        // $120.00 for 2 stops is $60.00 a stop, above the saved $50.00 (0.6.14 counts the pickup).
+        assertEquals(FilterStore.AcceptedLesson.RAISED, learn(new OfferSnapshot(12000, 6.0, 24, 2)));
     }
     @Test public void invalidatingTransitionsCannotResurrectACapturedOutcome() {
         for (int transition = 0; transition < 5; transition++) {
@@ -209,7 +211,7 @@ public class AcceptanceLearningStoreTest {
         FilterStore.save(app, adopted, adopted.withMinimums(new int[] {2000, 237, 60, 0, 0, 0}));
         FilterStore.save(app, FilterStore.load(app), adopted);
         assertNull(FilterStore.pendingAdoption(app)); assertFalse(FilterStore.undoAdoption(app, a.id));
-        assertEquals(1421, FilterStore.load(app).flatCents);
+        assertEquals("the adopted pay per stop, ⌈($14.20 + 1¢) ÷ 2⌉", 711, FilterStore.load(app).flatCents);
     }
     @Test public void clearHistoryDeletesDerivedBestsAndUndoButKeepsAdoptedSettings() {
         learn(OFFER); FilterStore.adoptAccepted(app); int[] adopted = FilterStore.load(app).minimums();

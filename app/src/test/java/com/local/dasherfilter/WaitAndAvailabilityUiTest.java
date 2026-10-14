@@ -42,7 +42,7 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
 
     /** $10.00 and $1.50 a mile, at most 3 stops; Autopilot off, so offers are judged at exactly these. */
     private FilterSettings rules() {
-        return FilterSettings.of(true, 1000, 150, 0, 3);
+        return FilterSettings.of(true, 500, 150, 0, 3);
     }
 
     private View page(ActivityController<MainActivity> activity) {

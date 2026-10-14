@@ -29,7 +29,8 @@ public final class AutopilotFloorPlanTest {
 
     /** Strict rules with Autopilot on: only a flat minimum, so an offer's score is pay ÷ that minimum. */
     private static FilterSettings flat(int cents, int goal) {
-        return new FilterSettings(true, cents, 0, 0, 0, true, goal, 100);
+        // The single-order ask; pay per stop is half, a single order being 2 stops, the pickup included (0.6.14).
+        return new FilterSettings(true, cents / 2, 0, 0, 0, true, goal, 100);
     }
 
     /** A counted line {@code minutesAgo} old, accepted by hand {@code handAgo} minutes ago (-1: never). */
@@ -121,7 +122,7 @@ public final class AutopilotFloorPlanTest {
     @Test
     public void theOwnersAcceptAtSixtyThreeLiftsTheBarFromFifty() {
         // A $3.18-a-mile minimum asks $22.90 of 7.2 mi: his $14.45 offer (7.2 mi, 27 min) scores 63.
-        FilterSettings rules = new FilterSettings(true, 500, 318, 0, 0, true, 70, 50);
+        FilterSettings rules = new FilterSettings(true, 250, 318, 0, 0, true, 70, 50);
         OfferSnapshot his = new OfferSnapshot(1445, 7.2, 27, 2);
         assertEquals(63, AreaScore.scorePercent(rules, his));
         List<Autopilot.OfferRecord> lines = new ArrayList<>();
@@ -257,7 +258,7 @@ public final class AutopilotFloorPlanTest {
 
     @Test
     public void addOnsReplaysMisreadsSkippedStoresOverMaxStopsAndUnreadFiguresNeverCount() {
-        FilterSettings rules = new FilterSettings(true, 1000, 0, 25, 3, true, 70, 100);
+        FilterSettings rules = new FilterSettings(true, 500, 0, 25, 3, true, 70, 100);
         OfferSnapshot good = new OfferSnapshot(1200, 5.0, 20, 2);
         assertEquals(120, AreaScore.scorePercent(rules, good));
         List<Autopilot.OfferRecord> never = Arrays.asList(
@@ -292,8 +293,8 @@ public final class AutopilotFloorPlanTest {
         OfferSnapshot accepted = new OfferSnapshot(1200, 5.0, 20, 2);
         FilterSettings then = flat(1000, 70);
         assertEquals(120, AreaScore.scorePercent(then, accepted));
-        FilterSettings now = new FilterSettings(true, 1000, 0, 0, 0, true, 70, 100, false, true,
-                new AcceptedFloors(1200, 0, 0, 0, 0));
+        FilterSettings now = new FilterSettings(true, 500, 0, 0, 0, true, 70, 100, false, true,
+                new AcceptedFloors(1200, 2, 0, 0, 0, 0));
         List<Autopilot.OfferRecord> lines = Collections.singletonList(line(accepted, 2, 1));
         assertEquals(120, Autopilot.acceptedFloor(Autopilot.handAccepts(then, lines), SINCE));
         assertEquals("the ask is about the accepted pay, not 120% of the new minimums", 99,
@@ -304,7 +305,7 @@ public final class AutopilotFloorPlanTest {
 
     @Test
     public void aCommitLandingOnABindingFloorSaysTheAcceptsWords() {
-        FilterSettings rules = new FilterSettings(true, 500, 318, 0, 0, true, 70, 50);
+        FilterSettings rules = new FilterSettings(true, 250, 318, 0, 0, true, 70, 50);
         List<Autopilot.OfferRecord> lines = new ArrayList<>();
         lines.add(line(new OfferSnapshot(1445, 7.2, 27, 2), 2, 1));
         for (int i = 0; i < 99; i++) lines.add(line(new OfferSnapshot(500 + i, 7.2, 27, 2), 5 + 3L * i, -1));

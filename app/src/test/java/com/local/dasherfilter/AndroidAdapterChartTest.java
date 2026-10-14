@@ -103,14 +103,15 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue(star.isShown());
             // What the example offer needs is heard first; the page shows no words for it. No offers yet, so the
-            // example is a typical one: $7.00, $1.50 × 5 mi = $7.50 and 20 min at $18 an hour = $6.00.
-            assertEquals("An offer like 20 min · 5 mi · 2 stops needs $7.50 at your minimums. Your minimums: pay "
+            // example is a typical one: 2 stops × $7.00 = $14.00 (the pickup counts, 0.6.14), $1.50 × 5 mi = $7.50
+            // and 20 min at $18 an hour = $6.00.
+            assertEquals("An offer like 20 min · 5 mi · 2 stops needs $14.00 at your minimums. Your minimums: pay "
                     + "$7.00 per stop, per mile $1.50, per hour of trip time 18 dollars per hour; at most 3 stops. Strict mode checks every active "
                     + "minimum. Farther out means higher pay or pay rates. Solid blue is saved minimums; gray is learned "
                     + "bests stored but off; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. "
                     + "Learned bests do not move saved knobs. Colored shapes are offers.",
                     star.getContentDescription().toString());
-            assertEquals(700, star.setAsks(AreaScore.PAY), 0);
+            assertEquals(1400, star.setAsks(AreaScore.PAY), 0);
             assertEquals(750, star.setAsks(AreaScore.MILE), 0);
             assertEquals(600, star.setAsks(AreaScore.MINUTE), 0);
             assertTrue("no dashed shape at exactly the minimums", star.autopilotShape().isEmpty());
@@ -120,7 +121,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertEquals(40, FilterStore.load(app).perMinuteCents);
             assertEquals("20 min at $24 an hour", 800, star.setAsks(AreaScore.MINUTE), 0);
             assertTrue(star.getContentDescription().toString()
-                    .startsWith("An offer like 20 min · 5 mi · 2 stops needs $8.00 at your minimums."));
+                    .startsWith("An offer like 20 min · 5 mi · 2 stops needs $14.00 at your minimums."));
             assertTrue(star.getContentDescription().toString().contains("per hour of trip time 24 dollars per hour"));
             setKnob(star, AreaScore.MILE, 0f);
             assertTrue(Double.isNaN(star.setAsks(AreaScore.MILE)));
@@ -131,7 +132,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertTrue(FilterStore.commitAutopilotBar(app, 100, 80));
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             settleSky(content);
-            assertEquals("80% of $7.00", 560, star.barAsks(AreaScore.PAY), 0.001);
+            assertEquals("80% of 2 stops × $7.00", 1120, star.barAsks(AreaScore.PAY), 0.001);
             assertEquals("80% of $8.00", 640, star.barAsks(AreaScore.MINUTE), 0.001);
             assertTrue("no minimum, no point", Double.isNaN(star.barAsks(AreaScore.MILE)));
             assertFalse("dashed", star.autopilotShape().isEmpty());
@@ -153,7 +154,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
         FilterStore.save(app, FilterSettings.of(true, 700, 0, 0, 0));
         DecisionLog.record(app, declinedEntry());
         DecisionLog.record(app, new DecisionLog.Entry(System.currentTimeMillis() + 60_000,
-                // A single order: 2 stops ask pay per stop once (0.6.12).
+                // A single order: 2 stops ask pay per stop twice, the pickup included (0.6.14).
                 DecisionLog.Source.SCREEN, false, new OfferSnapshot(2500, 9.1, 30, 2), 2000,
                 OfferRule.Result.KEEP, "meets your minimums", DecisionLog.Action.PASSES, true,
                 Collections.emptyList()).withScore(357));
@@ -163,8 +164,9 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             String description = star.getContentDescription().toString();
             assertTrue(description, description.contains("Your minimums: pay $7.00 per stop, per mile off, per hour of trip "
                     + "time off; no max stops."));
-            assertTrue("$25.00 against $7.00: " + description,
-                    description.contains("The newest offer scores 357% of your resolved minimums."));
+            // Scored again under the current rules: $25.00 against 2 stops × $7.00.
+            assertTrue("$25.00 against $14.00: " + description,
+                    description.contains("The newest offer scores 178% of your resolved minimums."));
             assertFalse("strict scores are not relabeled as area fitness", description.contains("area fitness"));
             assertTrue(description, description.endsWith("The constellation shows the latest or selected offer. "
                     + "Choose an older offer on the skyline."));
@@ -175,8 +177,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             chart.select(0);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             assertEquals("history stays selectable", Integer.valueOf(790), chart.selectedEntry().facts.payCents);
-            assertTrue("the chosen offer is worked out against the minimums as they are now: $7.90 against $7.00",
-                    star.getContentDescription().toString().contains("The chosen offer scores 112% of your resolved minimums."));
+            assertTrue("the chosen offer is worked out against the minimums as they are now: $7.90 against $14.00",
+                    star.getContentDescription().toString().contains("The chosen offer scores 56% of your resolved minimums."));
         }
     }
 
@@ -658,7 +660,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 assertEquals(ring, star.ringCents());
             });
             int pay = FilterStore.load(app).flatCents;
-            assertTrue("past the outer ring's " + ring * 3 + ": " + pay, pay > ring * 3);
+            // The spoke shows what pay per stop asks of the example's 2 stops, the pickup included (0.6.14).
+            assertTrue("past the outer ring's " + ring * 3 + ": 2 × " + pay, 2L * pay > ring * 3);
             assertEquals("in $0.50 steps", 0, pay % 50);
             assertTrue("the rings grew to fit it: " + star.ringCents(), star.ringCents() > ring);
         }
@@ -875,8 +878,9 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             settleSky(content);
             pay = star.knobAt(0);
             float perCent = star.skyRadius() / (star.ringCents() * 3f);
+            // A cent a stop is two cents of the example's 2-stop ask (the pickup counts, 0.6.14).
             dragThrough(content, new float[][] {pay, alongSpoke(pay, 0, -ui.dp(30), 0),
-                    alongSpoke(pay, 0, -31 * perCent, 0)}, null);
+                    alongSpoke(pay, 0, -31 * 2 * perCent, 0)}, null);
             assertEquals(1400, FilterStore.load(app).flatCents);
             assertArrayEquals("nothing else moved", new int[] {1400, 237, 48, 0, 0, 0},
                     FilterStore.load(app).minimums());

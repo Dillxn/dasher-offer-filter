@@ -54,7 +54,7 @@ public class DashSummaryTest {
     public void setup() {
         app = RuntimeEnvironment.getApplication();
         Updater.setEnabled(app, false);
-        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         DiagnosticLog.clear(app);
         DiagnosticLog.setEnabled(app, true);
         DecisionLog.forgetCache();
@@ -429,7 +429,7 @@ public class DashSummaryTest {
 
     @Test
     public void theSettingsNameTheSelectedModelAndBarWithoutPrivateRuleAmounts() throws Exception {
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 3));
         Feedback.setAfterDash(app, true);
         Dashing.seen(app);
         long start = Dashing.currentStart(app);
@@ -459,7 +459,7 @@ public class DashSummaryTest {
 
     @Test
     public void summaryKeepsRecordedAreaAndStrictScoresWhileReportingOnlyLearningSwitch() throws Exception {
-        FilterSettings strict = FilterSettings.of(true, 500, 100, 25, 0);
+        FilterSettings strict = FilterSettings.of(true, 250, 100, 25, 0);
         FilterSettings area = strict.withScoreByArea(true);
         FilterStore.save(app, area.withAcceptanceLearning(true));
         Feedback.setAfterDash(app, true);

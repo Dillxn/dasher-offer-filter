@@ -624,7 +624,8 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
     @Test
     @org.robolectric.annotation.Config(qualifiers = "w411dp-h914dp-xxhdpi")
     public void whatTheExampleNeedsFollowsTheRulesAsTheyAreSet() {
-        FilterStore.save(app, FilterSettings.of(true, 700, 0, 0, 0));
+        // $3.50 a stop: the example's 2 stops, the pickup included, ask $7.00 (0.6.14).
+        FilterStore.save(app, FilterSettings.of(true, 350, 0, 0, 0));
         DecisionLog.Entry latest = declinedEntry();
         DecisionLog.record(app, latest);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {

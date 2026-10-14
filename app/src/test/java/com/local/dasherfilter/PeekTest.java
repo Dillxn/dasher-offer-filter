@@ -94,7 +94,7 @@ public class PeekTest {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         Updater.setEnabled(app, false);
         OfferAlerts.ensureChannel(app);
-        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         DiagnosticLog.clear(app);
         DecisionLog.forgetCache();
         DecisionLog.clear(app);
@@ -793,7 +793,7 @@ public class PeekTest {
         assertTrue(entry.steps.stream().anyMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED));
         assertTrue(entry.steps.stream().noneMatch(step -> step.kind == DecisionLog.StepKind.ACCEPTED_OBSERVED));
         assertEquals(1750, FilterStore.load(app).accepted.highestPayCents);
-        assertTrue("his own minimums stay", Arrays.equals(new int[] {2000, 0, 0, 0, 0, 0},
+        assertTrue("his own minimums stay", Arrays.equals(new int[] {1000, 0, 0, 0, 0, 0},
                 FilterStore.load(app).minimums()));
         contains(log(app), "you took it back before its decline was confirmed");
     }
@@ -875,7 +875,7 @@ public class PeekTest {
     @Test
     public void notWhileAutoDeclineIsPaused() {
         connect(app(MAPS));
-        FilterStore.save(app, FilterSettings.of(false, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(false, 1000, 0, 0, 0));
         notPeeked("auto-decline is paused");
     }
 
@@ -1397,7 +1397,7 @@ public class PeekTest {
         // Initially REVIEW for unread time; a $30.00 minimum pay set meanwhile makes $25.00 a known failure. The
         // queued rules callback has not run yet, so the old quiet review card must not ring when Peek is cancelled.
         FilterSettings before = FilterStore.load(app);
-        FilterStore.save(app, before.withMinimums(3000, before.perMileCents, before.perMinuteCents));
+        FilterStore.save(app, before.withMinimums(1500, before.perMileCents, before.perMinuteCents));
         int historyBefore = DecisionLog.recent(app, 200).size();
         OfferNotificationService.peekNotTaken(card.getTag());
         idle();

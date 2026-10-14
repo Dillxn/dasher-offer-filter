@@ -103,7 +103,8 @@ public class AutopilotRuntimeTest {
 
     /** The user's rules: auto-decline on, these minimums, no max stops. */
     private void minimums(int flat, int mile, int minute) {
-        FilterStore.save(app, FilterSettings.of(true, flat, mile, minute, 0));
+        // The single-order ask; pay per stop is half, a single order being 2 stops, the pickup included (0.6.14).
+        FilterStore.save(app, FilterSettings.of(true, flat / 2, mile, minute, 0));
     }
 
     /** The worked example's first {@code count} offers in the history, decided by the saved rules. */
@@ -293,10 +294,10 @@ public class AutopilotRuntimeTest {
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
         assertNull("the dash is paused", AutopilotRuntime.latest());
         Dashing.seen(app);
-        FilterStore.save(app, FilterSettings.of(false, 400, 100, 25, 0));
+        FilterStore.save(app, FilterSettings.of(false, 200, 100, 25, 0));
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
         assertNull("auto-decline is paused", AutopilotRuntime.latest());
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 0));
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
         assertNotNull(AutopilotRuntime.latest());
     }
@@ -330,7 +331,7 @@ public class AutopilotRuntimeTest {
         assertNotNull(AutopilotRuntime.latest());
 
         // Other rules, saved without telling Autopilot: the plan is for rules no longer in force.
-        FilterStore.save(app, FilterSettings.of(true, 500, 100, 25, 0));
+        FilterStore.save(app, FilterSettings.of(true, 250, 100, 25, 0));
         assertFalse("a plan for other rules wants nothing", AutopilotRuntime.commitWanted(app));
         assertEquals(AutopilotRuntime.Commit.DISCARDED, AutopilotRuntime.commitIfDue(app));
         assertEquals(1, logged("plan discarded: rules changed"));
@@ -560,7 +561,7 @@ public class AutopilotRuntimeTest {
         // "Use typical minimums" moments later. Under the cautious 6-an-hour prior 83–100% are within 2% of the best
         // value (V(86–100) = 1,041,900/603 ¢/h; V(83–85) = 1,076,400/630 is within it, V(76–82) is not), and 83% is
         // the closest of them to 50%: one commit goes there at once, a raise of 33 within the minute.
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 0));
         AutopilotRuntime.rulesChanged(app);
         assertEquals("RULES_CHANGED", AutopilotStore.jump(app));
         Autopilot.Plan typical = AutopilotRuntime.latest();
@@ -730,7 +731,7 @@ public class AutopilotRuntimeTest {
 
     @Test
     public void aLineWithAPlusAmountsCeilingPlansTheSameBeforeAndAfterARestart() {
-        FilterSettings rules = FilterSettings.of(true, 400, 100, 25, 0);
+        FilterSettings rules = FilterSettings.of(true, 200, 100, 25, 0);
         FilterStore.save(app, rules);
         history(19);
         // The "+$" shape: $5.59 at most for 6.6 mi and 27 min. Its ceiling decides the offer (θ 82), but the history
@@ -783,7 +784,7 @@ public class AutopilotRuntimeTest {
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.RESUME);
         assertEquals(2, logged("plan "));
         // Higher minimums: the goal's limit binds below 100, a new target, logged at once.
-        FilterStore.save(app, FilterSettings.of(true, 500, 125, 35, 0));
+        FilterStore.save(app, FilterSettings.of(true, 250, 125, 35, 0));
         AutopilotRuntime.rulesChanged(app);
         Autopilot.Plan plan = AutopilotRuntime.latest();
         assertEquals(Autopilot.Mode.GOAL, plan.mode);
@@ -795,7 +796,7 @@ public class AutopilotRuntimeTest {
 
     @Test
     public void theExemptionValveIsLoggedAtMostOnceADay() {
-        FilterSettings rules = FilterSettings.of(true, 2040, 400, 48, 0);
+        FilterSettings rules = FilterSettings.of(true, 1020, 400, 48, 0);
         FilterStore.save(app, rules);
         // Twenty declined lines, twelve of them marked free to decline: the mark reads as Dasher's general wording.
         for (int i = 19; i >= 0; i--) {
@@ -843,7 +844,7 @@ public class AutopilotRuntimeTest {
 
     @Test
     public void aDeclineQuestionKeepsOneReadingMarksItsOwnLineAndLogsNoText() {
-        FilterSettings rules = FilterSettings.of(true, 400, 100, 25, 0);
+        FilterSettings rules = FilterSettings.of(true, 200, 100, 25, 0);
         FilterStore.save(app, rules);
         long now = System.currentTimeMillis();
         OfferSnapshot declined = new OfferSnapshot(575, 6.6, 27, 2);
@@ -1064,7 +1065,7 @@ public class AutopilotRuntimeTest {
     public void historyLinesBecomeOfferRecords() {
         // $9.25 for 6.3 mi and 25 min passes the typical minimums ($6.30 asked).
         OfferSnapshot facts = new OfferSnapshot(925, 6.3, 25, 2);
-        FilterSettings rules = FilterSettings.of(true, 400, 100, 25, 0);
+        FilterSettings rules = FilterSettings.of(true, 200, 100, 25, 0);
         long at = wall - MIN;
         DecisionLog.Entry kept = entry(facts, at, OfferRule.evaluate(facts, rules));
         Autopilot.OfferRecord plain = AutopilotRuntime.record(kept);

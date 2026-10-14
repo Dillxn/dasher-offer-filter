@@ -22,7 +22,7 @@ public final class GrowthFloorTest {
     /** Noon UTC, so 15 lines this morning and 15 the morning before fall on two days. */
     private static final long NOW = 1_760_011_200_000L;
     private static final long SINCE = NOW - 7 * 24 * HOUR;
-    private static final FilterSettings RULES = new FilterSettings(true, 1000, 0, 0, 0, true, 70, 110);
+    private static final FilterSettings RULES = new FilterSettings(true, 500, 0, 0, 0, true, 70, 110);
 
     /** 30 counted lines Autopilot decided at 110% under these rules: 15 this morning, 15 yesterday morning. */
     private static List<Autopilot.OfferRecord> lines() {

@@ -171,7 +171,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
      */
     @Test @Config(qualifiers = "w411dp-h300dp-420dpi")
     public void aThirdOfASplitScreenIsTheHomepageItsStripAlongTheTop() {
-        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         DecisionLog.Entry latest = declinedEntry();
         DecisionLog.record(app, latest);
         servicesUp();
@@ -225,7 +225,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
      */
     @Test @Config(qualifiers = "w411dp-h300dp-420dpi")
     public void aSetupStepStaysOnThePageAndItsTapIsTheFix() {
-        FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         screen = Robolectric.buildService(OfferFilterService.class).create();
         screen.get().onServiceConnected();
         settle();
@@ -301,7 +301,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             refreshed();
             FilterSettings saved = FilterStore.load(app);
-            assertEquals(400, saved.flatCents);
+            assertEquals(200, saved.flatCents);
             assertEquals(100, saved.perMileCents);
             assertEquals(25, saved.perMinuteCents);
             assertFalse("auto-decline stays paused: the mascot turns it on", saved.enabled);
@@ -343,7 +343,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
     /** Half of a split screen beside Dasher: the radar and the map together (0.5.1 showed only one of them there). */
     @Test @Config(qualifiers = "w411dp-h410dp-420dpi")
     public void halfOfASplitScreenBesideDasherShowsTheRadarAndTheMapTogether() {
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 0));
         DecisionLog.record(app, declinedEntry());
         servicesUp();
         OfferFilterService.sawDasherBeside(SystemClock.uptimeMillis());
@@ -367,7 +367,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
     /** A phone on its side during a dash: the radar and the map side by side under the strip (0.5.1 kept them too). */
     @Test @Config(qualifiers = "w700dp-h300dp-420dpi")
     public void aShortFullScreenShowsTheRadarAndTheMapSideBySide() {
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 0));
         DecisionLog.record(app, declinedEntry());
         servicesUp();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -399,7 +399,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
     @Test @Config(qualifiers = "w411dp-h300dp-420dpi") @GraphicsMode(GraphicsMode.Mode.NATIVE)
     public void theStripsAutopilotChipIsAWholeTargetAtNoHeight() {
         AutopilotRuntime.executorForTests = Runnable::run;
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 0));
         DecisionLog.record(app, declinedEntry());
         servicesUp();
         AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
@@ -481,7 +481,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
      */
     @Test @Config(qualifiers = "w411dp-h300dp-420dpi")
     public void theVerdictNeverCallsAPassBelowTheMinimumsAFullPass() {
-        FilterSettings rules = FilterSettings.of(true, 400, 100, 25, 3).withAutopilot(true, 70)
+        FilterSettings rules = FilterSettings.of(true, 200, 100, 25, 3).withAutopilot(true, 70)
                 .withMinimumScalePercent(82);
         // $5.75 for 6.6 mi and 27 min asks $6.75 at the minimums, $5.54 at an 82% bar.
         OfferSnapshot facts = new OfferSnapshot(575, 6.6, 27, 2);
@@ -490,7 +490,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         DecisionLog.record(app, DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, decision,
                 DecisionLog.Action.PASSES, true, Collections.singletonList("$5.75"))
                 .withTime(System.currentTimeMillis() - 5_000));
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 3));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
         servicesUp();
@@ -545,7 +545,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         RuntimeEnvironment.setFontScale(fontScale);
         AutopilotRuntime.executorForTests = Runnable::run;
         dasherInstalled();
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 0));
         DecisionLog.record(app, declinedEntry());
         servicesUp();
         if (line.equals("peek")) Peek.pause(app, LONGEST_PAUSE);
@@ -676,7 +676,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         if (kind.equals("below")) {
             // $5.75 for 6.6 mi and 27 min asks $6.75 at the minimums, $5.54 at an 82% bar.
             OfferSnapshot facts = new OfferSnapshot(575, 6.6, 27, 2);
-            OfferRule.Decision decision = OfferRule.evaluate(facts, FilterSettings.of(true, 400, 100, 25, 3)
+            OfferRule.Decision decision = OfferRule.evaluate(facts, FilterSettings.of(true, 200, 100, 25, 3)
                     .withAutopilot(true, 70).withMinimumScalePercent(82));
             DecisionLog.record(app, DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, decision,
                     DecisionLog.Action.PASSES, true, Collections.singletonList("$5.75")).withTime(at));
@@ -695,7 +695,7 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
             outcome = "$12.50 · 3 mi · 15 min · "
                     + (kind.equals("automatic") ? "Automatically accepted" : "Accept requested, not confirmed");
         }
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 3));
+        FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 3));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         if (kind.equals("below")) assertTrue(FilterStore.commitAutopilotBar(app, 100, 82));
         servicesUp();

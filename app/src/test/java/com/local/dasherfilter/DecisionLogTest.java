@@ -372,7 +372,7 @@ public class DecisionLogTest {
 
     /** A decision at an 82% Autopilot bar: $5.75 for 6.6 mi and 27 min under $4 / $1.00 per mile / $15 per hour. */
     private static OfferRule.Decision belowMinimums() {
-        FilterSettings rules = new FilterSettings(true, 400, 100, 25, 0, true, FilterSettings.GOAL_TOP_TIER, 82);
+        FilterSettings rules = new FilterSettings(true, 200, 100, 25, 0, true, FilterSettings.GOAL_TOP_TIER, 82);
         return OfferRule.evaluate(new OfferSnapshot(575, 6.6, 27, 2), rules);
     }
 

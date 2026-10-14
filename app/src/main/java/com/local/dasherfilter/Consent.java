@@ -29,9 +29,11 @@ final class Consent {
     // of Autopilot's inputs (off by default); both kept on the phone like the rules.
     // 22 (0.6.11): Autopilot's bar rises to the score of an offer you accept yourself, for the rest of the dash; and in
     // split screen during a delivery the divider moves, by its own controls, to give the navigating app more room.
-    // 23 (0.6.12): the pay minimum is per stop (each stop after the first pickup), so stacked offers need more;
+    // 23 (0.6.12): the pay minimum is per stop (rule C, max(1, stops − 1)), so stacked offers need more;
     // learning's pay best is per stop.
-    static final int VERSION = 23;
+    // 24 (0.6.14): pay per stop counts every stop Dasher shows, the pickup included; the saved number is unchanged, so
+    // a single order asks twice what it did.
+    static final int VERSION = 24;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -45,9 +47,10 @@ final class Consent {
         {"Not a DoorDash app.", AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash."},
         {"What it does.", "It reads Dasher's screen and notifications on this phone. It taps Decline and its confirmation "
                 + "on offers that fail your chosen rules. It also declines offers from stores you put on your skip list "
-                + "(from an offer's details), whatever they pay. Your pay minimum is per stop: an offer must pay it for "
-                + "each stop after the first pickup, so a stacked offer must pay more; a single order is judged as "
-                + "before. Strict mode checks every active minimum; optional area mode "
+                + "(from an offer's details), whatever they pay. Your pay minimum is per stop, the pickup included: an offer "
+                + "must pay it for each stop Dasher shows, so $5 a stop asks $10 of a single order and $15 of three "
+                + "stops. Your number wasn't changed, so a single order now asks twice what it did; set it to what you "
+                + "want per stop. Strict mode checks every active minimum; optional area mode "
                 + "allows stronger pay or rates to compensate for weaker ones. Max stops stays a hard limit; "
                 + "unread required facts stay for review and add-ons stay strict. Permitted by the filter does not "
                 + "mean accepted. Autopilot is on by default and moves that cutoff up or down by itself (50% to 150% of "

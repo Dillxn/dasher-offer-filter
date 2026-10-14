@@ -434,8 +434,9 @@ final class DecisionLog {
 
         private static JSONObject rulesJson(FilterSettings rules) throws JSONException {
             AcceptedFloors proof = rules.accepted;
-            // "payPer":"stop" (0.6.12): "flat" is the pay-per-stop minimum, and the pay best has its stops.
-            return new JSONObject().put("flat", rules.flatCents).put("payPer", "stop").put("mile", rules.perMileCents)
+            // "payPer":"stops" (0.6.14): "flat" is the pay-per-stop minimum counting every stop, the pickup included,
+            // and the pay best has its stops. 0.6.12's rule C (max(1, stops − 1)) wrote "stop".
+            return new JSONObject().put("flat", rules.flatCents).put("payPer", "stops").put("mile", rules.perMileCents)
                     .put("minute", rules.perMinuteCents).put("maxStops", rules.maxStops)
                     .put("area", rules.scoreByArea).put("learning", rules.acceptanceLearning)
                     .put("accepted", new JSONObject().put("pay", proof.highestPayCents)
@@ -445,10 +446,11 @@ final class DecisionLog {
 
         /**
          * The rules a line was judged by, or null: a line without "payPer" was judged by the minimum pay (before
-         * 0.6.12), which these rules cannot replay, so it is explained under the current rules and never pooled.
+         * 0.6.12), and one with "payPer":"stop" by rule C (0.6.12–0.6.13, max(1, stops − 1)), which these
+         * rules cannot replay, so it is explained under the current rules and never pooled.
          */
         private static FilterSettings readRules(JSONObject json, int bar, boolean autopilot) {
-            if (json == null || !"stop".equals(json.optString("payPer")) || !json.has("flat") || !json.has("mile") || !json.has("minute")
+            if (json == null || !"stops".equals(json.optString("payPer")) || !json.has("flat") || !json.has("mile") || !json.has("minute")
                     || !json.has("maxStops") || !json.has("area") || !json.has("learning")) return null;
             JSONObject proof = json.optJSONObject("accepted");
             if (proof == null) return null;

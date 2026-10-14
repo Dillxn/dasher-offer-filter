@@ -99,7 +99,7 @@ public final class OfferRuleTest {
     @Test
     public void theHighestMinimumBindsAndNamesTheReason() {
         // $4.00, $1.00 a mile, 25¢ a minute ($15 an hour).
-        FilterSettings starters = FilterSettings.of(true, 400, 100, 25, 0);
+        FilterSettings starters = FilterSettings.of(true, 200, 100, 25, 0);
         OfferRule.Decision byPay = evaluate(new OfferSnapshot(399, 2.0, 10, 2), starters);
         assertEquals(OfferRule.Result.DECLINE, byPay.result);
         assertEquals("dollars per stop", byPay.reason);
@@ -119,7 +119,7 @@ public final class OfferRuleTest {
 
     @Test
     public void aBarScalesEveryMinimumOnceAndPrefixesTheReason() {
-        FilterSettings starters = FilterSettings.of(true, 400, 100, 25, 0);
+        FilterSettings starters = FilterSettings.of(true, 200, 100, 25, 0);
         OfferSnapshot offer = new OfferSnapshot(512, 5.9, 25, 2);
         OfferRule.Decision at82 = evaluate(offer, starters.withMinimumScalePercent(82));
         assertEquals(OfferRule.Result.DECLINE, at82.result);
@@ -135,7 +135,7 @@ public final class OfferRuleTest {
 
     @Test
     public void keepReasonsSayWhetherTheOfferMeetsTheMinimumsOrOnlyTheBar() {
-        FilterSettings starters = FilterSettings.of(true, 400, 100, 25, 0);
+        FilterSettings starters = FilterSettings.of(true, 200, 100, 25, 0);
         OfferSnapshot score85 = new OfferSnapshot(575, 6.6, 27, 2);
         assertEquals(85, AreaScore.scorePercent(starters, score85));
 
@@ -165,7 +165,7 @@ public final class OfferRuleTest {
 
     @Test
     public void belowMinimumsIsOnlyAKeepBetweenTheBarAndOneHundredPercent() {
-        FilterSettings at82 = FilterSettings.of(true, 400, 100, 25, 0).withMinimumScalePercent(82);
+        FilterSettings at82 = FilterSettings.of(true, 200, 100, 25, 0).withMinimumScalePercent(82);
         for (int pay = 500; pay <= 700; pay++) {
             OfferRule.Decision decision = evaluate(new OfferSnapshot(pay, 6.6, 27, 2), at82);
             boolean expected = decision.result == OfferRule.Result.KEEP && decision.scorePercent >= 82
@@ -174,7 +174,7 @@ public final class OfferRuleTest {
             if (decision.belowMinimums) assertTrue(decision.scorePercent >= decision.minimumScalePercent);
         }
         // Never at or above 100, never a decline, never a review.
-        FilterSettings starters = FilterSettings.of(true, 400, 100, 25, 0);
+        FilterSettings starters = FilterSettings.of(true, 200, 100, 25, 0);
         assertFalse(evaluate(new OfferSnapshot(575, 6.6, 27, 2), starters).belowMinimums);
         assertFalse(evaluate(new OfferSnapshot(575, 6.6, 27, 2), starters.withMinimumScalePercent(120)).belowMinimums);
         assertFalse(evaluate(new OfferSnapshot(575, null, 27, 2), at82).belowMinimums);
@@ -185,13 +185,13 @@ public final class OfferRuleTest {
         FilterSettings on = new FilterSettings(true, 400, 100, 25, 0, true, 70, 82);
         assertTrue(evaluate(new OfferSnapshot(575, 6.6, 27, 2), on).autopilot);
         assertTrue(evaluate(new OfferSnapshot(300, 6.6, 27, 2), on).autopilot);
-        assertFalse(evaluate(new OfferSnapshot(575, 6.6, 27, 2), FilterSettings.of(true, 400, 100, 25, 0)).autopilot);
+        assertFalse(evaluate(new OfferSnapshot(575, 6.6, 27, 2), FilterSettings.of(true, 200, 100, 25, 0)).autopilot);
     }
 
     @Test
     public void declinesWhenAKnownFloorFailsEvenIfTimeIsMissing() {
         OfferSnapshot offer = parse("$5.00 Guaranteed", "4 mi");
-        FilterSettings settings = FilterSettings.of(true, 600, 150, 30, 0);
+        FilterSettings settings = FilterSettings.of(true, 300, 150, 30, 0);
         OfferRule.Decision decision = evaluate(offer, settings);
         assertEquals(OfferRule.Result.DECLINE, decision.result);
         assertEquals("$6.00 = 4 mi × $1.50; minutes unread", 600, decision.requiredCents);
@@ -217,28 +217,29 @@ public final class OfferRuleTest {
     }
 
     @Test
-    public void stopsCountForPayPerStopAfterTheFirstPickup() {
-        // 0.6.12, pay per stop: four stops ask three times the pay minimum; an unread stop count leaves the pay ask
-        // unread (review) unless even one stop's worth fails.
-        FilterSettings rules = FilterSettings.of(true, 600, 100, 30, 0);
+    public void stopsCountForPayPerStopThePickupIncluded() {
+        // 0.6.14, pay per stop counts every stop, the pickup included: four stops ask four times the pay minimum, a
+        // single order (2 stops) twice; an unread stop count leaves the pay ask unread (review) unless even one stop's
+        // worth fails.
+        FilterSettings rules = FilterSettings.of(true, 300, 100, 30, 0);
         OfferRule.Decision fourStops = evaluate(new OfferSnapshot(1000, 6.0, 20, 4), rules);
         assertEquals(OfferRule.Result.DECLINE, fourStops.result);
-        assertEquals(1800, fourStops.requiredCents);
+        assertEquals(1200, fourStops.requiredCents);
         assertEquals(OfferRule.Result.KEEP, evaluate(new OfferSnapshot(1000, 6.0, 20, 2), rules).result);
         assertEquals(OfferRule.Result.REVIEW, evaluate(new OfferSnapshot(1000, 6.0, 20, null), rules).result);
         OfferSnapshot oneStop = parse("$5.00 Guaranteed", "3.0 mi", "1 stop");
         assertEquals(Integer.valueOf(1), oneStop.stops);
         assertEquals(OfferRule.Result.KEEP,
-                evaluate(oneStop, FilterSettings.of(true, 400, 0, 0, 3)).result);
+                evaluate(oneStop, FilterSettings.of(true, 200, 0, 0, 3)).result);
         // Nor is "3 items" a stop count: the stops stay unread.
         assertNull(parse("$50.00 Guaranteed", "3 items").stops);
         assertEquals(OfferRule.Result.REVIEW, evaluate(parse("$50.00 Guaranteed", "3 items"),
-                FilterSettings.of(true, 600, 0, 0, 0)).result);
+                FilterSettings.of(true, 300, 0, 0, 0)).result);
     }
 
     @Test
     public void itemCountsAreOfferFiguresNotARule() {
-        FilterSettings rules = FilterSettings.of(true, 600, 100, 30, 0);
+        FilterSettings rules = FilterSettings.of(true, 300, 100, 30, 0);
         OfferSnapshot shopping = new OfferSnapshot(1000, 6.0, 20, 2).withItems(null, true);
         assertEquals("an unread count is no reason to review", OfferRule.Result.KEEP, evaluate(shopping, rules).result);
         assertEquals(OfferRule.Result.KEEP, evaluate(shopping.withItems(40, true), rules).result);
@@ -247,8 +248,8 @@ public final class OfferRuleTest {
 
     @Test
     public void twentyDollarRuleDoesNotDependOnMileage() {
-        // A single order (Dasher's 2 stops) asks pay per stop once, as the minimum pay did (0.6.12).
-        FilterSettings settings = FilterSettings.of(true, 2000, 0, 0, 0);
+        // A single order (Dasher's 2 stops) asks pay per stop twice (0.6.14): $10.00 a stop is the $20.00 floor.
+        FilterSettings settings = FilterSettings.of(true, 1000, 0, 0, 0);
         OfferSnapshot belowFloor = new OfferSnapshot(1999, null, null, 2);
         OfferSnapshot atFloor = new OfferSnapshot(2000, null, null, 2);
         OfferSnapshot aboveFloor = new OfferSnapshot(2001, null, null, 2);
@@ -289,14 +290,14 @@ public final class OfferRuleTest {
 
     @Test
     public void maxStopsIsNeverScaledAndAHighScoreDoesNotLiftIt() {
-        FilterSettings rules = FilterSettings.of(true, 400, 100, 25, 3);
+        FilterSettings rules = FilterSettings.of(true, 200, 100, 25, 3);
         for (int bar : new int[] {1, 50, 100, 150, 200}) {
             OfferRule.Decision decision = evaluate(new OfferSnapshot(9000, 6.0, 25, 4),
                     rules.withMinimumScalePercent(bar));
             assertEquals(OfferRule.Result.DECLINE, decision.result);
             assertEquals("4 stops exceeds maximum 3", decision.reason);
-            // 4 stops ask 3 × $4.00 = $12.00 (0.6.12).
-            assertEquals("the score still says what the pay is worth", 750, decision.scorePercent);
+            // 4 stops ask 4 × $2.00 = $8.00, the pickup included (0.6.14).
+            assertEquals("the score still says what the pay is worth", 1125, decision.scorePercent);
             assertEquals(OfferRule.Result.KEEP, evaluate(new OfferSnapshot(9000, 6.0, 25, 3),
                     rules.withMinimumScalePercent(bar)).result);
         }
@@ -305,11 +306,11 @@ public final class OfferRuleTest {
     @Test
     public void zeroDisablesMaximumStops() {
         // Pay per stop asks 9 × $20.00 of ten stops (0.6.12); unknown stops are judged by a per-mile minimum here.
-        FilterSettings settings = FilterSettings.of(true, 2000, 0, 0, 0);
+        FilterSettings settings = FilterSettings.of(true, 1000, 0, 0, 0);
         OfferSnapshot tenStops = new OfferSnapshot(18000, null, null, 10);
         OfferSnapshot unknownStops = new OfferSnapshot(2000, 10.0, null, null);
         assertEquals(OfferRule.Result.KEEP, evaluate(unknownStops, FilterSettings.of(true, 0, 200, 0, 0)).result);
-        settings = settings.withMinimums(2000, 0, 0);
+        settings = settings.withMinimums(1000, 0, 0);
         unknownStops = new OfferSnapshot(2000, 10.0, null, 2);
         assertEquals(OfferRule.Result.KEEP, evaluate(tenStops, settings).result);
         assertEquals(OfferRule.Result.KEEP, evaluate(unknownStops, settings).result);
@@ -336,7 +337,7 @@ public final class OfferRuleTest {
 
     @Test
     public void eitherPriceOrStopLimitCanDeclineAnOffer() {
-        FilterSettings settings = FilterSettings.of(true, 2000, 0, 0, 2);
+        FilterSettings settings = FilterSettings.of(true, 1000, 0, 0, 2);
 
         // Too many stops declines regardless of pay, even when pay is unknown.
         OfferSnapshot highPayTooManyStops = new OfferSnapshot(9999, null, null, 3);
@@ -412,15 +413,15 @@ public final class OfferRuleTest {
         assertFalse(FilterSettings.of(true, 400, 0, 0, 0).hasMarginalRule());
         assertTrue(FilterSettings.of(true, 0, 0, 0, 3).hasAnyRule());
         assertFalse(FilterSettings.of(true, 0, 0, 0, 3).hasMonetaryRule());
-        assertEquals("true:400:100:25:3:false:false:off:ps:true:50:proof:0:0:0x0.0p0:0:0:1", rules.rulesKey());
+        assertEquals("true:400:100:25:3:false:false:off:pst:true:50:proof:0:0:0x0.0p0:0:0:1", rules.rulesKey());
         assertEquals("the bar is not part of a plan's rules", rules.rulesKey(),
                 rules.withMinimumScalePercent(120).rulesKey());
-        assertEquals("false:400:100:25:3:false:false:off:ps:true:50:proof:0:0:0x0.0p0:0:0:1", rules.withEnabled(false).rulesKey());
+        assertEquals("false:400:100:25:3:false:false:off:pst:true:50:proof:0:0:0x0.0p0:0:0:1", rules.withEnabled(false).rulesKey());
         assertEquals(82, rules.withEnabled(false).minimumScalePercent);
         assertEquals(5, rules.withMaxStops(5).maxStops);
         assertEquals(0, rules.withMaxStops(-2).maxStops);
         FilterSettings changed = rules.withMinimums(500, 125, 35);
-        assertEquals("true:500:125:35:3:false:false:off:ps:true:50:proof:0:0:0x0.0p0:0:0:1", changed.rulesKey());
+        assertEquals("true:500:125:35:3:false:false:off:pst:true:50:proof:0:0:0x0.0p0:0:0:1", changed.rulesKey());
         assertEquals(82, changed.minimumScalePercent);
         // Turning Autopilot off puts the bar back at exactly the minimums; on keeps it.
         assertEquals(100, rules.withAutopilot(false, 50).minimumScalePercent);
@@ -435,7 +436,7 @@ public final class OfferRuleTest {
         assertEquals(FilterSettings.MOST_CENTS, clamped.perMinuteCents);
         assertEquals(200, clamped.minimumScalePercent);
         assertEquals(1, clamped.withMinimumScalePercent(Integer.MIN_VALUE).minimumScalePercent);
-        FilterSettings defaults = FilterSettings.of(true, 400, 100, 25, 0);
+        FilterSettings defaults = FilterSettings.of(true, 200, 100, 25, 0);
         assertFalse(defaults.autopilot);
         assertEquals(70, defaults.autopilotGoalPercent);
         assertEquals(100, defaults.minimumScalePercent);
@@ -447,7 +448,7 @@ public final class OfferRuleTest {
     @Test
     public void addOnUsesMarginalEconomicsAndCombinedRoute() {
         // $10.00 a stop: a combined 3-stop route asks $20.00 (0.6.12).
-        FilterSettings settings = FilterSettings.of(true, 1000, 150, 0, 0);
+        FilterSettings settings = FilterSettings.of(true, 500, 150, 0, 0);
         OfferSnapshot active = new OfferSnapshot(2500, 10.0, null, 2);
 
         AddOnOffer goodAddOn = AddOnOffer.parse(active, Arrays.asList("Add to route", "+$3.00", "+1 mi"));
@@ -472,7 +473,7 @@ public final class OfferRuleTest {
         // A $22.00 pay per stop of a combined 3-stop route asks $44.00 of it (0.6.12).
         OfferSnapshot active = new OfferSnapshot(4100, null, null, 2);
         AddOnOffer addOn = AddOnOffer.parse(active, Arrays.asList("Add to route", "+$3.00", "+1 stop"));
-        FilterSettings settings = FilterSettings.of(true, 2200, 0, 0, 0);
+        FilterSettings settings = FilterSettings.of(true, 1100, 0, 0, 0);
         OfferRule.Decision decision = OfferRule.evaluateAddOn(addOn, settings);
         assertEquals(OfferRule.Result.KEEP, decision.result);
         assertEquals("flat is not an increment floor", 0, decision.requiredCents);
@@ -485,7 +486,7 @@ public final class OfferRuleTest {
         // "+1 stop": the combined route's 3 stops ask 2 × $10.00 = $20.00, below what its miles ask (0.6.12).
         AddOnOffer addOn = AddOnOffer.parse(active, Arrays.asList("Add to route", "+$3.00", "+1 mi", "+10 min",
                 "+1 stop"));
-        FilterSettings rules = FilterSettings.of(true, 1000, 300, 0, 0);
+        FilterSettings rules = FilterSettings.of(true, 500, 300, 0, 0);
         OfferRule.Decision at100 = OfferRule.evaluateAddOn(addOn, rules);
         assertEquals(OfferRule.Result.DECLINE, at100.result);
         assertEquals("combined route fails: dollars per mile", at100.reason);
@@ -539,9 +540,9 @@ public final class OfferRuleTest {
 
         // Added stops are not priced on their own; pay per stop asks the combined route for its 4 stops: 3 × $20.00
         // of its $28.00 (0.6.12), with or without a known increment.
-        FilterSettings flatOnly = FilterSettings.of(true, 2000, 0, 0, 0);
+        FilterSettings flatOnly = FilterSettings.of(true, 1000, 0, 0, 0);
         assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluateAddOn(addOn, flatOnly).result);
-        FilterSettings lowPerStop = FilterSettings.of(true, 900, 0, 0, 0);
+        FilterSettings lowPerStop = FilterSettings.of(true, 450, 0, 0, 0);
         assertEquals(OfferRule.Result.KEEP, OfferRule.evaluateAddOn(addOn, lowPerStop).result);
         AddOnOffer totalOnly = AddOnOffer.parse(active, Arrays.asList("Add to route", "+$5.00", "New total 4 stops"));
         assertNull(totalOnly.incremental.stops);
@@ -608,13 +609,13 @@ public final class OfferRuleTest {
         assertNull(addOn.incremental.payCents);
 
         // Pay per stop applies to the combined route, known to pay $30.00, whose stops are unread: review (0.6.12).
-        FilterSettings flatOnly = FilterSettings.of(true, 2000, 0, 0, 0);
+        FilterSettings flatOnly = FilterSettings.of(true, 1000, 0, 0, 0);
         assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluateAddOn(addOn, flatOnly).result);
 
         // A per-mile rule prices the added miles, which needs the unknown added pay and distance.
-        FilterSettings perMile = FilterSettings.of(true, 2000, 150, 0, 0);
+        FilterSettings perMile = FilterSettings.of(true, 1000, 150, 0, 0);
         assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluateAddOn(addOn, perMile).result);
-        assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluateAddOn(addOn, FilterSettings.of(true, 2000, 0, 30, 0))
+        assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluateAddOn(addOn, FilterSettings.of(true, 1000, 0, 30, 0))
                 .result);
 
         // A stop ceiling alone needs the combined stop count, which is unknown here.
@@ -626,11 +627,12 @@ public final class OfferRuleTest {
                 "Total distance: 12 mi", "Total time: 40 min", "Total stops: 3 stops"));
         assertNull(known.incremental.payCents);
         assertEquals(Integer.valueOf(3000), known.combined.payCents);
-        // Its 3 stops ask 2 × $15.00 of the $30.00 (0.6.12).
-        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluateAddOn(known, FilterSettings.of(true, 1500, 0, 0, 0))
+        // Its 3 stops ask 3 × $7.50 of the $30.00, the pickup included (0.6.14); 3 × $10.01 is more than it.
+        assertEquals(OfferRule.Result.KEEP, OfferRule.evaluateAddOn(known, FilterSettings.of(true, 750, 0, 0, 0))
                 .result);
-        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluateAddOn(known, flatOnly).result);
-        OfferRule.Decision rate = OfferRule.evaluateAddOn(known, FilterSettings.of(true, 1500, 100, 0, 0));
+        assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluateAddOn(known, FilterSettings.of(true, 1001, 0, 0, 0))
+                .result);
+        OfferRule.Decision rate = OfferRule.evaluateAddOn(known, FilterSettings.of(true, 750, 100, 0, 0));
         assertEquals(OfferRule.Result.REVIEW, rate.result);
         assertEquals("add-on has missing or ambiguous incremental/route evidence", rate.reason);
     }
@@ -651,7 +653,7 @@ public final class OfferRuleTest {
     // ---- A "+$X" amount beside a total "$Y" (seen while on a delivery, so possibly an add-on) ----
 
     /** The report's rules: $10 minimum, $1.00 a mile, at most 3 stops. */
-    private static final FilterSettings REPORT_RULES = FilterSettings.of(true, 1000, 100, 0, 3);
+    private static final FilterSettings REPORT_RULES = FilterSettings.of(true, 500, 100, 0, 3);
 
     /** A whole offer screen as Dasher shows it, with a "+$" amount right before its total. */
     private static OfferSnapshot plusOffer(String plus, String total, String route) {
@@ -775,7 +777,7 @@ public final class OfferRuleTest {
     }
 
     /** The user's rules at 0.4.41 as 0.5.0 keeps them: $10 (2 × $4.75 a stop is less), $2.00 a mile, $0.50 a minute. */
-    private static final FilterSettings USER_RULES_0441 = FilterSettings.of(true, 1000, 200, 50, 3);
+    private static final FilterSettings USER_RULES_0441 = FilterSettings.of(true, 500, 200, 50, 3);
 
     /** Dasher's real 0.4.41 screen, Decline drawn between the "+$" amount and the total (the address replaced). */
     private static OfferSnapshot realPlusScreen(String total, String... afterTotal) {

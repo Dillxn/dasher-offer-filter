@@ -123,6 +123,7 @@ public class BundledNotesTest {
         both.addAll(notice(21));
         both.addAll(notice(22));
         both.addAll(notice(23));
+        both.addAll(notice(24));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -337,7 +338,8 @@ public class BundledNotesTest {
         since19.addAll(notice(21));
         since19.addAll(notice(22));
         since19.addAll(notice(23));
-        assertEquals("a reader of notice 19 sees 20's lines, then 21's, 22's and 23's", since19, BundledNotes.noticeChanges(19, true));
+        since19.addAll(notice(24));
+        assertEquals("a reader of notice 19 sees 20's lines, then 21's, 22's, 23's and 24's", since19, BundledNotes.noticeChanges(19, true));
         for (String wrong : new String[] {"identifier", "track", "location", "earn more", "guarantee",
                 "only daily totals"}) {
             assertFalse(wrong, notice.toLowerCase(java.util.Locale.US).contains(wrong));
@@ -385,43 +387,83 @@ public class BundledNotesTest {
         }
     }
 
-    /** 0.6.13: a customer's name alone on a pickup screen is masked in reports; nothing else changes. */
+    /**
+     * 0.6.14 (the owner, 14 October 2026: "i don't want the pay per stop to not count the pickup"): pay per stop counts
+     * every stop, the pickup included ($5 a stop: $10 a single order, $15 three stops); the number unchanged.
+     */
     @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.13", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals("0.6.14", Updater.version(RuntimeEnvironment.getApplication()));
+        List<String> lines = BundledNotes.whatsNew("0.6.14");
+        assertEquals(lines.toString(), 3, lines.size());
+        assertEquals("the card says what notice 24 says", notice(24), lines);
+        String release = String.join(" ", lines);
+        for (String fact : new String[] {"Pay per stop", "every stop", "the pickup included",
+                "$5 a stop asks $10 of a single order and $15 of three stops", "wasn't changed",
+                "a single order now asks twice what it did", "set it to what you want per stop", "best pay per stop"}) {
+            assertTrue(fact, release.contains(fact));
+        }
+        for (String wrong : new String[] {"earn more", "more pay", "you'll make", "guarantee", "after the first pickup",
+                "halved"}) {
+            assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
+        }
+    }
+
+    /** 0.6.13: a customer's name alone on a pickup screen is masked in reports; nothing else changes. */
+    @Test public void release0613SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.13");
         assertEquals(lines.toString(), 1, lines.size());
         assertTrue(lines.get(0), lines.get(0).contains("masked in reports"));
     }
 
+    /** 0.6.14's notice (24): every stop counts, the pickup included, and the number was not changed. */
+    @Test public void notice24SaysThePickupCounts() {
+        assertEquals(24, Consent.VERSION);
+        List<String> lines = BundledNotes.noticeChanges(23);
+        assertEquals(notice(24), lines);
+        assertEquals(lines.toString(), 3, lines.size());
+        String notice = String.join(" ", lines);
+        for (String fact : new String[] {"Pay per stop", "every stop Dasher shows, the pickup included",
+                "$5 a stop asks $10 of a single order and $15 of three stops", "Your number wasn't changed",
+                "best pay per stop"}) {
+            assertTrue(fact, notice.contains(fact));
+        }
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
+    }
+
     /**
-     * 0.6.12 (the owner, 13 October 2026: "swap overall payout for pay per stop"): pay per stop, counted after the first
-     * pickup, single orders unchanged, the learned best per stop; never a promise of more pay.
+     * 0.6.12 (the owner, 13 October 2026: "swap overall payout for pay per stop"): pay per stop, the number unchanged, the
+     * learned best per stop; never a promise of more pay. Its rule C counting (each stop but the pickup) was superseded
+     * by 0.6.14, so the card no longer describes it.
      */
     @Test public void release0612SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.12");
-        assertEquals(lines.toString(), 5, lines.size());
+        assertEquals(lines.toString(), 4, lines.size());
         String release = String.join(" ", lines);
-        for (String fact : new String[] {"pay per stop", "after the first pickup", "gaps on the homepage",
+        for (String fact : new String[] {"pay per stop", "more stops must pay more", "gaps on the homepage",
                 "No second card of ours beside Dasher's own",
-                "time-of-day chart comes back", "3-stop offer asks twice",
-                "Single orders are judged exactly as before", "didn't change", "best pay per stop"}) {
+                "time-of-day chart comes back", "didn't change", "best pay per stop"}) {
             assertTrue(fact, release.contains(fact));
         }
-        for (String wrong : new String[] {"earn more", "more pay", "you'll make", "guarantee"}) {
+        for (String wrong : new String[] {"earn more", "more pay", "you'll make", "guarantee", "after the first pickup",
+                "exactly as before"}) {
             assertFalse(wrong, release.toLowerCase(java.util.Locale.US).contains(wrong));
         }
     }
 
-    /** 0.6.12's notice (23): the pay minimum per stop after the first pickup, single orders as before, learning's best. */
+    /** 0.6.12's notice (23): the pay minimum per stop, the number unchanged, learning's best; no rule C counting. */
     @Test public void notice23SaysThePayMinimumIsPerStop() {
-        assertEquals(23, Consent.VERSION);
-        List<String> lines = BundledNotes.noticeChanges(22);
-        assertEquals(notice(23), lines);
+        assertTrue(Consent.VERSION >= 23);
+        List<String> lines = notice(23);
         String notice = String.join(" ", lines);
-        for (String fact : new String[] {"pay per stop", "each stop after the first pickup", "twice your number",
-                "Single orders are judged exactly as before", "your number didn't change", "best pay per stop"}) {
+        for (String fact : new String[] {"pay per stop", "more stops must pay more", "your number didn't change",
+                "best pay per stop"}) {
             assertTrue(fact, notice.contains(fact));
         }
+        assertFalse(notice, notice.contains("after the first pickup"));
+        assertFalse(notice, notice.contains("exactly as before"));
     }
 
     /**

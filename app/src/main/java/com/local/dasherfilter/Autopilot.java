@@ -111,8 +111,11 @@ final class Autopilot {
     /** The goals offered, in the chooser's order: keep a top tier (preselected), keep a tier, pay first. */
     static final List<Integer> GOALS = Collections.unmodifiableList(Arrays.asList(
             FilterSettings.GOAL_TOP_TIER, FilterSettings.GOAL_TIER, FilterSettings.GOAL_PAY_FIRST));
-    /** Typical minimums: $4.00, $1.00 a mile, 25¢ a minute ($15 an hour), no max stops. */
-    static final int STARTER_FLAT_CENTS = 400;
+    /**
+     * Typical minimums: $2.00 a stop, $1.00 a mile, 25¢ a minute ($15 an hour), no max stops. Pay per stop counts the
+     * pickup from 0.6.14, so a single order (2 stops) asks $4.00, the typical minimum pay of Cincinnati offers.
+     */
+    static final int STARTER_FLAT_CENTS = 200;
     static final int STARTER_PER_MILE_CENTS = 100;
     static final int STARTER_PER_MINUTE_CENTS = 25;
     static final int STARTER_MAX_STOPS = 0;

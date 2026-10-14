@@ -6,10 +6,11 @@ import static org.junit.Assert.*;
 
 /** Fresh 0.6 exact arithmetic, model separation and fixed-topology safety contracts. */
 public final class AreaLearningScoreTest {
-    private static final FilterSettings SAVED = FilterSettings.of(true, 500, 100, 25, 3);
+    private static final FilterSettings SAVED = FilterSettings.of(true, 250, 100, 25, 3);
     private static final OfferSnapshot OFFER = new OfferSnapshot(800, 10.0, 20, 2);
+    /** {@code flat}: what a single order (2 stops, the pickup included) asks of pay per stop, an even number. */
     private static FilterSettings area(int flat, int mile, int minute) {
-        return FilterSettings.of(true, flat, mile, minute, 3).withScoreByArea(true);
+        return FilterSettings.of(true, flat / 2, mile, minute, 3).withScoreByArea(true);
     }
     private static void boundary(FilterSettings rules, double miles, int minutes, int bar, long expected) {
         OfferSnapshot at = new OfferSnapshot((int) expected, miles, minutes, 2);
@@ -33,7 +34,7 @@ public final class AreaLearningScoreTest {
         assertEquals(OfferRule.Result.DECLINE, OfferRule.evaluate(OFFER, area.withMinimumScalePercent(120)).result);
     }
     @Test public void oneAndEveryTwoAxisTopologyHaveExactDegenerateFallbacks() {
-        boundary(area(503, 0, 0), 10, 20, 120, 604);
+        boundary(area(502, 0, 0), 10, 20, 120, 603);
         boundary(area(500, 100, 0), 10, 20, 100, 708);
         boundary(area(0, 100, 25), 10, 20, 100, 708);
         // PAY and MINUTE stand opposite; the two-spoke fallback still uses their geometric mean.
@@ -72,11 +73,11 @@ public final class AreaLearningScoreTest {
         assertEquals(OfferRule.Result.KEEP, OfferRule.evaluate(zero, area(0, 100, 0)).result);
     }
     @Test public void learnedProofActivatesUnsetAxesWithoutMovingSavedKnobs() {
-        FilterSettings before = FilterSettings.of(true, 1000, 0, 0, 0).withScoreByArea(true);
-        FilterSettings after = before.withAccepted(new AcceptedFloors(1000, 1000, 20, 1000, 40))
+        FilterSettings before = FilterSettings.of(true, 500, 0, 0, 0).withScoreByArea(true);
+        FilterSettings after = before.withAccepted(new AcceptedFloors(1000, 2, 1000, 20, 1000, 40))
                 .withAcceptanceLearning(true);
         AreaScore.Floors resolved = AreaScore.floors(after, OFFER);
-        assertArrayEquals(new int[] {1000, 0, 0, 0, 0, 0}, after.minimums());
+        assertArrayEquals(new int[] {500, 0, 0, 0, 0, 0}, after.minimums());
         assertTrue(resolved.active[AreaScore.MILE]);
         assertTrue(resolved.active[AreaScore.MINUTE]);
         assertEquals(1001, resolved.effectiveCents[AreaScore.PAY].intValueExact());
@@ -141,7 +142,7 @@ public final class AreaLearningScoreTest {
         FilterSettings learned = SAVED.withScoreByArea(true).withAcceptanceLearning(true)
                 .withAccepted(new AcceptedFloors(800,800,4,800,20));
         for (FilterSettings copy : new FilterSettings[] {learned.withEnabled(false), learned.withMaxStops(2),
-                learned.withMinimums(600,120,30), learned.withMinimumScalePercent(70), learned.withAutopilot(true,50)}) {
+                learned.withMinimums(300,120,30), learned.withMinimumScalePercent(70), learned.withAutopilot(true,50)}) {
             assertTrue(copy.scoreByArea); assertTrue(copy.acceptanceLearning); assertEquals(learned.accepted,copy.accepted);
         }
         assertNotEquals(SAVED.rulesKey(), SAVED.withScoreByArea(true).rulesKey());
@@ -160,7 +161,7 @@ public final class AreaLearningScoreTest {
         assertEquals(OfferRule.Result.DECLINE,strict.result);
         assertEquals(strict.result,restored.result); assertEquals(strict.requiredCents,restored.requiredCents);
         assertEquals("strict",restored.scoreKind); assertFalse(restored.scoringRules.acceptanceLearning);
-        FilterSettings savedLow=FilterSettings.of(true,100,10,1,3);
+        FilterSettings savedLow=FilterSettings.of(true,50,10,1,3);
         assertEquals(OfferRule.Result.KEEP,OfferRule.evaluateAddOn(addOn,savedLow).result);
         assertEquals(OfferRule.Result.KEEP,OfferRule.evaluateAddOn(addOn,savedLow.withScoreByArea(true)
                 .withAcceptanceLearning(true).withAccepted(selected.accepted)).result);

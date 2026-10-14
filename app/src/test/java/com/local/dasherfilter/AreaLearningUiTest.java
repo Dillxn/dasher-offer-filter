@@ -34,7 +34,7 @@ import org.robolectric.shadows.ShadowToast;
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class AreaLearningUiTest extends AndroidAdapterTestBase {
-    private static final FilterSettings RULES = FilterSettings.of(true, 500, 100, 25, 3);
+    private static final FilterSettings RULES = FilterSettings.of(true, 250, 100, 25, 3);
     private static final OfferSnapshot OFFER = new OfferSnapshot(800, 10.0, 20, 2);
 
     @After public void restoreFont() { RuntimeEnvironment.setFontScale(1f); }
@@ -50,6 +50,23 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
     private static DecisionLog.Entry decided(FilterSettings rules, OfferSnapshot facts) {
         return DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, OfferRule.evaluate(facts, rules),
                 DecisionLog.Action.PASSES, true, Collections.emptyList());
+    }
+
+    /**
+     * The radar's pay-per-stop spoke divides an offer's pay by its stops, the pickup included, as the requirement does:
+     * $7.50 over 2 stops stands exactly on a $3.75-a-stop knob (0.6.13 drew it at $7.50 a stop), and over 3 stops it is
+     * $2.50 a stop, drawn for the example's 2 stops at $5.00.
+     */
+    @Test public void theRadarReadsSevenFiftyOverTwoStopsAsThreeSeventyFiveAStop() {
+        FilterSettings rules = FilterSettings.of(true, 375, 0, 0, 0);
+        MinimumsStarView star = new MinimumsStarView(app, new Ui(app));
+        OfferSnapshot example = new OfferSnapshot(null, 5.0, 20, 2);
+        star.show(rules, example, java.util.Arrays.asList(decided(rules, new OfferSnapshot(750, 3.0, 15, 2)),
+                decided(rules, new OfferSnapshot(750, 3.0, 15, 3))));
+        star.compose(360, 300, 220);
+        assertEquals(750, star.setAsks(AreaScore.PAY), 0);
+        assertEquals("on the $3.75-a-stop knob", star.setAsks(AreaScore.PAY), star.markCents(0, AreaScore.PAY), 1e-9);
+        assertEquals("$2.50 a stop, for the example's 2 stops", 500, star.markCents(1, AreaScore.PAY), 1e-9);
     }
 
     @Test public void modeAndLearningAreDiscoverableIndependentChoicesAndNeverEnableAutopilot() {
@@ -119,7 +136,7 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
         learn();
         // The new high raised the learned minimums, never the saved ones (the owner, 12 October 2026): Adopt makes
         // them the user's own.
-        assertEquals(500, FilterStore.load(app).flatCents);
+        assertEquals(250, FilterStore.load(app).flatCents);
         assertNull(FilterStore.pendingAdoption(app));
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -138,7 +155,8 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             assertEquals(800, FilterStore.load(app).accepted.highestPayCents);
             shownButton(details.getWindow().getDecorView(), "Adopt").performClick();
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-            assertEquals(801, FilterStore.load(app).flatCents);
+            // $8.00 for 2 stops, the pickup included (0.6.14): ⌈($8.00 + 1¢) ÷ 2⌉ a stop.
+            assertEquals(401, FilterStore.load(app).flatCents);
             assertNotNull(FilterStore.pendingAdoption(app));
             assertNull("adopted: no learned raise is left to note", FilterStore.learnedRaise(app));
             details = learnedMinimums(star);
@@ -176,8 +194,8 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             TextView note = shownTextContaining(content, LearnedRaiseCard.TITLE);
             assertNotNull("the note is on the homepage", note);
             String words = note.getText().toString();
-            assertTrue(words, words.contains("$8.01/stop · $2.00/mi · $24/hr · yours $5.00/stop · $1.00/mi · $15/hr"));
-            assertEquals("Learned minimums rose. A new high you accepted raised them: pay per stop $8.01 (yours $5.00), "
+            assertTrue(words, words.contains("$4.01/stop · $2.00/mi · $24/hr · yours $2.50/stop · $1.00/mi · $15/hr"));
+            assertEquals("Learned minimums rose. A new high you accepted raised them: pay per stop $4.01 (yours $2.50), "
                     + "per mile $2.00 (yours $1.00), per hour $24 (yours $15). Your own minimums stay as you set them; "
                     + "Adopt makes these yours.", String.valueOf(note.getContentDescription()));
             MinimumsStarView star = find(content, MinimumsStarView.class);
@@ -186,13 +204,14 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
             Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             layOut(content);
             FilterSettings after = FilterStore.load(app);
-            assertEquals(801, after.flatCents); assertEquals(200, after.perMileCents);
+            assertEquals(401, after.flatCents); assertEquals(200, after.perMileCents);
             assertEquals(40, after.perMinuteCents); assertEquals(RULES.maxStops, after.maxStops);
             assertEquals(MainActivity.ADOPTED_TOAST, ShadowToast.getTextOfLatestToast());
             assertFalse("the bests stay", after.accepted.isEmpty());
             assertTrue("learning stays on", after.acceptanceLearning);
             assertNull("the note goes", shownTextContaining(content, LearnedRaiseCard.TITLE));
-            assertEquals(801, star.setAsks(AreaScore.PAY), 0);
+            // The example's 2 stops ask the adopted $4.01 twice.
+            assertEquals(802, star.setAsks(AreaScore.PAY), 0);
             Button undo = shownButton(learnedMinimums(star).getWindow().getDecorView(), "Undo adoption");
             assertNotNull("its Undo is in Learned minimums", undo);
             undo.performClick();
@@ -228,8 +247,9 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
     }
 
     @Test public void chartSeparatesSavedLearnedAndResolvedBarWithoutMovingKnobsOrFollowingOffers() {
-        FilterSettings rules = new FilterSettings(true, 1200, 0, 25, 3, true, 70, 120)
-                .withAcceptanceLearning(true).withAccepted(new AcceptedFloors(800, 800, 4.0, 800, 20));
+        // $6.00 a stop and a best of $8.00 for 2 stops: the comparison's 2 stops ask $12.00 and $8.01 (0.6.14).
+        FilterSettings rules = new FilterSettings(true, 600, 0, 25, 3, true, 70, 120)
+                .withAcceptanceLearning(true).withAccepted(new AcceptedFloors(800, 2, 800, 4.0, 800, 20));
         MinimumsStarView star = new MinimumsStarView(app, new Ui(app));
         OfferSnapshot comparison = new OfferSnapshot(null, 5.0, 20, 2);
         star.show(rules, comparison, Collections.emptyList());
@@ -256,7 +276,7 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
         DecisionLog.Entry entry = decided(RULES.withScoreByArea(true), OFFER);
         assertEquals(OfferRule.Result.KEEP, entry.result);
         assertEquals(708, entry.requiredCents);
-        String text = MinimumsDetails.describe(FilterSettings.of(true, 2000, 300, 50, 2), entry);
+        String text = MinimumsDetails.describe(FilterSettings.of(true, 1000, 300, 50, 2), entry);
         assertTrue(text, text.contains("Recorded requirements · Area"));
         assertTrue(text, text.contains("Required $7.08 under the recorded area model at 100%"));
         assertTrue(text, text.contains("Permitted by the filter does not mean accepted"));
@@ -264,7 +284,7 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
         assertTrue(text, text.contains("Add-ons use strict saved minimums"));
         assertEquals("Area score 113% · bar 100%", AutopilotText.ticketScoreLine(entry));
         DecisionLog.Entry strict = decided(RULES, OFFER);
-        String strictText = MinimumsDetails.describe(RULES.withScoreByArea(true).withMinimums(2000, 300, 50), strict);
+        String strictText = MinimumsDetails.describe(RULES.withScoreByArea(true).withMinimums(1000, 300, 50), strict);
         assertTrue(strictText, strictText.contains("Recorded requirements · Strict"));
         assertTrue(strictText, strictText.contains("Required $10.00 under the recorded strict model"));
         try {
@@ -290,7 +310,7 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
     }
 
     @Test public void payCeilingAndKnownZeroAreaHaveDistinctAccurateExplanations() {
-        FilterSettings area = new FilterSettings(true, 500, 100, 25, 3, true, 70, 120).withScoreByArea(true);
+        FilterSettings area = new FilterSettings(true, 250, 100, 25, 3, true, 70, 120).withScoreByArea(true);
         OfferSnapshot ceiling = new OfferSnapshot(null, 10.0, 20, 2, 700);
         DecisionLog.Entry entry = decided(area, ceiling);
         assertEquals(OfferRule.Result.DECLINE, entry.result);

@@ -27,7 +27,7 @@ import org.robolectric.annotation.LooperMode;
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 public class StableReferenceUiTest extends AndroidAdapterTestBase {
-    private static final FilterSettings RULES = FilterSettings.of(true, 400, 100, 25, 3);
+    private static final FilterSettings RULES = FilterSettings.of(true, 200, 100, 25, 3);
     private static final OfferSnapshot COMPARISON = new OfferSnapshot(null, 5.0, 20, 2);
 
     @After public void restoreFont() { RuntimeEnvironment.setFontScale(1f); }
@@ -110,7 +110,7 @@ public class StableReferenceUiTest extends AndroidAdapterTestBase {
         star.setAutopilot(true, 150, false);
         assertEquals("the bar may expand its own reference", 300, star.ringCents());
         assertEquals(750, star.barAsks(AreaScore.MILE), 0);
-        star.show(FilterSettings.of(true, 2000, 100, 25, 3), COMPARISON, Collections.emptyList());
+        star.show(FilterSettings.of(true, 1000, 100, 25, 3), COMPARISON, Collections.emptyList());
         assertEquals("a changed minimum may expand the reference", 700, star.ringCents());
     }
 

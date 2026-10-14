@@ -811,7 +811,7 @@ final class AutopilotText {
                 || entry.reason.contains("below your minimums");
     }
 
-    /** The typical minimums ($4.00, $1.00 a mile, $15 an hour) are {@code rules}' already. */
+    /** The typical minimums ($2.00 a stop, $1.00 a mile, $15 an hour) are {@code rules}' already. */
     static boolean typicalMinimums(FilterSettings rules) {
         return rules != null && rules.flatCents == Autopilot.STARTER_FLAT_CENTS
                 && rules.perMileCents == Autopilot.STARTER_PER_MILE_CENTS

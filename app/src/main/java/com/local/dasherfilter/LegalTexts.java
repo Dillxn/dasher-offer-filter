@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 13 October 2026 · for {app} 0.6.12
+            Beta terms, effective 14 October 2026 · for {app} 0.6.14
 
             ## What {app} is
 
@@ -69,26 +69,28 @@ final class LegalTexts {
             is set, it reads nothing of Dasher's screen.
             - It compares each offer with your active minimums: pay per stop, pay per mile and pay per hour of \
             Dasher's time estimate, plus an optional maximum number of stops. Pay per stop (from 0.6.12, when it \
-            replaced the minimum pay, keeping its number) is asked for each stop after the first pickup: once for a \
-            single order, which Dasher counts as two stops, twice for three stops, three times for four, so a \
-            stacked offer must pay more. When an offer's stops are not read, it stays for review unless its pay \
-            misses even one stop's worth or another minimum. Strict mode is the default and checks every active \
-            minimum. Area mode is a separate, initially off choice: stronger pay or rates can compensate for weaker \
-            ones in the combined score. Maximum stops remains a hard limit, missing required facts stay for review, \
-            and add-ons remain strict. An offer permitted by the filter is not an accepted delivery. When an offer \
-            fails the chosen rules, the app can tap Decline and Dasher's confirmation for you. An offer already \
-            left to you stays yours if you change your rules while it shows; the new rules judge the next offer. \
-            Autopilot is on by default (from 0.6.2, and turned on once then for earlier installs, keeping a goal \
-            chosen before), with an acceptance-rate goal of 70% until you choose another; you can turn it off from \
-            its chip on the homepage. While it is on, it applies one bar to the chosen scoring model and resolved \
-            saved/learned requirements, between 50% and 150%, using your recent offers, how often they come and the \
-            acceptance rate Dasher shows when you decline. When you accept a standalone offer yourself (the \
-            confirmed acceptances acceptance learning counts, whether or not learning is on) and its score under \
-            your current rules is above the bar, Autopilot raises the bar to that score (at most 150%) at its next \
-            safe point and keeps it at least there for the rest of that dash, even above what your acceptance goal \
-            allows, which can mean more declines and a lower acceptance rate. A new dash, turning Autopilot on, or \
-            a change of your goal, minimums, max stops, mode or learning ends that hold; Adopt keeps it. Above 100% \
-            it declines offers that meet your minimums. Offers it lets through below your minimums are left to you. \
+            replaced the minimum pay, keeping its number) is asked for each stop Dasher shows, the pickup included \
+            (from 0.6.14): twice for a single order, which Dasher counts as two stops, three times for three stops, \
+            four times for four, so $5 a stop asks $10 of a single order and $15 of three stops. When 0.6.14 began \
+            counting the pickup, your number was not changed, so a single order asks twice what it did under 0.6.12 \
+            and 0.6.13. When an offer's stops are not read, it stays for review unless its pay misses even one \
+            stop's worth or another minimum. Strict mode is the default and checks every active minimum. Area mode \
+            is a separate, initially off choice: stronger pay or rates can compensate for weaker ones in the \
+            combined score. Maximum stops remains a hard limit, missing required facts stay for review, and add-ons \
+            remain strict. An offer permitted by the filter is not an accepted delivery. When an offer fails the \
+            chosen rules, the app can tap Decline and Dasher's confirmation for you. An offer already left to you \
+            stays yours if you change your rules while it shows; the new rules judge the next offer. Autopilot is \
+            on by default (from 0.6.2, and turned on once then for earlier installs, keeping a goal chosen before), \
+            with an acceptance-rate goal of 70% until you choose another; you can turn it off from its chip on the \
+            homepage. While it is on, it applies one bar to the chosen scoring model and resolved saved/learned \
+            requirements, between 50% and 150%, using your recent offers, how often they come and the acceptance \
+            rate Dasher shows when you decline. When you accept a standalone offer yourself (the confirmed \
+            acceptances acceptance learning counts, whether or not learning is on) and its score under your current \
+            rules is above the bar, Autopilot raises the bar to that score (at most 150%) at its next safe point \
+            and keeps it at least there for the rest of that dash, even above what your acceptance goal allows, \
+            which can mean more declines and a lower acceptance rate. A new dash, turning Autopilot on, or a change \
+            of your goal, minimums, max stops, mode or learning ends that hold; Adopt keeps it. Above 100% it \
+            declines offers that meet your minimums. Offers it lets through below your minimums are left to you. \
             Autopilot also raises your minimums once its bar has stayed at 103% or more for 30 offers over at least \
             2 days (bars an accepted offer held up do not count): all of them by the same share, at most 10% at a \
             time, while its bar comes down so offers are asked about the same right after. It never lowers them; \
@@ -234,7 +236,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 13 October 2026 · for {app} 0.6.12
+            Beta privacy policy, effective 14 October 2026 · for {app} 0.6.14
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -364,7 +366,7 @@ final class LegalTexts {
             default (from 0.6.1, and turned on once then for earlier installs). Learned evidence starts empty: \
             deleted old lessons and historical decisions are not reconstructed. While filtering and learning are \
             on, positively confirmed manual standalone acceptances can store the best accepted pay per stop (that \
-            offer's pay and its stops after the first pickup) and independent exact best pay-per-mile and \
+            offer's pay and its stops, the pickup included) and independent exact best pay-per-mile and \
             pay-per-minute numeric pairs, and a new best that asks more than a saved minimum applies as a learned \
             minimum alongside it; the saved minimum stays as you set it unless you adopt the learned ones. \
             Automatic accepts, declines, add-ons and ambiguous outcomes do not train it. Unknown facts do not teach \

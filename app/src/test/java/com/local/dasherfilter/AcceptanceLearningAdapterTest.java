@@ -43,7 +43,7 @@ public class AcceptanceLearningAdapterTest {
         Updater.setEnabled(app, false); DiagnosticLog.setEnabled(app, true); DiagnosticLog.clear(app);
         DecisionLog.forgetCache(); DecisionLog.clear(app); AutoAcceptMemory.clear(app);
         ActiveRouteStore.clear(app); OfferSilencer.forgetCache(); OfferNotificationService.forgetDeclineAction();
-        FilterStore.save(app, FilterSettings.of(true, 500, 100, 25, 3));
+        FilterStore.save(app, FilterSettings.of(true, 250, 100, 25, 3));
         FilterStore.setAcceptanceLearning(app, true);
         OfferFilterService.scanLooperForTests = Looper.getMainLooper();
         controller = Robolectric.buildService(OfferFilterService.class).create();
@@ -125,7 +125,7 @@ public class AcceptanceLearningAdapterTest {
         assertTrue(DecisionLog.hasStep(latest(), DecisionLog.StepKind.LEARNER_MINIMUM_RAISED));
         // The new high raised the learned minimums, with the homepage's note and Adopt; the saved ones stay (the
         // owner, 12 October 2026).
-        assertArrayEquals(new int[] {500, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertArrayEquals(new int[] {250, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
         assertNotNull(FilterStore.learnedRaise(app));
         assertTrue(DiagnosticLog.read(app).contains(
                 "[learner] manual acceptance: learned; the learned minimums rose"));
@@ -239,8 +239,8 @@ public class AcceptanceLearningAdapterTest {
             }
         };
         waiting();
-        // $10.50 for 3 stops, 3.9 mi and 30 min: 105% of the $10.00 the minimums ask (its 3 stops ask pay per stop
-        // twice, 2 × $5.00, from 0.6.12).
+        // $10.50 for 3 stops, 3.9 mi and 30 min: 140% of the $7.50 the minimums ask (its 3 stops ask pay per stop
+        // three times, 3 × $2.50, the pickup included, from 0.6.14; 30 min at $15/hr asks $7.50 too).
         List<Integer> declines = new ArrayList<>();
         show(offerCountingDeclines("$10.50", declines));
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
@@ -254,11 +254,11 @@ public class AcceptanceLearningAdapterTest {
         assertFalse("its plan was asked for", stepped.isEmpty());
         assertTrue("the plan after the accept read the line with its step", stepped.get(stepped.size() - 1));
         Autopilot.Plan plan = AutopilotRuntime.latest();
-        assertEquals(105, plan.floor);
-        assertEquals(105, plan.target);
+        assertEquals(140, plan.floor);
+        assertEquals(140, plan.target);
         assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
-        assertEquals(105, FilterStore.load(app).minimumScalePercent);
+        assertEquals(140, FilterStore.load(app).minimumScalePercent);
         assertTrue(DiagnosticLog.read(app).contains(
-                "[autopilot] commit 100% -> 105% (you accepted an offer at this score)"));
+                "[autopilot] commit 100% -> 140% (you accepted an offer at this score)"));
     }
 }
