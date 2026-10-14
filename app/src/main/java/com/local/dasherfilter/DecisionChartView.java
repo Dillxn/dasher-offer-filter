@@ -20,17 +20,21 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Recent offers as one bar each, oldest left, on one scale (0.6.6; the owner, 12 October 2026: "consolidate the number
- * of ways we express information"): each bar is the offer's recorded score, percent of the minimums, the number the
- * filter decides with, and its colour is what actually happened ({@link DecisionLog#outcome}): green passed, amber
- * passed below the minimums or left for review (or to you), red filtered. The solid line is the minimums (100%), and a
- * dashed purple line Autopilot's bar while it is not 100%; the lines are today's rules. An offer whose score was not
- * read (or came from the retired rules) is a hollow dashed bar with "?". One badge marks the selected offer (the
- * newest, unless another was chosen), and the stored route's offer (0.6.3, {@link #setRoute}) has a small road beside
- * that badge. Pay in dollars stays on the verdict and on each ticket. Under the bars, the dash's counts are the chart's
- * key ("DASH ✓ 1 ✕ 0 ? 1", the band's counts before 0.6.6), and a tap on one opens its latest offer
- * ({@link OnCount}). Tapping a bar selects it (its badge picks it out) and reports it to the listener; an offer picked
- * on the constellation is selected the same way ({@link #choose}). Bars rise; with Android's animations off they rest.
+ * Recent offers as a little skyline, oldest left (the owner, 14 October 2026: "i miss the building/tree skyline motif
+ * for the chart"; on the card he chose B, "as before" 0.6.6): each offer is a building as tall as the pay read, in
+ * dollars, with a slim tree beside it as tall as its recorded score (percent of the minimums, the number the filter
+ * decides with). Dollars and percent have scales of their own and share the street as zero. A building's colour is
+ * what actually happened ({@link DecisionLog#outcome}): green passed (or accepted), amber passed below the minimums or
+ * left for review (or to you), red filtered; passed offers have their windows lit. The solid line is the pay a single
+ * order (Dasher's "2 stops") must bring under the pay minimum at today's bar ("Pay $10.00 min"), only while one is
+ * set; the dashed line in the trees' green is the minimums (100%); and a dashed purple line Autopilot's bar while it is
+ * not 100%. An offer whose pay was not read is a hollow dashed building with "?"; a score not read (or from the retired
+ * rules) has no tree, an open ring at its foot instead. One badge marks the selected offer (the newest, unless another
+ * was chosen), on its roof, and the stored route's offer (0.6.3, {@link #setRoute}) has a small road beside that badge.
+ * Under the street, the dash's counts are the chart's key ("DASH ✓ 1 ✕ 0 ? 1"), and a tap on one opens its latest
+ * offer ({@link OnCount}). Tapping a building or its tree selects it and reports it to the listener; an offer picked
+ * on the constellation is selected the same way ({@link #choose}). Buildings and trees rise together; with Android's
+ * animations off they rest.
  */
 @SuppressLint("ViewConstructor")
 final class DecisionChartView extends View {
@@ -49,6 +53,9 @@ final class DecisionChartView extends View {
     private static final long RISE_MS = 650;
     /** A visible chevron marks larger scores; one outlier must not flatten the ordinary score range. */
     static final int SCORE_DISPLAY_CAP = 400;
+    /** Pay above $1,000 is drawn at the top of the scale. */
+    private static final long SCALE_CAP_CENTS = 100_000;
+    private static final long[] NICE_DOLLARS = {10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300, 500, 1000};
 
     private final Ui ui;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -72,6 +79,8 @@ final class DecisionChartView extends View {
     private final DashPathEffect barDash;
     private boolean areaMode;
     private int minimumScalePercent = 100;
+    /** What the pay minimum asks of a single order at today's bar, in cents; 0 with no pay minimum. */
+    private long payoutMinimumCents;
     /** What screen readers hear with no offer yet (nothing is drawn but the street). */
     static final String EMPTY_SAID = "No offers recorded yet.";
     /** When each shown offer (by its time) began to rise. */
@@ -191,16 +200,28 @@ final class DecisionChartView extends View {
     static final String LATEST = "latest →";
     private boolean latestShown;
 
-    /** The lines for these rules: the minimums at 100%, and Autopilot's bar, dashed, when it is not 100%. */
+    /**
+     * The lines for these rules: the minimums at 100%, Autopilot's bar, dashed, when it is not 100%, and the pay line,
+     * only with a pay minimum, at what it asks of a single order (Dasher's "2 stops") at the bar.
+     */
     void setRules(FilterSettings rules) {
-        if (minimumScalePercent == rules.minimumScalePercent && areaMode == rules.scoreByArea) return;
+        java.math.BigDecimal pay = AreaScore.floors(rules, SINGLE_ORDER).effectiveCents[AreaScore.PAY];
+        long payout = pay == null ? 0 : AreaScore.roundedCents(pay, rules.minimumScalePercent);
+        if (minimumScalePercent == rules.minimumScalePercent && areaMode == rules.scoreByArea
+                && payoutMinimumCents == payout) {
+            return;
+        }
+        payoutMinimumCents = payout;
         areaMode = rules.scoreByArea;
         minimumScalePercent = rules.minimumScalePercent;
         setContentDescription(describe(entries));
         invalidate();
     }
 
-    /** A bar stands only for a score this version's rules worked out: never a retired one. */
+    /** A single order as Dasher counts it, for the pay line: nothing else read. */
+    private static final OfferSnapshot SINGLE_ORDER = new OfferSnapshot(null, null, null, 2);
+
+    /** A tree stands only for a score this version's rules worked out: never a retired one. */
     private static boolean tree(DecisionLog.Entry entry) {
         return entry.scorePercent >= 0 && entry.model >= 2;
     }
@@ -293,46 +314,63 @@ final class DecisionChartView extends View {
         // hear it from the description).
         if (entries.isEmpty()) return;
 
+        long maxCents = scaleMax();
         long maxScore = scoreScaleMax();
         float slot = (right - left) / SLOTS;
         float barWidth = buildingWidth(slot);
-        // The spotlight moving to the bar just tapped draws every frame; the rest is steady motion.
+        float treeWidth = treeWidth(slot);
         float spotlight = Motion.settle(selectedAt, 300);
         int marked = badged();
-        // 0.6.8: no spotlight beam (the owner's mockup): the badge alone marks the selected bar.
-        // The lines under the bars, so a bar's top stays visible where it crosses one.
+        float markedRoof = Float.NaN;
+        // 0.6.8: no spotlight beam: the badge alone marks the selected building.
+        // The lines under the buildings and trees, so a roof or a tip stays visible where it crosses one.
         drawThresholdLines(canvas, left, right);
         for (int i = 0; i < entries.size(); i++) {
             DecisionLog.Entry entry = entries.get(i);
             float center = buildingCenter(i, slot);
+            float treeCenter = treeCenter(i, slot);
             Long since = risingSince.get(entry.at);
             float rise = Motion.settle(since == null ? 0 : since, RISE_MS);
             if (rise <= 0) continue;
             float roof;
-            if (tree(entry)) {
-                roof = bottom - (bottom - y(entry.scorePercent, maxScore, top, bottom)) * rise;
-                drawBar(canvas, center - barWidth / 2f, roof, center + barWidth / 2f, bottom, barColor(entry));
-                if (entry.scorePercent > SCORE_DISPLAY_CAP) {
-                    line.setColor(barColor(entry));
-                    line.setStrokeWidth(Math.max(1, ui.dp(1)));
-                    float half = barWidth * 0.4f;
-                    canvas.drawLine(center - half, roof - ui.dp(2), center, roof - ui.dp(4), line);
-                    canvas.drawLine(center, roof - ui.dp(4), center + half, roof - ui.dp(2), line);
-                }
+            if (entry.facts.payCents != null) {
+                roof = bottom - (bottom - y(entry.facts.payCents, maxCents, top, bottom)) * rise;
+                drawBuilding(canvas, center - barWidth / 2f, roof, center + barWidth / 2f, bottom, entry);
             } else {
                 roof = unreadTop(top, bottom);
                 drawUnread(canvas, center - barWidth / 2f, roof, center + barWidth / 2f, bottom);
             }
-            if (i != marked) continue;
-            drawBadge(canvas, center, roof - ui.dp(12), DecisionLog.outcome(entry), i == selected);
+            if (tree(entry)) {
+                float tip = bottom - (bottom - y(entry.scorePercent, maxScore, top, bottom)) * rise;
+                drawTree(canvas, treeCenter, tip, bottom, treeWidth);
+                if (entry.scorePercent > SCORE_DISPLAY_CAP) {
+                    line.setColor(treeColor());
+                    line.setStrokeWidth(Math.max(1, ui.dp(1)));
+                    float half = treeWidth * 0.4f;
+                    canvas.drawLine(treeCenter - half, tip - ui.dp(2), treeCenter, tip - ui.dp(4), line);
+                    canvas.drawLine(treeCenter, tip - ui.dp(4), treeCenter + half, tip - ui.dp(2), line);
+                }
+            } else {
+                // Unavailable (or from the retired rules) and measured zero are distinct: an open ring at the foot.
+                line.setColor(ui.inkSecondary);
+                line.setStrokeWidth(Math.max(1, ui.dp(1)));
+                canvas.drawCircle(treeCenter, bottom - ui.dp(2), Math.min(ui.dp(2), treeWidth / 3f), line);
+            }
+            if (i == marked) markedRoof = roof;
+        }
+        // The lines' words, then the badge over everything, so no label's backdrop covers it.
+        drawThresholdLabels(canvas, left, right);
+        if (!Float.isNaN(markedRoof)) {
+            float center = buildingCenter(marked, slot);
+            drawBadge(canvas, center, markedRoof - ui.dp(12), DecisionLog.outcome(entries.get(marked)),
+                    marked == selected);
             // The stored route's offer, when it is the marked one: a small road at its badge's lower right.
-            if (i == routed) {
-                float flag = Math.max(roof - ui.dp(12), ui.dp(10));
+            if (marked == routed) {
+                float flag = Math.max(markedRoof - ui.dp(12), ui.dp(10));
                 OutcomeBadge.drawRoadPip(canvas, ui, center + ui.dp(ROAD_MARK_RIGHT_DP),
                         flag + ui.dp(ROAD_MARK_DOWN_DP), ui.dp(ROAD_MARK_DP), ui.ink);
             }
         }
-        drawThresholdLabels(canvas, left, right);
         if (spotlight < 1) Motion.settling(this);
         else Motion.next(this);
     }
@@ -343,8 +381,8 @@ final class DecisionChartView extends View {
     }
 
     /**
-     * What happened, as the bar's colour: green passed at or above the minimums (or accepted), amber passed below them,
-     * left for review or left to you, red filtered.
+     * What happened, in three groups: green passed at or above the minimums (or accepted), amber passed below them, left
+     * for review or left to you, red filtered (the strong colour; {@link #facadeColor} mutes it for a building).
      */
     private int barColor(DecisionLog.Entry entry) {
         DecisionLog.Outcome outcome = DecisionLog.outcome(entry);
@@ -361,22 +399,78 @@ final class DecisionChartView extends View {
         return ui.dark ? 0xFFC5B3FF : AutopilotChip.purple(ui);
     }
 
-    /** A bar with a rounded top. */
-    private void drawBar(Canvas canvas, float l, float t, float r, float b, int color) {
-        float radius = Math.min(ui.dp(3), Math.min((r - l) / 2f, Math.max(0, b - t) / 2f));
+    /**
+     * The offer's building, as 0.6.3 drew it: a rounded roof and two columns of windows, its colour what happened
+     * (muted, as the landscape's), its windows lit when the offer passed or was accepted, half-lit when left for review
+     * (or to you), dark when filtered.
+     */
+    private void drawBuilding(Canvas canvas, float l, float t, float r, float b, DecisionLog.Entry entry) {
+        int group = barColor(entry);
+        float radius = Math.min(ui.dp(4), Math.min((r - l) / 2f, Math.max(0, b - t) / 2f));
         path.reset();
         rect.set(l, t, r, b);
         path.addRoundRect(rect, new float[] {radius, radius, radius, radius, 0, 0, 0, 0}, Path.Direction.CW);
-        fill.setColor(color);
+        fill.setColor(facadeColor(group));
+        canvas.drawPath(path, fill);
+        float window = Math.max(ui.dp(2), Math.min(ui.dp(4), (r - l) / 6f));
+        fill.setColor(group == Ui.resultColor(OfferRule.Result.KEEP) ? 0xCCFFE9A3
+                : group == Ui.resultColor(OfferRule.Result.DECLINE) ? 0x28000000 : 0x70FFFFFF);
+        float gap = window * 1.2f;
+        for (float y = t + ui.dp(6); y + window <= b - ui.dp(4); y += window + gap) {
+            for (int column = 0; column < 2; column++) {
+                float x = l + (r - l) * (column == 0 ? 0.3f : 0.7f) - window / 2f;
+                canvas.drawRect(x, y, x + window, y + window, fill);
+            }
+        }
+    }
+
+    /** A group's colour as a building of the landscape: muted, as 0.6.3 muted them. */
+    private int facadeColor(int group) {
+        if (group == Ui.resultColor(OfferRule.Result.KEEP)) return ui.dark ? 0xFF557B63 : 0xFF78927D;
+        if (group == Ui.resultColor(OfferRule.Result.DECLINE)) return ui.dark ? 0xFF87645E : 0xFFAA8C81;
+        return ui.dark ? 0xFF998454 : 0xFFBDAC85;
+    }
+
+    private int treeColor() { return ui.dark ? 0xFF9DD6B6 : 0xFF32664F; }
+    private int payoutColor() { return ui.dark ? 0xFFF1C58B : 0xFF865423; }
+
+    /** A slim evergreen: its very tip is the score, its trunk ends at the street. */
+    private void drawTree(Canvas canvas, float x, float tip, float bottom, float width) {
+        float height = bottom - tip;
+        line.setColor(treeColor());
+        line.setStrokeWidth(Math.max(1, Math.min(ui.dp(1.5f), width / 4f)));
+        line.setStrokeCap(Paint.Cap.ROUND);
+        if (height <= 0) {
+            canvas.drawLine(x - width / 3f, bottom, x + width / 3f, bottom, line);
+            line.setStrokeCap(Paint.Cap.BUTT);
+            return;
+        }
+        canvas.drawLine(x, tip, x, bottom, line);
+        line.setStrokeCap(Paint.Cap.BUTT);
+        float crown = height * 0.84f;
+        path.reset();
+        path.moveTo(x, tip);
+        path.lineTo(x + width * 0.30f, tip + crown * 0.43f);
+        path.lineTo(x + width * 0.15f, tip + crown * 0.43f);
+        path.lineTo(x + width * 0.43f, tip + crown * 0.72f);
+        path.lineTo(x + width * 0.24f, tip + crown * 0.72f);
+        path.lineTo(x + width / 2f, tip + crown);
+        path.lineTo(x - width / 2f, tip + crown);
+        path.lineTo(x - width * 0.24f, tip + crown * 0.72f);
+        path.lineTo(x - width * 0.43f, tip + crown * 0.72f);
+        path.lineTo(x - width * 0.15f, tip + crown * 0.43f);
+        path.lineTo(x - width * 0.30f, tip + crown * 0.43f);
+        path.close();
+        fill.setColor(treeColor());
         canvas.drawPath(path, fill);
     }
 
-    /** Where an unread score's hollow bar stands: a third of the way to 100%. */
+    /** Where an unread pay's hollow building stands: a third of the way to 100%. */
     private float unreadTop(float top, float bottom) {
         return bottom - (bottom - y(100, scoreScaleMax(), top, bottom)) / 3f;
     }
 
-    /** An offer whose score was not read: a hollow dashed bar with "?" over it. */
+    /** An offer whose pay was not read: a hollow dashed building with "?" over it. */
     private void drawUnread(Canvas canvas, float l, float t, float r, float b) {
         line.setColor(ui.inkSecondary);
         line.setStrokeWidth(Math.max(1, ui.dp(1)));
@@ -395,9 +489,15 @@ final class DecisionChartView extends View {
     private void drawThresholdLines(Canvas canvas, float left, float right) {
         line.setStrokeWidth(Math.max(1, ui.dp(1)));
         line.setStrokeCap(Paint.Cap.BUTT);
-        line.setColor(ui.inkMuted);
+        if (payoutMinimumCents > 0) {
+            line.setColor(payoutColor());
+            canvas.drawLine(left, payoutThresholdY(), right, payoutThresholdY(), line);
+        }
+        line.setColor(treeColor());
+        line.setPathEffect(scoreDash);
         float hundred = hundredY();
         canvas.drawLine(left, hundred, right, hundred, line);
+        line.setPathEffect(null);
         if (minimumScalePercent != 100) {
             line.setColor(barLineColor());
             line.setPathEffect(scoreDash);
@@ -406,29 +506,48 @@ final class DecisionChartView extends View {
         }
     }
 
-    /** "100%" at the right end, over the minimums' line; the bar's own line goes unnamed (Autopilot's chip says it). */
+    /**
+     * "100%" at the right end, over the minimums' line, in the trees' green; the pay line's "Pay $10.00 min" (or "ref"
+     * by area) at its left end, just over it, in its own colour. Autopilot's line goes unnamed (its chip says it).
+     */
     private void drawThresholdLabels(Canvas canvas, float left, float right) {
-        label.setTextAlign(Paint.Align.RIGHT);
+        drawLineLabel(canvas, "100%", right - ui.dp(2), hundredY(), true, treeColor());
+        if (payoutMinimumCents > 0) {
+            drawLineLabel(canvas, payLabel(), left + ui.dp(2), payoutThresholdY(), false, payoutColor());
+        }
+    }
+
+    /** The pay line's words: what a single order must bring at the bar. */
+    String payLabel() {
+        return "Pay " + DecisionLog.money(payoutMinimumCents) + (areaMode ? " ref" : " min");
+    }
+
+    /**
+     * A line's label just over it, at {@code x} (its right end when {@code end}); where a building or tree rises through
+     * it (0.6.9), it keeps a backdrop of the page so it stays readable.
+     */
+    private void drawLineLabel(Canvas canvas, String text, float x, float lineY, boolean end, int color) {
+        label.setTextAlign(end ? Paint.Align.RIGHT : Paint.Align.LEFT);
         label.setTypeface(Ui.MEDIUM);
         label.setTextSize(Math.min(ui.sp(10), ui.dp(13)));
-        label.setColor(ui.inkMuted);
-        float baseline = hundredY() - ui.dp(3) - label.descent();
-        float wide = label.measureText("100%");
-        float textLeft = right - ui.dp(2) - wide;
-        // A bar risen through the label (0.6.9): the label keeps a backdrop of the page so it stays readable.
-        if (barReaches(textLeft - ui.dp(3), right, baseline + label.descent())) {
+        label.setColor(color);
+        float baseline = lineY - ui.dp(3) - label.descent();
+        float wide = label.measureText(text);
+        float textLeft = end ? x - wide : x;
+        if (barReaches(textLeft - ui.dp(3), textLeft + wide + ui.dp(3), baseline + label.descent())) {
             fill.setColor((ui.page & 0x00FFFFFF) | 0xE0000000);
             float pad = ui.dp(3);
-            canvas.drawRoundRect(textLeft - pad, baseline + label.ascent() - ui.dp(1), right - ui.dp(2) + pad,
+            canvas.drawRoundRect(textLeft - pad, baseline + label.ascent() - ui.dp(1), textLeft + wide + pad,
                     baseline + label.descent() + ui.dp(1), pad * 2, pad * 2, fill);
         }
-        canvas.drawText("100%", right - ui.dp(2), baseline, label);
+        canvas.drawText(text, x, baseline, label);
         label.setTextAlign(Paint.Align.CENTER);
         label.setTypeface(null);
         label.setTextSize(ui.sp(11));
+        label.setColor(ui.inkMuted);
     }
 
-    /** Whether a bar standing between {@code from} and {@code to} across rises above {@code y}. */
+    /** Whether a building or tree standing between {@code from} and {@code to} across rises above {@code y}. */
     private boolean barReaches(float from, float to, float y) {
         if (entries.isEmpty()) return false;
         float slot = slotWidth();
@@ -436,6 +555,10 @@ final class DecisionChartView extends View {
         for (int i = 0; i < entries.size(); i++) {
             float center = buildingCenter(i, slot);
             if (center + half >= from && center - half <= to && roofAt(i) < y) return true;
+            float[] tree = treeAt(i);
+            if (tree != null && tree[0] + tree[3] / 2f >= from && tree[0] - tree[3] / 2f <= to && tree[1] < y) {
+                return true;
+            }
         }
         return false;
     }
@@ -500,15 +623,15 @@ final class DecisionChartView extends View {
         else OutcomeBadge.drawQuiet(canvas, ui, x, Math.max(y, ui.dp(10)), outcome);
     }
 
-    /** The top of the offer's bar once risen (an unread score's hollow bar included). */
+    /** The top of the offer's building once risen (an unread pay's hollow building included). */
     private float roofAt(int index) {
         DecisionLog.Entry entry = entries.get(index);
-        return tree(entry) ? y(entry.scorePercent, scoreScaleMax(), plotTop(), plotBottom())
+        return entry.facts.payCents != null ? y(entry.facts.payCents, scaleMax(), plotTop(), plotBottom())
                 : unreadTop(plotTop(), plotBottom());
     }
 
     /**
-     * Where the badge of the offer at {@code index} (oldest first, as drawn) stands once its bar has risen, in this
+     * Where the badge of the offer at {@code index} (oldest first, as drawn) stands once its building has risen, in this
      * view's pixels; null where there is none (only the selected offer, else the newest, has one; for tests).
      */
     float[] flagAt(int index) {
@@ -516,9 +639,19 @@ final class DecisionChartView extends View {
         return new float[] {buildingCenter(index, slotWidth()), Math.max(roofAt(index) - ui.dp(12), ui.dp(10))};
     }
 
-    /** Settled score bar: center X, top Y, baseline Y and width. An unknown or retired score has none. */
+    /** Settled score tree: center X, tip Y, baseline Y and width. An unknown or retired score has no tree. */
     float[] treeAt(int index) {
         if (index < 0 || index >= entries.size() || getWidth() <= 0 || !tree(entries.get(index))) return null;
+        float slot = slotWidth();
+        return new float[] {treeCenter(index, slot), y(entries.get(index).scorePercent, scoreScaleMax(), plotTop(),
+                plotBottom()), plotBottom(), treeWidth(slot)};
+    }
+
+    /** Settled building: center X, roof Y, baseline Y and width; null where the pay was not read (for tests). */
+    float[] buildingAt(int index) {
+        if (index < 0 || index >= entries.size() || getWidth() <= 0 || entries.get(index).facts.payCents == null) {
+            return null;
+        }
         float slot = slotWidth();
         return new float[] {buildingCenter(index, slot), roofAt(index), plotBottom(), buildingWidth(slot)};
     }
@@ -528,15 +661,21 @@ final class DecisionChartView extends View {
                 && entries.get(index).scorePercent > SCORE_DISPLAY_CAP;
     }
 
-    /** The colour of the offer's bar (for tests); 0 where there is none. */
+    /** The colour of the offer's building (for tests); 0 where its pay was not read. */
     int barColorAt(int index) {
-        if (index < 0 || index >= entries.size() || !tree(entries.get(index))) return 0;
-        return barColor(entries.get(index));
+        if (index < 0 || index >= entries.size() || entries.get(index).facts.payCents == null) return 0;
+        return facadeColor(barColor(entries.get(index)));
     }
 
-    /** Whether the offer at {@code index} shows the hollow "?" bar of a score that was not read. */
+    long payoutThresholdCents() { return payoutMinimumCents; }
+
+    float payoutThresholdY() {
+        return payoutMinimumCents > 0 ? y(payoutMinimumCents, scaleMax(), plotTop(), plotBottom()) : Float.NaN;
+    }
+
+    /** Whether the offer at {@code index} shows the hollow "?" building of a pay that was not read. */
     boolean unreadAt(int index) {
-        return index >= 0 && index < entries.size() && !tree(entries.get(index));
+        return index >= 0 && index < entries.size() && entries.get(index).facts.payCents == null;
     }
 
     int scoreThresholdPercent() { return minimumScalePercent; }
@@ -548,14 +687,18 @@ final class DecisionChartView extends View {
         return Math.max(plotTop(), getHeight() - Math.max(ui.dp(22), ui.sp(14) * 1.3f + ui.dp(4)));
     }
     private float slotWidth() { return Math.max(0, getWidth() - ui.dp(SIDE_DP * 2)) / (float) SLOTS; }
-    private float buildingWidth(float slot) { return Math.max(1, Math.min(ui.dp(16), slot * 0.6f)); }
+    private float buildingWidth(float slot) { return Math.max(1, Math.min(ui.dp(21), slot * 0.66f)); }
+    private float treeWidth(float slot) { return Math.max(1, Math.min(ui.dp(9), slot * 0.28f)); }
     private float buildingCenter(int index, float slot) {
-        return ui.dp(SIDE_DP) + slot * (SLOTS - entries.size() + index + 0.5f);
+        return ui.dp(SIDE_DP) + slot * (SLOTS - entries.size() + index + 0.34f);
+    }
+    private float treeCenter(int index, float slot) {
+        return ui.dp(SIDE_DP) + slot * (SLOTS - entries.size() + index + 0.82f);
     }
 
     /**
-     * The highest point, in this view's pixels, that a bar, line or badge reaches once risen between {@code from} and
-     * {@code to} across; the view's height where none stands.
+     * The highest point, in this view's pixels, that a building, tree, line, label or badge reaches once risen between
+     * {@code from} and {@code to} across; the view's height where none stands.
      */
     float highestWithin(float from, float to) {
         float highest = getHeight();
@@ -566,20 +709,41 @@ final class DecisionChartView extends View {
         float slot = (right - left) / SLOTS;
         float barWidth = buildingWidth(slot);
         float reach = Math.max(barWidth / 2f, ui.dp(9));
+        float labelHigh = ui.dp(3) + Math.min(ui.sp(10), ui.dp(13)) * 1.2f;
         highest = Math.min(highest, Math.min(scoreThresholdY(), hundredY()) - ui.dp(1));
-        // "100%" sits over the line at the right end.
-        if (to >= right - ui.dp(30)) highest = Math.min(highest, hundredY() - ui.dp(3) - ui.sp(10) * 1.2f);
+        // "100%" sits over its line at the right end, the pay line's words at the left.
+        if (to >= right - ui.dp(30)) highest = Math.min(highest, hundredY() - labelHigh);
+        if (payoutMinimumCents > 0) {
+            highest = Math.min(highest, payoutThresholdY() - ui.dp(1));
+            if (from <= left + ui.dp(90)) highest = Math.min(highest, payoutThresholdY() - labelHigh);
+        }
         int marked = badged();
         for (int i = 0; i < entries.size(); i++) {
             float center = buildingCenter(i, slot);
             float rightReach = i == routed
                     ? Math.max(reach, ui.dp(ROAD_MARK_RIGHT_DP) + ui.dp(ROAD_MARK_DP) / 2f + ui.dp(1)) : reach;
-            if (center + rightReach < from || center - reach > to) continue;
-            float roof = roofAt(i) - (treeClippedAt(i) ? ui.dp(5) : 0) - (unreadAt(i) ? ui.sp(10) * 1.2f : 0);
-            highest = Math.min(highest, roof);
-            if (i == marked) highest = Math.min(highest, Math.max(roofAt(i) - ui.dp(12), ui.dp(10)) - ui.dp(9));
+            if (center + rightReach >= from && center - reach <= to) {
+                highest = Math.min(highest, roofAt(i) - (unreadAt(i) ? ui.sp(10) * 1.2f : 0));
+                if (i == marked) highest = Math.min(highest, Math.max(roofAt(i) - ui.dp(12), ui.dp(10)) - ui.dp(9));
+            }
+            float[] tree = treeAt(i);
+            if (tree != null && tree[0] + tree[3] / 2f >= from && tree[0] - tree[3] / 2f <= to) {
+                highest = Math.min(highest, tree[1] - (treeClippedAt(i) ? ui.dp(5) : 0));
+            }
         }
         return highest;
+    }
+
+    /** The smallest "nice" dollar ceiling at or above every pay shown and the pay line. */
+    private long scaleMax() {
+        long max = payoutMinimumCents;
+        for (DecisionLog.Entry entry : entries) {
+            if (entry.facts.payCents != null) max = Math.max(max, Math.min(entry.facts.payCents, SCALE_CAP_CENTS));
+        }
+        for (long dollars : NICE_DOLLARS) {
+            if (dollars * 100 >= max) return dollars * 100;
+        }
+        return SCALE_CAP_CENTS;
     }
 
     /** Percent scale does not depend on payouts or dollar requirements. Unknowns contribute nothing. */
@@ -759,9 +923,12 @@ final class DecisionChartView extends View {
         return summary + selectedDescription() + " " + AutopilotText.SKYLINE_DESCRIPTION
                 + (minimumScalePercent != 100 ? " Dashed line: " + AutopilotText.skylineBarRail(minimumScalePercent)
                 + "." : "")
-                + (unknown > 0 ? " " + unknown + " recorded scores unavailable: hollow bars." : "")
-                + (retired > 0 ? " " + retired + " scores from earlier rules: hollow bars." : "")
-                + (clipped > 0 ? " " + clipped + " bars exceed " + SCORE_DISPLAY_CAP
+                + (payoutMinimumCents > 0 ? " Solid line: a single order's " + (areaMode
+                ? "pay reference at the bar (area can compensate), " : "minimum pay at the bar, ")
+                + DecisionLog.money(payoutMinimumCents) + "." : " No minimum pay is set.")
+                + (unknown > 0 ? " " + unknown + " recorded scores unavailable: no tree." : "")
+                + (retired > 0 ? " " + retired + " scores from earlier rules: no tree." : "")
+                + (clipped > 0 ? " " + clipped + " trees exceed " + SCORE_DISPLAY_CAP
                 + "% and end in an overflow chevron; tap for the recorded score." : "")
                 + " " + keySaid();
     }

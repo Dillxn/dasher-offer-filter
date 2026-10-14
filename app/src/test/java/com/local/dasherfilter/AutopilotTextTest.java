@@ -723,9 +723,10 @@ public final class AutopilotTextTest {
         assertEquals("⌈0.82 × $4.00⌉", "Pay $3.28 min", AutopilotText.skylinePayRail(400, 82));
         assertEquals("⌈0.82 × $4.01⌉: rounded up to the cent", "Pay $3.29 min", AutopilotText.skylinePayRail(401, 82));
         assertNull("no rail without a minimum pay", AutopilotText.skylinePayRail(0, 82));
-        assertEquals("Bar height is the recorded score, percent of your minimums; the solid line is your minimums, "
-                + "100%. Bar colour is what happened: green passed, amber passed below your minimums or left for "
-                + "review, red filtered.", AutopilotText.SKYLINE_DESCRIPTION);
+        // 0.6.14 (the owner chose B, "as before" 0.6.6): pay buildings and score trees, two scales.
+        assertEquals("Building height is pay in dollars. Each tree is the recorded score, percent of your minimums; "
+                + "the dashed line is your minimums, 100%. Building colour is what happened: green passed, amber "
+                + "passed below your minimums or left for review, red filtered.", AutopilotText.SKYLINE_DESCRIPTION);
     }
 
     // ---- The diagnostic log ----

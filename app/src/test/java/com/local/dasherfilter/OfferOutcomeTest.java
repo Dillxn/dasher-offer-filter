@@ -339,9 +339,9 @@ public class OfferOutcomeTest extends AndroidAdapterTestBase {
             for (int j = 0; j < expected.length; j++) if (j != i) assertNull("one badge", chart.flagAt(j));
         }
         assertTrue(chart.getContentDescription().toString().startsWith("Chart of the last 3 offers: 0 passed, 1 accepted, 1 declined, 1 left to you, 0 need review."));
-        // The bar's colour is what happened, not the rules' verdict: left to you amber, accepted green, declined red.
-        int[] bars = {Ui.resultColor(OfferRule.Result.REVIEW), Ui.resultColor(OfferRule.Result.KEEP),
-                Ui.resultColor(OfferRule.Result.DECLINE)};
+        // The building's colour is what happened, not the rules' verdict: left to you amber, accepted green, declined
+        // red, muted as the landscape's (0.6.14, as before 0.6.6).
+        int[] bars = {0xFFBDAC85, 0xFF78927D, 0xFFAA8C81};
         for (int i = 0; i < bars.length; i++) {
             if (!chart.unreadAt(i)) assertEquals("bar " + i, bars[i], chart.barColorAt(i));
         }

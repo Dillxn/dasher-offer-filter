@@ -82,9 +82,9 @@ final class AutopilotText {
 
     // ---- The skyline ----
 
-    static final String SKYLINE_DESCRIPTION = "Bar height is the recorded score, percent of your minimums; the "
-            + "solid line is your minimums, 100%. Bar colour is what happened: green passed, amber passed below your "
-            + "minimums or left for review, red filtered.";
+    static final String SKYLINE_DESCRIPTION = "Building height is pay in dollars. Each tree is the recorded score, "
+            + "percent of your minimums; the dashed line is your minimums, 100%. Building colour is what happened: "
+            + "green passed, amber passed below your minimums or left for review, red filtered.";
 
     // ---- The diagnostic log (category "autopilot") ----
 
