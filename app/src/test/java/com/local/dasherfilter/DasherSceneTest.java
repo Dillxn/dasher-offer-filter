@@ -36,6 +36,18 @@ public class DasherSceneTest {
         assertEquals(DasherScene.ROUTE, of(false, "This dash", "Safety tools", "Arrived at store"));
     }
 
+    /** The one screen Dasher's gear is tapped on for an offer it announced and did not draw (0.6.14). */
+    @Test public void findingOffersIsDashersOwnWordsWithOrWithoutItsDots() {
+        assertTrue(DasherScene.showsFindingOffers(Arrays.asList("Open Settings", "Help", "Finding offers")));
+        assertTrue(DasherScene.showsFindingOffers(Arrays.asList("Finding offers...")));
+        assertTrue(DasherScene.showsFindingOffers(Arrays.asList("Finding offers…")));
+        assertFalse("the dash's own screen and the zone screens are the wait, not Finding offers",
+                DasherScene.showsFindingOffers(Arrays.asList("This dash", "Dash Preferences", "Safety tools")));
+        assertFalse(DasherScene.showsFindingOffers(Arrays.asList("Zone offer wait", "Dash here")));
+        assertFalse("words that only begin alike", DasherScene.showsFindingOffers(Arrays.asList("Finding offers near you")));
+        assertFalse(DasherScene.showsFindingOffers(null));
+    }
+
     private static DasherScene of(boolean routeStored, String... labels) {
         return DasherScene.of(Arrays.asList(labels), routeStored);
     }

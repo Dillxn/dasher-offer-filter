@@ -33,6 +33,8 @@ enum DasherScene {
             "zone offer wait", "avg. offer wait", "you're in a good place to wait for offers",
             "earnings mode switcher", "this dash so far", "continue dashing", "dash here", "navigate back to old zone",
             "switch to this zone with peak pay");
+    /** Dasher's wait for offers in its own words, as its in-dash screen shows it ("Finding offers..."). */
+    private static final List<String> FINDING_OFFERS = Collections.singletonList("finding offers");
     /** The dash's summary between deliveries: the figures on it are the dash's, never an offer's. */
     private static final List<String> DASH_SUMMARY_LABELS = Collections.singletonList("this dash so far");
     /**
@@ -91,6 +93,14 @@ enum DasherScene {
      */
     static boolean showsWaiting(List<String> labels) {
         return labels != null && (OfferEvidence.isIdle(labels) || shows(labels, WAITING_LABELS, null));
+    }
+
+    /**
+     * Whether a screen shows Dasher's "Finding offers" (with or without its dots): the one screen Dasher's gear is ever
+     * tapped on for an offer it announced and did not draw (0.6.14).
+     */
+    static boolean showsFindingOffers(List<String> labels) {
+        return labels != null && shows(labels, FINDING_OFFERS, null);
     }
 
     /** Whether a screen is the dash's summary between deliveries ("This dash so far"), whose figures are the dash's. */

@@ -172,6 +172,18 @@ public final class OfferFilterService extends AccessibilityService {
      * sent once ({@link #offerPostedOnScreen}).
      */
     static final long ON_SCREEN_DRAW_MS = 5_000;
+    /**
+     * Dasher's gear on its Finding offers ({@link #GEAR_LABEL}) is tapped for an offer Dasher announced and did not
+     * draw, in place of Dasher's own notification tap (the owner's choice, 14 October 2026: "Tap it"), only once the
+     * touch watch has seen no touch this long; a card's or the on-screen check's wait for that quiet ends
+     * {@link #GEAR_WAIT_MS} after it began.
+     */
+    static final long GEAR_QUIET_MS = 2_000;
+    static final long GEAR_WAIT_MS = 6_000;
+    /** What came of the gear's tap for a card's or the on-screen check's offer is logged by this long after it. */
+    static final long GEAR_OUTCOME_MS = 5_000;
+    /** The gear's own words on Dasher's Finding offers, as Dasher names it to screen readers. */
+    static final String GEAR_LABEL = "Open Settings";
     static final int LAUNCH_WINDOW_LINES = 6;
     /** Dasher's window changing after its own notification tap is not Dasher leaving the screen, this long. */
     static final long OWN_TAP_SETTLE_MS = 2_000;
@@ -608,6 +620,18 @@ public final class OfferFilterService extends AccessibilityService {
      * draws none of the offer ({@link #offerPostedOnScreen}).
      */
     private OnScreenWait onScreenWait;
+    /** A card's or the on-screen check's wait to tap Dasher's gear for a stuck offer, once the phone is quiet. */
+    private GearWait gearWait;
+    /**
+     * The touch watch is wanted for {@link #gearWait} (the main thread reads it in {@link #syncWatch}); the user's
+     * touches since that wait began (uptime, {@link #gearWatchBeganAt}) are counted, the app's own taps' echo aside.
+     */
+    private volatile boolean gearWatched;
+    private volatile long gearWatchBeganAt = Long.MAX_VALUE;
+    private final AtomicLong gearTouches = new AtomicLong();
+    /** Dasher's gear tapped for a card's or the on-screen check's offer: its path and when (Peek's clock). */
+    private String gearTappedFor;
+    private long gearTappedAt = NEVER;
     /** A fresh background post awaiting a normal visible read; observation only, no launch/tap authority. */
     private Peek.Request laterVisiblePost;
     private long laterVisibleGeneration;
@@ -843,6 +867,34 @@ public final class OfferFilterService extends AccessibilityService {
         }
     }
 
+    /** A card's or the on-screen check's wait to tap Dasher's gear for a stuck offer ({@link #startGear}). */
+    private static final class GearWait {
+        /** "card" or "on screen", as the [alert] lines name it. */
+        final String path;
+        final String tag;
+        final PendingIntent own;
+        final long clicks;
+        /** {@link #gearTouches} as the wait began, and when (uptime). */
+        final long touches;
+        final long beganAt;
+        /** An offer read since then (uptime) is the stuck one drawn, or another: nothing is tapped for it. */
+        final long offerSince;
+        /** What its [alert] line says first ("Dasher showed none of the offer 5.0 s after its notification; "). */
+        final String before;
+
+        GearWait(String path, String tag, PendingIntent own, long clicks, long touches, long beganAt, long offerSince,
+                 String before) {
+            this.path = path;
+            this.tag = tag;
+            this.own = own;
+            this.clicks = clicks;
+            this.touches = touches;
+            this.beganAt = beganAt;
+            this.offerSince = offerSince;
+            this.before = before;
+        }
+    }
+
     private static final class ReadIdentity {
         final OfferSnapshot facts;
         final List<String> labels;
@@ -924,6 +976,8 @@ public final class OfferFilterService extends AccessibilityService {
     private boolean waitReadNewInstance;
     /** This read's labels once it has read a screen without finding it too big, else null. */
     private List<String> sceneLabels;
+    /** The node of Dasher's gear ({@link #GEAR_LABEL}) that read found, else null. */
+    private AccessibilityNodeInfo readGear;
     /**
      * When (uptime) the last read that read Dasher's screen whole began, {@link #NEVER} before the first: the Split
      * tap's Dasher first waits for one begun after the tap before it starts this app beside Dasher.
@@ -1229,7 +1283,7 @@ public final class OfferFilterService extends AccessibilityService {
     private final Runnable syncWatch = new Runnable() {
         @Override public void run() {
             boolean wanted = !stopped && (decliningOffer != null || peekWatched || autoAcceptWatched
-                    || SystemClock.uptimeMillis() < lateCompletionUntil);
+                    || SystemClock.uptimeMillis() < lateCompletionUntil || gearWatched);
             if (wanted) touchWatch.start();
             else touchWatch.stop();
             boolean up = touchWatch.isWatching();
@@ -2272,6 +2326,8 @@ public final class OfferFilterService extends AccessibilityService {
     static final String LAUNCH_PEEK = "peek";
     /** Dasher's own notification tap, sent by the screen reader (after a peek's or a card's launch, or on screen). */
     static final String LAUNCH_OWN_TAP = "own tap";
+    /** Dasher's gear on its Finding offers, tapped by the screen reader for an offer Dasher did not draw (0.6.14). */
+    static final String LAUNCH_GEAR = "gear tap";
     /** After each start of Dasher, Android's list of windows is logged this long after it ("[launch] split + 5 s"). */
     static final long[] LAUNCH_LOOKS_MS = {5_000, 10_000};
     /**
@@ -3083,6 +3139,7 @@ public final class OfferFilterService extends AccessibilityService {
             lockedPost = null;
             cardOpen = null;
             onScreenWait = null;
+            forgetGear();
             laterVisiblePost = null;
             ownFirstTag = null;
             unlockRetryUntil = NEVER;
@@ -3145,6 +3202,7 @@ public final class OfferFilterService extends AccessibilityService {
         lockedPost = null;
         cardOpen = null;
         onScreenWait = null;
+        forgetGear();
         laterVisiblePost = null;
         ownFirstTag = null;
         unlockRetryUntil = NEVER;
@@ -3209,6 +3267,7 @@ public final class OfferFilterService extends AccessibilityService {
         peekSuspend();
         cardOpen = null;
         onScreenWait = null;
+        forgetGear();
         laterVisiblePost = null;
         scanner.removeCallbacks(forgetLaterVisiblePost);
         scanner.removeCallbacks(onScreenCheck);
@@ -4056,7 +4115,14 @@ public final class OfferFilterService extends AccessibilityService {
             autoAcceptActions.incrementAndGet();
             scanner.postAtFrontOfQueue(() -> cancelAutoAccept(true, "user_action"));
         }
+        // Any touch of the user's, anywhere, and Dasher's gear waits for the next quiet or is not tapped.
+        if (gearWatched && touchAt >= gearWatchBeganAt && echo == null) gearTouches.incrementAndGet();
         boolean peeking = peekWatched;
+        // Up for Dasher's gear alone: nothing of a decline's to judge.
+        if (gearWatched && !peeking && decliningOffer == null && !autoAcceptWatched
+                && SystemClock.uptimeMillis() >= lateCompletionUntil) {
+            return;
+        }
         // Without a peek, every touch the watch reports is a decline's, as it always was.
         if (!peeking || decliningOffer != null) touchedDuringDecline(touchAt, echo, madeUp);
         if (peeking) touchedDuringPeek(touchAt, echo);
@@ -4689,8 +4755,9 @@ public final class OfferFilterService extends AccessibilityService {
             scanner.postDelayed(cardOpenCheck, Math.max(50, open.upAt + Peek.PRESENT_MS - now));
             return;
         }
-        if (queued.get() != QUEUED_NONE || quietScanPending) {
+        if ((queued.get() != QUEUED_NONE || quietScanPending) && !gearMayRead()) {
             // Dasher's latest change is not read yet: the offer may be drawing in it. This comes back after that read.
+            // Over Finding offers with its gear, the gear's own fresh read goes first instead (gearMayRead).
             scanner.postDelayed(cardOpenCheck, CONFIRM_POLL_MS);
             return;
         }
@@ -4703,6 +4770,12 @@ public final class OfferFilterService extends AccessibilityService {
         else if (pausedNow()) skip = "auto-decline is paused";
         else if (dasherClicks.get() != open.clicks) skip = "you tapped Dasher";
         else if (readShowsOffer()) skip = "offer showing";
+        if (skip == null && gearShown()) {
+            // Dasher's Finding offers without the offer: its gear, once the phone is quiet, in place of its own tap.
+            startGear("card", open.tag, open.own, open.clicks,
+                    SystemClock.uptimeMillis() - Math.max(0, Peek.now() - open.openedAt), "");
+            return;
+        }
         if (skip == null) {
             tap = OfferNotificationService.cardTap(open.tag, open.own);
             skip = tap.skip;
@@ -4767,8 +4840,9 @@ public final class OfferFilterService extends AccessibilityService {
     private void onScreenCheck() {
         OnScreenWait wait = onScreenWait;
         if (wait == null || stopped || scannerFaulted) return;
-        if (queued.get() != QUEUED_NONE || quietScanPending) {
+        if ((queued.get() != QUEUED_NONE || quietScanPending) && !gearMayRead()) {
             // Dasher's latest change is not read yet: the offer may be drawing in it. This comes back after that read.
+            // Over Finding offers with its gear, the gear's own fresh read goes first instead (gearMayRead).
             scanner.postDelayed(onScreenCheck, CONFIRM_POLL_MS);
             return;
         }
@@ -4794,6 +4868,12 @@ public final class OfferFilterService extends AccessibilityService {
             else if (peek.active() || declineUnderWay(now) || declineState.hasPendingConfirmation(now)) {
                 skip = "a peek or a decline is under way";
             } else if (scene != DasherScene.WAITING) skip = "Dasher isn't showing its wait for offers";
+        }
+        if (skip == null && gearShown()) {
+            // Dasher's Finding offers without the offer: its gear, once the phone is quiet, in place of its own tap.
+            startGear("on screen", wait.tag, wait.own, wait.clicks, wait.postedUptime, "Dasher showed none of the offer "
+                    + Peek.seconds(Peek.now() - wait.postedAt) + " after its notification; ");
+            return;
         }
         if (skip == null) {
             tap = OfferNotificationService.cardTap(wait.tag, wait.own);
@@ -4822,6 +4902,263 @@ public final class OfferFilterService extends AccessibilityService {
             DiagnosticLog.log(this, "alert", "on screen: " + after + "; Dasher's own notification tap: refused ("
                     + refused.getClass().getSimpleName() + ")");
         }
+    }
+
+    // ---- Dasher's gear, for an offer Dasher announced and did not draw (0.6.14; scanner thread) ----
+
+    /**
+     * What {@link #tapGear} returns when a window change, or an event of Dasher's showing a sign of an offer, is still to
+     * be read: it goes first, and the tap comes back after it.
+     */
+    private static final String GEAR_LATER = "a change of Dasher's to read first";
+    /** What {@link #tapGear} returns when its fresh read found Dasher on another screen: the gear does not apply. */
+    private static final String GEAR_ELSEWHERE = "Dasher isn't on Finding offers";
+
+    /**
+     * Whether the last read read Dasher's Finding offers whole, its gear on it and nothing of an offer: the one screen
+     * Dasher's gear is tapped on for an offer Dasher announced and did not draw. Dasher's own notification tap never
+     * brought such an offer up (five tries, 8 to 13 October 2026); the owner's own tap on the gear did, within about a
+     * second, as Dasher made its main screen again (13 October 2026, 6:10 PM).
+     */
+    private boolean gearShown() {
+        return readGear != null && !readSkipped && sceneLabels != null && scene == DasherScene.WAITING
+                && DasherScene.showsFindingOffers(sceneLabels) && !readShowsOffer() && !offerEvidence;
+    }
+
+    /**
+     * Whether a check due now may go ahead of Dasher's latest change still to be read: over Finding offers with its
+     * gear ({@link #gearShown}) the gear's own fresh read goes first, unless that change is a window's or showed a sign
+     * of an offer (read at the front of the queue). Finding offers' dots keep changing it: on 13 October 2026, with
+     * reads of 2 to 5 s, a card's check never found the queue empty.
+     */
+    private boolean gearMayRead() {
+        return gearShown() && queued.get() != QUEUED_FRONT && !changeNoted.get();
+    }
+
+    /**
+     * A card's or the on-screen check's Dasher shows its Finding offers without the offer ({@link #gearShown}): the
+     * touch watch comes up, and Dasher's gear is tapped once it has seen no touch {@link #GEAR_QUIET_MS}
+     * ({@link #gearCheck}), in place of Dasher's own notification tap.
+     *
+     * @param offerSince an offer read since then (uptime) is drawn: nothing is tapped
+     * @param before what the [alert] line says first
+     */
+    private void startGear(String path, String tag, PendingIntent own, long clicks, long offerSince, String before) {
+        long now = SystemClock.uptimeMillis();
+        gearWatchBeganAt = now;
+        gearWait = new GearWait(path, tag, own, clicks, gearTouches.get(), now, offerSince, before);
+        gearWatched = true;
+        syncAutomation();
+        scanner.removeCallbacks(gearCheck);
+        scanner.postDelayed(gearCheck, GEAR_QUIET_MS);
+    }
+
+    private final Runnable gearCheck = this::gearCheck;
+
+    /**
+     * A card's or the on-screen check's wait for Dasher's gear: tapped ({@link #tapGear}) once the touch watch is up and
+     * has seen no touch {@link #GEAR_QUIET_MS}, with no click of the user's on Dasher; given up at any touch or click of
+     * theirs, and {@link #GEAR_WAIT_MS} after it began. "[alert] card: …" and "[alert] on screen: …" lines say what was
+     * done, and what came of a tap ({@link #noteGearRead}).
+     */
+    private void gearCheck() {
+        GearWait wait = gearWait;
+        if (wait == null || stopped || scannerFaulted) return;
+        long now = SystemClock.uptimeMillis();
+        BooleanSupplier still = () -> gearWait == wait && gearTouches.get() == wait.touches
+                && dasherClicks.get() == wait.clicks;
+        long quietAt = Math.max(wait.beganAt, watchReadyAt) + GEAR_QUIET_MS;
+        boolean late = now - wait.beganAt >= GEAR_WAIT_MS;
+        String result;
+        if (gearTouches.get() != wait.touches) {
+            result = "you touched the screen";
+        } else if (dasherClicks.get() != wait.clicks) {
+            result = "you tapped Dasher";
+        } else if (watchState != WATCH_UP || now < quietAt) {
+            if (!late) {
+                scanner.postDelayed(gearCheck, watchState == WATCH_UP ? Math.max(50, quietAt - now) : CONFIRM_POLL_MS);
+                return;
+            }
+            result = "the touch watch wasn't ready";
+        } else {
+            result = tapGear(wait.tag, null, wait.own, "card".equals(wait.path), wait.beganAt, wait.offerSince, still,
+                    () -> { });
+            if (result == GEAR_LATER) {
+                if (!late && gearWait == wait) {
+                    scanner.postDelayed(gearCheck, CONFIRM_POLL_MS);
+                    return;
+                }
+                result = "Dasher's screen kept changing";
+            }
+        }
+        if (gearWait == wait) endGear();
+        DiagnosticLog.log(this, "alert", wait.path + ": " + wait.before + "Dasher's gear: "
+                + (result == null ? "tapped" : "skipped (" + result + ")"));
+        if (result != null) return;
+        gearTappedFor = wait.path;
+        gearTappedAt = Peek.now();
+        scanner.removeCallbacks(gearOutcome);
+        scanner.postDelayed(gearOutcome, GEAR_OUTCOME_MS);
+    }
+
+    /** A gear wait is over: the touch watch goes down unless something else wants it. */
+    private void endGear() {
+        gearWait = null;
+        scanner.removeCallbacks(gearCheck);
+        gearWatched = false;
+        gearWatchBeganAt = Long.MAX_VALUE;
+        syncAutomation();
+    }
+
+    /** Forgets a gear wait and what came of a gear's tap, as screen reading stops or the phone locks. */
+    private void forgetGear() {
+        gearWait = null;
+        gearTappedFor = null;
+        if (scanner != null) {
+            scanner.removeCallbacks(gearCheck);
+            scanner.removeCallbacks(gearOutcome);
+        }
+        gearWatched = false;
+        gearWatchBeganAt = Long.MAX_VALUE;
+    }
+
+    /** After a read: a card's or the on-screen check's gear tap, followed by an offer's figures read. */
+    private void noteGearRead() {
+        if (gearTappedFor == null || !readFigures) return;
+        DiagnosticLog.log(this, "alert", gearTappedFor + ": offer facts read " + Peek.seconds(Peek.now() - gearTappedAt)
+                + " after Dasher's gear");
+        gearTappedFor = null;
+        scanner.removeCallbacks(gearOutcome);
+    }
+
+    /** {@link #GEAR_OUTCOME_MS} after a card's or the on-screen check's gear tap, with no offer's figures read since. */
+    private final Runnable gearOutcome = () -> {
+        if (gearTappedFor == null || stopped) return;
+        DiagnosticLog.log(this, "alert", gearTappedFor + ": no offer facts read "
+                + Peek.seconds(Peek.now() - gearTappedAt) + " after Dasher's gear");
+        gearTappedFor = null;
+    };
+
+    /**
+     * A peek's Dasher on its Finding offers without the offer ({@link #gearShown}), {@link Peek#PRESENT_MS} after it
+     * came up: Dasher's gear ({@link #tapGear}), in place of Dasher's own notification tap. The wait for the offer to
+     * show follows it as it follows that tap, and that tap is never sent after it. Every touch since the peek began
+     * would have ended the peek.
+     *
+     * @return false when the gear does not apply after all (its fresh read found Dasher on another screen): Dasher's own
+     *     notification tap follows as before
+     */
+    private boolean peekGear(Peek.Request request) {
+        long actions = peek.actions();
+        long generation = peek.generation();
+        BooleanSupplier still = () -> peek.active() && !peekReturning && peek.request() == request
+                && peekActions.get() == actions && OfferNotificationService.generation() == generation;
+        String gear = tapGear(request.alertTag, request, null, true, peekBeganAt, Long.MAX_VALUE, still,
+                () -> peek.gearTapSent(Peek.now()));
+        if (gear == null) {
+            Peek.log(this, "Dasher's gear: tapped");
+            return true;
+        }
+        // Its fresh read may have ended the peek or read the offer (or what may be it): the peek goes by that.
+        if (gear == GEAR_LATER || !still.getAsBoolean() || !peek.presentationDue(Peek.now())) return true;
+        if (gear == GEAR_ELSEWHERE) return false;
+        // Never Dasher's own tap instead: it never brought such an offer up. The offer's card follows as for a tap that
+        // could not be sent (peekUnshown).
+        peek.ownTapSkipped(Peek.now(), OfferNotificationService.offerPosted(request)
+                == OfferNotificationService.Posted.POSTED);
+        Peek.log(this, "Dasher's gear: skipped (" + gear + ")");
+        return true;
+    }
+
+    /**
+     * Dasher's gear on its Finding offers, tapped once for the stuck offer of the card with {@code tag}, in place of
+     * Dasher's own notification tap (the owner's choice, 14 October 2026, "Tap it": his one exception to the app's taps
+     * being only on the declined offer's own controls). One fresh read of Dasher's screen first; then only while that
+     * read found Finding offers whole with its gear and nothing of an offer, no offer was read since {@code
+     * offerSince}, the offer's very notification is still posted, nothing of the user's came ({@code still}), the touch
+     * watch has been up {@link #GEAR_QUIET_MS} since {@code quietFrom} with no touch, Dasher is in view (in front and
+     * not split when {@code inFront}), no keyboard is up and no call, and no decline, question, automatic acceptance,
+     * decline-error recovery or (for a card's or the on-screen check's) peek is under way. Never Back, never retried:
+     * once for the offer whatever Android answers, and Dasher's own notification tap is never sent after it. Its echo
+     * is the app's own, as every tap's.
+     *
+     * @param request a peek's offer, else null (then {@code tag} and {@code own} name the card's)
+     * @param beforeTap run right before the tap
+     * @return null when tapped, {@link #GEAR_LATER} when a change of Dasher's is to be read first, {@link
+     *     #GEAR_ELSEWHERE} when the fresh read found Dasher on another screen, else why not, in fixed words
+     */
+    private String tapGear(String tag, Peek.Request request, PendingIntent own, boolean inFront, long quietFrom,
+                           long offerSince, BooleanSupplier still, Runnable beforeTap) {
+        String why = gearRefusal(offerSince, still);
+        if (why != null) return why;
+        if (queued.get() == QUEUED_FRONT || changeNoted.get()) return GEAR_LATER;
+        // What Dasher shows now, whatever its last event: one read (an offer drawn by now is read, and judged, as any
+        // is).
+        long began = SystemClock.uptimeMillis();
+        scanNow(began, "check before Dasher's gear");
+        if (stopped || scannerFaulted) return "screen reading stopped";
+        why = gearRefusal(offerSince, still);
+        if (why != null) return why;
+        if (judgedReadAt == NEVER || judgedReadAt < began) return "Dasher's screen wasn't read whole";
+        if (!gearShown()) return GEAR_ELSEWHERE;
+        long now = SystemClock.uptimeMillis();
+        if (declineUnderWay(now) || declineState.hasPendingConfirmation(now) || autoAcceptWatched
+                || declineError.pending()) {
+            return "a decline or an automatic accept is under way";
+        }
+        if (request == null && peek.active()) return "a peek is under way";
+        // Its very notification still up (or Dasher's update of the same offer): never for a gone or replaced one.
+        OfferNotificationService.DasherTap post = request != null ? OfferNotificationService.dasherTap(request)
+                : OfferNotificationService.cardTap(tag, own);
+        if (post.skip != null && !post.postedWithoutTap) return post.skip;
+        DasherPlace place = placeNow();
+        if (place == null || !place.dasherShown) return "Dasher isn't on screen";
+        if (inFront && place.split) return "split";
+        if (inFront && !place.dasherActive) return "not in front";
+        if (keyboardListed()) return "a keyboard is up";
+        if (inCall()) return "a call";
+        AccessibilityNodeInfo target;
+        try {
+            target = readGear.refresh() ? clickTarget(readGear) : null;
+        } catch (RuntimeException gone) {
+            target = null;
+        }
+        String refusal = clickRefusal(target);
+        if (refusal != null) return "the gear can't be tapped (" + refusal + ")";
+        now = SystemClock.uptimeMillis();
+        if (watchState != WATCH_UP || now - Math.max(quietFrom, watchReadyAt) < GEAR_QUIET_MS) {
+            return "the touch watch wasn't ready";
+        }
+        if (!still.getAsBoolean()) return "you touched";
+        if (!phoneReadable()) return "the phone locked";
+        // Once for the offer, whichever path asks, and Dasher's own notification tap never after it.
+        if (!OfferNotificationService.claimGearTap(tag)) return "tapped for this offer already";
+        OfferNotificationService.claimOwnTap(tag);
+        beforeTap.run();
+        watchLaunch(LAUNCH_GEAR);
+        // A touch from here until the echo window after the call returns is this tap's echo, and so is a click on this
+        // node (OwnTaps): never the user's.
+        ownTaps.began(target, now);
+        boolean tapped = false;
+        try {
+            tapped = target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        } finally {
+            ownTaps.ended(SystemClock.uptimeMillis(), tapped);
+        }
+        return tapped ? null : refusedClick(target);
+    }
+
+    /** Why Dasher's gear is not tapped for an offer, by what is known without a read, or null. */
+    private String gearRefusal(long offerSince, BooleanSupplier still) {
+        if (!Consent.accepted(this)) return "the notice isn't accepted";
+        if (!phoneReadable()) return "the phone locked";
+        // Paused, nothing of Dasher's is read: no read can say the offer did not show.
+        if (pausedNow()) return "auto-decline is paused";
+        if (!still.getAsBoolean()) return "you touched";
+        if (readShowsOffer() || offerEvidence) return "offer showing";
+        // An offer read since its notification came (or its card was tapped) is drawn: it is judged as any is.
+        if (offerReadAt != NEVER && offerReadAt >= offerSince) return "an offer was read since";
+        return null;
     }
 
     /**
@@ -5342,9 +5679,11 @@ public final class OfferFilterService extends AccessibilityService {
             if (!peek.active() || peekReturning || peek.returnWaiting()) return;
             now = Peek.now();
         }
-        if ((peek.unshown(now) || peek.presentationDue(now)) && (queued.get() != QUEUED_NONE || quietScanPending)) {
+        boolean unread = queued.get() != QUEUED_NONE || quietScanPending;
+        if (unread && (peek.unshown(now) || (peek.presentationDue(now) && !gearMayRead()))) {
             // Dasher's latest change is not read yet (queued, or held for the quiet gap): the offer may be drawing in
-            // it. Neither Dasher's own tap nor "never shown" goes over that: this comes back after the read.
+            // it. Neither Dasher's own tap nor "never shown" goes over that: this comes back after the read. Over
+            // Finding offers with its gear, the gear's own fresh read goes first instead (gearMayRead).
             scanner.postDelayed(peekTick, CONFIRM_POLL_MS);
             return;
         }
@@ -5445,6 +5784,13 @@ public final class OfferFilterService extends AccessibilityService {
         else if (OfferNotificationService.generation() != peek.generation()) skip = "newer offer";
         else if (peek.pastDeadline(now)) skip = "deadline";
         else if (peek.factsRead() || peek.offerUnread() || readShowsOffer()) skip = "offer showing";
+        if (skip == null && gearShown()) {
+            // Dasher's Finding offers without the offer: its gear, in place of Dasher's own notification tap.
+            if (peekGear(request)) return;
+            // Its fresh read found Dasher on another screen: Dasher's own notification tap, as before.
+            now = Peek.now();
+            if (peek.factsRead() || peek.offerUnread() || readShowsOffer()) skip = "offer showing";
+        }
         if (skip == null) {
             tap = OfferNotificationService.dasherTap(request);
             skip = tap.skip;
@@ -5483,7 +5829,8 @@ public final class OfferFilterService extends AccessibilityService {
     private void peekUnshown() {
         Peek.Request request = peek.request();
         String tag = request == null ? null : request.alertTag;
-        String launch = peek.ownTapRequested() ? "launcher, Dasher's notification tap" : "launcher";
+        String launch = !peek.ownTapRequested() ? "launcher"
+                : peek.gearTapped() ? "launcher, Dasher's gear" : "launcher, Dasher's notification tap";
         Peek.Front front = peek.front();
         String kind = front == null ? "the app you were in" : front.kind();
         if (navigating()) {
@@ -6643,6 +6990,7 @@ public final class OfferFilterService extends AccessibilityService {
         waitReadExcluded = false;
         waitReadNewInstance = false;
         sceneLabels = null;
+        readGear = null;
         readSkipped = false;
         readShowsQuestion = false;
         questionDrawing = false;
@@ -6707,6 +7055,7 @@ public final class OfferFilterService extends AccessibilityService {
             noteResized();
             noteCardOpenRead();
             noteOnScreenRead();
+            noteGearRead();
             noteLaterVisibleRead();
             syncWaitRead();
             // Shown again only by a read begun after the last window change, and after the user's last tap on Dasher
@@ -7319,7 +7668,7 @@ public final class OfferFilterService extends AccessibilityService {
         Peek.Phase phase = stopped || held ? Peek.Phase.NONE : peek.phase();
         if (peekPhase != phase) peekPhase = phase;
         if (peekWatched != peeking) peekWatched = peeking;
-        boolean watch = declining || peeking || autoAcceptWatched || now < lateCompletionUntil;
+        boolean watch = declining || peeking || autoAcceptWatched || now < lateCompletionUntil || gearWatched;
         int refusals = watchRefusals;
         if (refusals != watchRefusalsSeen) {
             // Android would not add the watch: it is not on, and is asked for again now while declining or peeking.
@@ -7481,6 +7830,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         if (scan.truncated) return tooBigToRead(scan);
         sceneLabels = scan.text;
+        readGear = scan.gear;
         episode.readDuration(SystemClock.uptimeMillis() - currentReadStartedAt);
         noteEndDashRead(scan, now);
 
@@ -8356,8 +8706,8 @@ public final class OfferFilterService extends AccessibilityService {
         long now = Peek.now();
         if (!peek.facts(now) || peek.upAt() == NEVER) return;
         peekLineAfterRead("offer facts read " + Peek.seconds(now - peek.upAt()) + " after Dasher came up ("
-                + (peek.ownTapRequested() ? Peek.seconds(now - peek.ownTapAt()) + " after Dasher's notification tap"
-                : "after launcher") + ")");
+                + (peek.ownTapRequested() ? Peek.seconds(now - peek.ownTapAt()) + " after "
+                + (peek.gearTapped() ? "Dasher's gear" : "Dasher's notification tap") : "after launcher") + ")");
     }
 
     /** What a read during a peek made of Dasher's screen, in fixed words ("[peek] no offer … screen=…"). */
@@ -10298,6 +10648,8 @@ public final class OfferFilterService extends AccessibilityService {
         final List<AccessibilityNodeInfo> declineTargets = new ArrayList<>();
         AccessibilityNodeInfo accept;
         AccessibilityNodeInfo decline;
+        /** The node labelled as Dasher's gear ({@link #GEAR_LABEL}), else null: its click target is found only to tap it. */
+        AccessibilityNodeInfo gear;
         /** Whether an Accept or Decline label showed, with or without a button to tap yet. */
         boolean acceptLabel;
         boolean declineLabel;
@@ -10404,6 +10756,7 @@ public final class OfferFilterService extends AccessibilityService {
                 return;
             }
             if (!text.contains(label)) text.add(label);
+            if (gear == null && GEAR_LABEL.equalsIgnoreCase(label)) gear = node;
             if (OfferControls.isButton(label, "accept")) {
                 acceptLabel = true;
                 if (accept == null) accept = clickTarget(node);

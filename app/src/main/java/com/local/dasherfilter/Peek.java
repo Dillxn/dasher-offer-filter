@@ -302,6 +302,8 @@ final class Peek {
     private long ownTapAt = NEVER;
     private boolean presentationTried;
     private boolean ownTapRequested;
+    /** That tap was Dasher's gear on its Finding offers, in place of its notification tap (0.6.14). */
+    private boolean gearTapped;
     /** A recognised empty screen was read during this peek. */
     private boolean recognisedSeen;
     /** The user touched the screen before Dasher's window first appeared: only the automatic decline goes back. */
@@ -421,6 +423,7 @@ final class Peek {
         this.ownTapAt = NEVER;
         this.presentationTried = false;
         this.ownTapRequested = false;
+        this.gearTapped = false;
         this.recognisedSeen = false;
         this.openingTouched = false;
         this.touchedWhileArming = false;
@@ -684,6 +687,19 @@ final class Peek {
         presentationTried = true;
         ownTapRequested = true;
         ownTapAt = now;
+    }
+
+    /**
+     * Dasher's gear was tapped on its Finding offers, in place of its own notification tap (0.6.14): the wait for the
+     * offer to show follows it as it follows that tap, and that tap is never sent after it this peek.
+     */
+    void gearTapSent(long now) {
+        ownTapSent(now);
+        gearTapped = true;
+    }
+
+    boolean gearTapped() {
+        return gearTapped;
     }
 
     /**

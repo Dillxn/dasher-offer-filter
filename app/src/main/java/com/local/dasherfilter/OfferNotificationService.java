@@ -89,6 +89,8 @@ public final class OfferNotificationService extends NotificationListenerService 
      * peek's, a card watch's or a card's own first: the screen reader never sends one a second time for that offer.
      */
     private final java.util.Set<String> ownTapsSent = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** The incarnations (by their card's tag) whose stuck offer Dasher's gear was tapped for once already (0.6.14). */
+    private final java.util.Set<String> gearTapsSent = java.util.concurrent.ConcurrentHashMap.newKeySet();
     /**
      * The stores (by merchant) whose offer notifications began an incarnation lately, with when (elapsed time), kept
      * {@link OfferPairing#OFFER_MS} whether or not that incarnation still lives (Dasher may take an offer's notification
@@ -248,6 +250,15 @@ public final class OfferNotificationService extends NotificationListenerService 
     static boolean claimOwnTap(String alertTag) {
         OfferNotificationService service = active;
         return service != null && alertTag != null && service.ownTapsSent.add(alertTag);
+    }
+
+    /**
+     * The one tap of Dasher's gear for the stuck offer of the card with {@code alertTag} (0.6.14): true the first time
+     * (the caller taps it now), false once it was tapped for that offer by any path. Any thread.
+     */
+    static boolean claimGearTap(String alertTag) {
+        OfferNotificationService service = active;
+        return service != null && alertTag != null && service.gearTapsSent.add(alertTag);
     }
 
     /** The notification key inside an incarnation's card tag ("offer-<time>-<serial>-<key>"), or null for another tag. */
@@ -1502,6 +1513,7 @@ public final class OfferNotificationService extends NotificationListenerService 
         revokePeek(offer.alertTag);
         dasherPosts.remove(offer.alertTag);
         ownTapsSent.remove(offer.alertTag);
+        gearTapsSent.remove(offer.alertTag);
         if (offer.expiry != null) handler.removeCallbacks(offer.expiry);
         OfferAlerts.clear(this, offer.alertTag);
         offerOutstanding = !tracked.isEmpty();
@@ -1526,6 +1538,7 @@ public final class OfferNotificationService extends NotificationListenerService 
         livePeekCards.clear();
         dasherPosts.clear();
         ownTapsSent.clear();
+        gearTapsSent.clear();
         postedKeys.clear();
         offerOutstanding = false;
     }
