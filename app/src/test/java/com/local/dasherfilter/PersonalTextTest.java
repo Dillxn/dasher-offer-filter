@@ -77,6 +77,30 @@ public class PersonalTextTest {
     }
 
     @Test
+    public void aNameAloneAsAnOrdersDetailsListTheCustomerIsMasked() {
+        // A pickup screen's order details, in the shape 0.6.11's report carried them: the customer's first name and
+        // last initial as a label of its own, with no heading before it.
+        List<String> pickup = Arrays.asList("Current dash", "Pick up by 6:14 PM", "Safety", "Help", "Sam P",
+                "Make this delivery count", "Pickup from", "Store A", "Directions");
+        List<String> masked = Arrays.asList("Current dash", "Pick up by 6:14 PM", "Safety", "Help", "[name]",
+                "Make this delivery count", "Pickup from", "Store A", "Directions");
+        assertEquals(masked, PersonalText.mask(pickup));
+        assertEquals("other labels=" + masked, PersonalText.maskLine("other labels=" + pickup));
+        assertEquals(masked, PersonalText.mask(masked));
+        assertEquals("[name]", PersonalText.mask("Noel G."));
+        assertEquals("[name]", PersonalText.mask("Mary Ann S"));
+        assertEquals("[Help, [name], [name], CVS (2715)]",
+                PersonalText.maskLine("[Help, José R, Jean-Luc P., CVS (2715)]"));
+        // Words that only look like a name, a store whose name has this shape, and longer labels stay.
+        for (String kept : Arrays.asList("Circle K", "Big Y", "Store A", "Customer A", "Pickup B", "Large Grade A Eggs",
+                "Sam's Club", "Taco Place", "Help")) {
+            assertEquals(kept, PersonalText.mask(kept));
+            assertEquals("[Pickup from, " + kept + ", Directions]",
+                    PersonalText.maskLine("[Pickup from, " + kept + ", Directions]"));
+        }
+    }
+
+    @Test
     public void aNotificationNamingTheCustomerKeepsTheStore() {
         assertEquals("Delivery Update: [name]'s order is ready for pickup at Speedway",
                 PersonalText.mask("Delivery Update: Tiaunna's order is ready for pickup at Speedway"));
