@@ -24,12 +24,13 @@ MIN_TESTS = 3646
 # adaptive minimum and deleted AdaptiveMinimumLifecycleTest with it; what took its place, the 0.5.0 migration that
 # retires the learned minimums and Autopilot moving the bar only at a safe point with the acceptance rate read from
 # Dasher's decline question, is held by the three suites after AutoAcceptSettingsTest. 0.5.1's minimums grow only at
-# that same safe point, never while an offer, a decline or a peek is under way: MinimumsGrowthAdapterTest.
+# that same safe point, never while an offer, a decline or a peek is under way: MinimumsGrowthAdapterTest, deleted with
+# that growth in 0.6.21 (the owner, 15 October 2026: "autopilot is the buffer"; Autopilot never changes the minimums).
 ADAPTERS = (
     "AndroidAdapterAlertsAndSettingsTest", "AndroidAdapterChartTest",
     "AndroidAdapterHomepageTest", "AndroidAdapterReportsAndUpdatesTest", "AccessibilityAdapterTest",
     "AutoAcceptAdapterTest", "AutoAcceptSettingsTest", "ModelMigrationTest", "AutopilotCommitAdapterTest",
-    "ConfirmationArReadingAdapterTest", "ConsentGateTest", "MinimumsGrowthAdapterTest",
+    "ConfirmationArReadingAdapterTest", "ConsentGateTest",
     "ScoringPolicyHistoryTest", "AcceptanceLearningStoreTest", "AcceptanceLearningAdapterTest",
     "AreaLearningUiTest",
 )

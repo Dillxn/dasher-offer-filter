@@ -36,7 +36,7 @@ BUNDLE_FILES = {'OfferFilter-unsigned.apk', 'inputs.json', 'gate.json', 'evidenc
 ADAPTERS = ('AndroidAdapterAlertsAndSettingsTest', 'AndroidAdapterChartTest',
             'AndroidAdapterHomepageTest', 'AndroidAdapterReportsAndUpdatesTest', 'AccessibilityAdapterTest',
             'AutoAcceptAdapterTest', 'AutoAcceptSettingsTest', 'ModelMigrationTest', 'AutopilotCommitAdapterTest',
-            'ConfirmationArReadingAdapterTest', 'ConsentGateTest', 'MinimumsGrowthAdapterTest',
+            'ConfirmationArReadingAdapterTest', 'ConsentGateTest',
             'ScoringPolicyHistoryTest', 'AcceptanceLearningStoreTest', 'AcceptanceLearningAdapterTest',
             'AreaLearningUiTest')
 SHA = re.compile(r'[a-f0-9]{64}\Z')
