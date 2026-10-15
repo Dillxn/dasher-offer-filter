@@ -339,6 +339,7 @@ final class BundledNotes {
                 "Beside the tab over Dasher, each offer's score shows at a glance: ✕ 52% while it's declined, for "
                         + DasherOverlay.SCORE_STAYS_MS / 1000 + " seconds after.",
                 "The offer map's grid reaches its edges and fades out, with no outline.");
+        release("0.6.22", "Drag the offer map and it follows your finger, then springs back into place when you let go.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

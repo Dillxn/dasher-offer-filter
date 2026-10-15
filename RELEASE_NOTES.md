@@ -1,3 +1,12 @@
+## 0.6.22 — Drag the offer map
+
+Version 0.6.22 (code 114) answers the owner's message of 15 October 2026 on 0.6.21: "i want to be able to drag the map on our app and it spring back into place on release".
+
+- **Drag the offer map.** Put a finger on the map and move it: the land, its squares, your dot and the selected square's name go with your finger, giving a little more the farther you pull, and when you let go it springs back into place, just past it and back. The compass, the info button and the scale stay where they are. A drag is never a tap: it picks no square, opens nothing and doesn't ask for location, and a tap works as before. Catch it on its way back and it holds where it is. With Android's animations off it follows your finger and is back in place at once. Nothing new runs while the map is still.
+- Nothing in the notice, the Terms or Privacy changed, so the notice stays 28.
+
+No phone has run this build.
+
 ## 0.6.21 — A map gets 70% of the split, the score at a glance, a 24-offer hold, Autopilot as the buffer
 
 Version 0.6.21 (code 113) answers the owner's messages of 15 October 2026 on 0.6.20: "whenever one half has nav open make it 70% height / whenever one half has nav open the other shouldn't / on this screen I want to be able to see at a small glance the score of the offer as it's being declined"; "why does the grid of our map at the bottom of the app not extend to the top and right of its container? also let's remove it's container's outline and just let the map fade out at the edges"; "I feel like 7 days is too strong. should be like 24h", then "24h may b too aggressive. We may have to do it by like two dozen orders or something"; and "mins growing should not be narried to autopilot", then "mins should grow as we accept offers with higher mins when adaptive / learned mins is on. autopilot is the buffer" and "this was already established".

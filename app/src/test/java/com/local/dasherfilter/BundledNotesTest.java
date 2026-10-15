@@ -4,6 +4,7 @@ import static org.junit.Assert.*;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -474,9 +475,7 @@ public class BundledNotesTest {
      * being declined", "let the map fade out at the edges"): notice 28's lines, then the score beside the tab and the
      * map's fade.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.21", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(28, Consent.VERSION);
+    @Test public void release0621SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.21");
         assertEquals(lines.toString(), 5, lines.size());
         assertEquals("first what notice 28 says", notice(28), lines.subList(0, 3));
@@ -486,6 +485,22 @@ public class BundledNotesTest {
                 "The offer map's grid reaches its edges and fades out, with no outline."}) {
             assertTrue(fact, card.contains(fact));
         }
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
+    }
+
+    /**
+     * 0.6.22 (the owner, 15 October 2026: "i want to be able to drag the map on our app and it spring back into place on
+     * release"): one line. Nothing the notice says changed, so it stays 28.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.22", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(28, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.22");
+        assertEquals(Collections.singletonList(
+                "Drag the offer map and it follows your finger, then springs back into place when you let go."), lines);
         for (String line : lines) {
             assertTrue(line, line.length() <= 160);
             assertFalse(line, line.contains("Offer Filter"));

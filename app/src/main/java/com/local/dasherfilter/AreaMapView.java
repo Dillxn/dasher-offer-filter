@@ -13,8 +13,10 @@ import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,7 +35,9 @@ import java.util.Locale;
  * square (the best until another is picked) is outlined and named beside it with its pay per mile ("Hunt Rd ·
  * $2.40/mi"), on whichever side has room and never cut (0.6.8, the owner's mockup: no rank coins, no trail; 0.6.6, the
  * line under the map, its title and its compass rose gone: say each thing once). Tap a square to select it. With nothing to show yet, it says why, in
- * as many lines as the land holds (three at most).
+ * as many lines as the land holds (three at most). Drag it and the land goes with the finger, giving more the farther it
+ * goes, and springs back into place when let go; the key, the ⓘ and the scale stay put (0.6.22, the owner: "i want to
+ * be able to drag the map on our app and it spring back into place on release").
  */
 @SuppressLint("ViewConstructor")
 final class AreaMapView extends View {
@@ -91,6 +95,16 @@ final class AreaMapView extends View {
     /** The words with nothing mapped: at most this many lines, this far in from the land's sides (both together). */
     private static final int EMPTY_LINES_MOST = 3;
     private static final float EMPTY_SIDES_DP = 12;
+    /**
+     * The land follows a drag at first and gives more the farther it goes: pulled this far (dp), it has moved half as
+     * far, and it never moves this far.
+     */
+    static final int STRETCH_DP = 240;
+    /** Let go, it springs back: past its place by about a tenth, back again, and at rest within this long (ms). */
+    static final long SPRING_MS = 500;
+    /** The spring's own pace (radians a second) and its damping (at 1 it would come back without passing its place). */
+    private static final double SPRING_RATE = 24;
+    private static final double SPRING_DAMPING = 0.6;
     /** Keeps the land only where the edge ramps allow: multiplies what was drawn by the ramp's alpha. */
     private final Paint fade = new Paint();
     private final RectF strip = new RectF();
@@ -111,6 +125,21 @@ final class AreaMapView extends View {
     private java.util.Map<String, String> names = Collections.emptyMap();
     private String hereName;
     private String emptyMessage = "Offers you see will be pinned here";
+    /** A drag (0.6.22): the finger it follows and where its pull counts from, in this view's pixels. */
+    private final int touchSlop;
+    private int dragFinger;
+    private float downX;
+    private float downY;
+    /** This touch is a drag (never a tap); the land is under the finger now. */
+    private boolean dragged;
+    private boolean holding;
+    /** How far the land is pulled from its place as drawn, in pixels; let go, when (uptime ms) and from where. */
+    private float pullX;
+    private float pullY;
+    private boolean springing;
+    private long springStart;
+    private float springX;
+    private float springY;
 
     // The projection, decided at each drawing: x = longitude × cos(reference latitude), y = latitude.
     private double scale;
@@ -128,6 +157,7 @@ final class AreaMapView extends View {
         unrankedDash = new DashPathEffect(new float[] {ui.dp(4), ui.dp(3)}, 0);
         frameDash = new DashPathEffect(new float[] {ui.dp(6), ui.dp(4)}, 0);
         fade.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
+        touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
         setClickable(true);
     }
@@ -288,6 +318,7 @@ final class AreaMapView extends View {
     }
 
     private void project(float width, float height) {
+        settlePull();
         // The heading and right-hand ornaments have their own space, including the info control's full hit area.
         width = mapWidth(width, height);
         float keyHeight = keyHeight();
@@ -348,6 +379,9 @@ final class AreaMapView extends View {
             top = latitude + height / scale / 2;
         }
         top += keyHeight / scale;
+        // Dragged (0.6.22), the land and all on it go with the finger.
+        left -= pullX / scale;
+        top += pullY / scale;
     }
 
     private float keyHeight() {
@@ -420,6 +454,7 @@ final class AreaMapView extends View {
         // No paper: the squares lie on the scene's own ground.
         rect.set(0, 0, width, height);
         if (cells.isEmpty()) {
+            settlePull();
             int fields = canvas.saveLayer(0, 0, width, height, null);
             drawEmptyFields(canvas, width, height);
             fadeEdges(canvas, width, height);
@@ -433,6 +468,7 @@ final class AreaMapView extends View {
                 canvas.restore();
             }
             drawKey(canvas, width);
+            if (springing) Motion.settling(this);
             return;
         }
         project(width, height);
@@ -475,6 +511,7 @@ final class AreaMapView extends View {
         drawScale(canvas, height);
         drawKey(canvas, width);
         if (here != null) Motion.next(this);
+        if (springing) Motion.settling(this);
     }
 
     private int brown() {
@@ -595,8 +632,20 @@ final class AreaMapView extends View {
         line.setStrokeWidth(Math.max(1, ui.dp(1)));
         line.setPathEffect(frameDash);
         float step = ui.dp(56);
-        for (float x = (width % step) / 2; x <= width; x += step) canvas.drawLine(x, 0, x, height, line);
-        for (float y = (height % step) / 2; y <= height; y += step) canvas.drawLine(0, y, width, y, line);
+        // Dragged, the fields go with the finger: drawn as far round the view as the land can be pulled, each line
+        // starting a whole number of dashes out, so its dashes go too.
+        float dash = ui.dp(6) + ui.dp(4);
+        float reach = pullX == 0 && pullY == 0 ? 0 : dash * (float) Math.ceil(ui.dp(STRETCH_DP) / dash);
+        float before = step * (float) Math.ceil(reach / step);
+        canvas.save();
+        canvas.translate(pullX, pullY);
+        for (float x = (width % step) / 2 - before; x <= width + reach; x += step) {
+            canvas.drawLine(x, -reach, x, height + reach, line);
+        }
+        for (float y = (height % step) / 2 - before; y <= height + reach; y += step) {
+            canvas.drawLine(-reach, y, width + reach, y, line);
+        }
+        canvas.restore();
         line.setPathEffect(null);
     }
 
@@ -785,8 +834,117 @@ final class AreaMapView extends View {
         text.setTextAlign(Paint.Align.CENTER);
     }
 
+    /** Where the land is now: under the finger while held; let go, on its way back; else in its place. */
+    private void settlePull() {
+        if (!springing) return;
+        long since = SystemClock.uptimeMillis() - springStart;
+        if (!Motion.on() || since >= SPRING_MS) {
+            springing = false;
+            pullX = 0;
+            pullY = 0;
+            return;
+        }
+        double t = since / 1000.0;
+        double ringing = SPRING_RATE * Math.sqrt(1 - SPRING_DAMPING * SPRING_DAMPING);
+        double share = Math.exp(-SPRING_DAMPING * SPRING_RATE * t) * (Math.cos(ringing * t)
+                + SPRING_DAMPING * SPRING_RATE / ringing * Math.sin(ringing * t));
+        pullX = (float) (springX * share);
+        pullY = (float) (springY * share);
+    }
+
+    /** How far the land is pulled from its place now, in pixels (for tests). */
+    android.graphics.PointF pulled() {
+        settlePull();
+        return new android.graphics.PointF(pullX, pullY);
+    }
+
+    /** On its way back into place (for tests). */
+    boolean springing() {
+        settlePull();
+        return springing;
+    }
+
+    /**
+     * A drag (0.6.22, the owner: "i want to be able to drag the map on our app and it spring back into place on
+     * release"). Past the touch slop the land goes with the finger from wherever it is (caught on its way back, it is
+     * held there), and the page round it leaves that finger to the map; let go, it springs back. A drag is never a
+     * tap: no square is picked, the ⓘ stays shut and the map's own tap (allowing location) does not happen. True for
+     * the drag's events.
+     */
+    private boolean drag(MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                dragFinger = event.getPointerId(0);
+                downX = event.getX();
+                downY = event.getY();
+                dragged = false;
+                holding = false;
+                return false;
+            case MotionEvent.ACTION_MOVE: {
+                int index = event.findPointerIndex(dragFinger);
+                if (index < 0 || dragged && !holding) return dragged;
+                float x = event.getX(index);
+                float y = event.getY(index);
+                if (!dragged) {
+                    if (Math.hypot(x - downX, y - downY) <= touchSlop) return false;
+                    takeDrag(event, x, y);
+                }
+                stretch(x - downX, y - downY);
+                return true;
+            }
+            case MotionEvent.ACTION_POINTER_UP:
+                if (holding && event.getPointerId(event.getActionIndex()) == dragFinger) letGo();
+                return dragged;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (holding) letGo();
+                return dragged;
+            default:
+                return dragged;
+        }
+    }
+
+    private void takeDrag(MotionEvent event, float x, float y) {
+        dragged = true;
+        holding = true;
+        helpPressed = false;
+        // From where the land is: the pull counts from a point that gives exactly that, its give undone.
+        settlePull();
+        springing = false;
+        double most = ui.dp(STRETCH_DP);
+        double undone = most / (most - Math.min(Math.hypot(pullX, pullY), most * 0.99));
+        downX = x - (float) (pullX * undone);
+        downY = y - (float) (pullY * undone);
+        // The press the view began is over, and the page round the map no longer takes this finger for a scroll.
+        MotionEvent cancel = MotionEvent.obtain(event);
+        cancel.setAction(MotionEvent.ACTION_CANCEL);
+        super.onTouchEvent(cancel);
+        cancel.recycle();
+        if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+    }
+
+    /** The land pulled {@code rawX}, {@code rawY} pixels by the finger: all of it at first, the farther the less. */
+    private void stretch(float rawX, float rawY) {
+        double most = ui.dp(STRETCH_DP);
+        double give = most / (Math.hypot(rawX, rawY) + most);
+        pullX = (float) (rawX * give);
+        pullY = (float) (rawY * give);
+        invalidate();
+    }
+
+    /** Let go: it springs back into place from where it is, at once with Android's animations off. */
+    private void letGo() {
+        holding = false;
+        springing = true;
+        springStart = SystemClock.uptimeMillis();
+        springX = pullX;
+        springY = pullY;
+        invalidate();
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     @Override public boolean onTouchEvent(MotionEvent event) {
+        if (drag(event)) return true;
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
             helpPressed = helpBounds().contains(event.getX(), event.getY());
             if (helpPressed) return true;
