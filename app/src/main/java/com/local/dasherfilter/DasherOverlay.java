@@ -41,7 +41,7 @@ import android.widget.Toast;
  *
  * <p>Beside the tab's shown part, a {@link ScoreTag} says what the offer on screen scored, once the rules decided
  * it: while the app declines it, while it passes and while it is the user's to decide, and for
- * {@link #SCORE_STAYS_MS} after a declined one left, so a glance from the road still catches it (0.6.21, the owner,
+ * {@link #SCORE_STAYS_MS} after a declined one left, so a quick glance still catches it (0.6.21, the owner,
  * a map beside Dasher: "I want to be able to see at a small glance the score of the offer as it's being declined").
  * Never beside Offer Filter's own half, whose homepage has it; touches pass through it, and the guide waits until it
  * goes.

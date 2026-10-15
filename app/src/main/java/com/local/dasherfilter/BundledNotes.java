@@ -74,6 +74,20 @@ final class BundledNotes {
             "If screen reading stops on a fault it restarts once, then a notification says offers aren't filtered; "
                     + "update checks wait for this notice."};
 
+    /**
+     * Notice 28's lines, also 0.6.21's card: an accept holds the bar for the next 24 offers, the minimums grow from
+     * what offers paid with Autopilot on or off, their switch is in Settings, and a map's half gets 70% of a split.
+     */
+    private static final String[] HOLD_GROWTH_MAP = {
+            "An offer you accept yourself now holds Autopilot's bar for your next " + Autopilot.FLOOR_OFFERS
+                    + " offers, instead of 7 days.",
+            "Your minimums grow with Autopilot on or off: when 1 in 5 of your last " + Growth.OFFERS + " offers paid "
+                    + (Growth.LEAST_BAR - FilterSettings.BAR_AT_MINIMUMS) + "% or more above them, up to "
+                    + Growth.MOST_PERCENT + "% at a time, with Undo.",
+            "\"" + AutopilotText.GROW_SWITCH + "\" is in Settings now, not Autopilot's details.",
+            "In split screen, a map in either half now gets " + SplitDivider.MAP_SHARE + "% of the screen, not only "
+                    + "during a delivery. Move the divider yourself and it stops for that dash."};
+
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
                     + "pay line and the 100% line.";
@@ -91,11 +105,12 @@ final class BundledNotes {
                 "Mid-dash your unlocked screen won't time out, and Peek can check an offer that came while locked. "
                         + "Dash diagnostics are opt-in. The Terms name Ohio law.");
         notice(15,
-                "Autopilot now raises your minimums after offers have paid above them for a while: at most 10% at a "
+                // Its switch's place is 0.6.21's (Settings; Autopilot's details before), since a reader of notice 14
+                // reads these lines with every later notice's.
+                "The app now raises your minimums after offers have paid above them for a while: at most 10% at a "
                         + "time, with Undo.",
-                "Higher minimums can mean more declines. \"Let my minimums grow\" in Autopilot's details turns it "
-                        + "off.",
-                "Autopilot keeps a note of its last growth: when, how much, and your minimums and bar before and "
+                "Higher minimums can mean more declines. \"Let my minimums grow\" in Settings turns it off.",
+                "The app keeps a note of the last growth: when, how much, and your minimums and bar before and "
                         + "after.");
         // What is new in this version, shown once after the update. Two or three short lines, plain words. Keyed by
         // the versionName that ships (BundledNotesTest requires the current versionName's entry). What the code does,
@@ -177,6 +192,9 @@ final class BundledNotes {
         // 0.6.19 (the owner, 14 October 2026: "it dropped the auto score below my recent high again on 6.18"): turning
         // Autopilot off and on no longer restarts the accepted floor, and the accepts it counts are kept 7 days.
         notice(27, FLOOR_HOLDS);
+        // 0.6.21 (the owner, 15 October 2026: "We may have to do it by like two dozen orders", "mins growing should not
+        // be narried to autopilot", "whenever one half has nav open make it 70% height").
+        notice(28, HOLD_GROWTH_MAP);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -318,6 +336,10 @@ final class BundledNotes {
                         + "longer sits below your best accept.",
                 "The notice is a short summary now, the details left to Terms and Privacy, and its diagnostics switch "
                         + "shows your choice.");
+        release("0.6.21", HOLD_GROWTH_MAP[0], HOLD_GROWTH_MAP[1], HOLD_GROWTH_MAP[2], HOLD_GROWTH_MAP[3],
+                "Beside the tab over Dasher, each offer's score shows at a glance: ✕ 52% while it's declined, for "
+                        + DasherOverlay.SCORE_STAYS_MS / 1000 + " seconds after.",
+                "The offer map's grid reaches its edges and fades out, with no outline.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

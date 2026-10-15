@@ -41,7 +41,11 @@ final class Consent {
     // 27 (0.6.19): turning Autopilot off and on keeps that hold, the figures of offers accepted by hand are kept 7 days
     // so it lasts past the latest 200 offers, and with pay first the update counts the accepts of the last 7 days again
     // (the owner's report, 14 October 2026: "it dropped the auto score below my recent high again on 6.18").
-    static final int VERSION = 27;
+    // 28 (0.6.21): an accept holds the bar for the 24 offers after it instead of 7 days (the owner: "We may have to do
+    // it by like two dozen orders"); the minimums grow from what offers paid, Autopilot on or off, with their switch
+    // in Settings ("mins growing should not be narried to autopilot"); and in split screen the divider gives a map's
+    // half 70% whenever one shows, not only during a delivery (all the owner's, 15 October 2026).
+    static final int VERSION = 28;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -53,7 +57,7 @@ final class Consent {
      * about 1,230 words to 7 and about 400 (the owner, 14 October 2026: "that screen is way too long"): what it does,
      * what is on by default and what leaves the phone, each once, with the details left to the Terms and Privacy it
      * links to (ConsentGateTest checks they are there). The acceptance-rate and account warnings are word for word as
-     * before. Words only, the same substance: VERSION stays.
+     * before. 0.6.20 changed words only, so VERSION stayed; 0.6.21 changed what it says (VERSION 28).
      */
     static final String[][] POINTS = {
         {"Acceptance rate.", "Automatic declines may dramatically lower your DoorDash acceptance rate. "
@@ -65,19 +69,19 @@ final class Consent {
                 + "your rules, or come from stores on your skip list, by tapping Decline and Dasher's usual question "
                 + "(\"Are you sure you want to decline this offer?\"). Any other question it leaves to you and pauses. "
                 + "It may also go Back after a Dasher error, tap Dasher's ⚙ once to bring up a missing offer, move "
-                + "the split-screen divider during a delivery, briefly turn offer sound down and keep your unlocked "
-                + "screen on during a dash. Auto-accept is off unless you turn it on in Settings. Your touch stops "
+                + "the split-screen divider for a map, briefly turn offer sound down and keep your unlocked screen on "
+                + "during a dash. Auto-accept is off unless you turn it on in Settings. Your touch stops "
                 + "it."},
         {"On by default.", "Autopilot moves the bar offers must meet between " + FilterStore.BAR_MIN + "% and "
                 + FilterStore.BAR_MAX + "% of your minimums, putting pay first; above 100% it declines offers that "
-                + "meet them. After you accept an offer yourself, it keeps the bar at or above that offer's score for "
-                + "your next " + Autopilot.FLOOR_OFFERS + " offers, and can raise your minimums up to "
-                + Growth.MOST_PERCENT + "% at a time, with Undo. Learning raises the minimums offers must meet when you "
+                + "meet them. After you accept an offer yourself, the bar stays at or above its score for your next "
+                + Autopilot.FLOOR_OFFERS + " offers. Your minimums grow up to " + Growth.MOST_PERCENT + "% at a time, "
+                + "with Undo, when 1 in 5 offers pay above them. Learning raises the minimums offers must meet when you "
                 + "accept an offer that beats your best. Peek can briefly open Dasher to read an offer that came in "
                 + "the background. "
                 + "An anonymous daily count tells the developer how many people use the app. "
-                + "Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the count in "
-                + "Settings."},
+                + "Turn any of them off: Autopilot from its chip, learning with Learn, growth, Peek and the count "
+                + "in Settings."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},
         {"Your data.", "Your offers, rules and history stay on this phone. Feedback and reports leave only when you "

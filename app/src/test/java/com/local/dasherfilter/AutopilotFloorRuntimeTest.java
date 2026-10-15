@@ -33,10 +33,11 @@ import static org.junit.Assert.assertTrue;
  * by like two dozen orders or something"; the last 7 days from 0.6.18). The 24th offer after the accept and the
  * user's own changes (a knob, the goal, turning Autopilot on with another goal) let it go, each straight back at the
  * next commit; its figures stay kept for 7 days after 200 newer offers have pushed its line out of the history
- * (0.6.19, for which bars it held up); turning Autopilot off and on (0.6.19), a lesson and Adopt keep it. Automatic, add-on and
+ * (0.6.19); turning Autopilot off and on (0.6.19), a lesson and Adopt keep it. Automatic, add-on and
  * observed accepts, an accept before the user's last change, Autopilot off and the notice not accepted change nothing;
  * Clear history forgets it. The update to 0.6.19 brings back, once and with pay first, an accept that turning
- * Autopilot on let go. Bars the floor holds up never grow the minimums. Plans run on the calling thread; Autopilot's
+ * Autopilot on let go. The minimums still grow while the floor holds the bar (0.6.21: growth reads what offers paid,
+ * not the bars). Plans run on the calling thread; Autopilot's
  * clocks are the test's, starting at the real one (the decision lines' steps and the dash go by the real clock).
  */
 @RunWith(RobolectricTestRunner.class)
@@ -399,7 +400,7 @@ public class AutopilotFloorRuntimeTest {
     /**
      * 0.6.19 kept his accept's figures, so it held the bar for its 7 days once 200 newer offers had pushed its line out
      * of the history. From 0.6.21 those 200 are far more than its 24, so it lets go; its figures are still kept for the
-     * 7 days (Growth asks which bars it held up) and forgotten then.
+     * 7 days and forgotten then.
      */
     @Test public void twoHundredNewerOffersLetItGoAndItsFiguresGoAfterSevenDays() {
         pinned();

@@ -414,8 +414,8 @@ final class Autopilot {
         final long floorSince;
         /**
          * Hand accepts kept for the accepted floor past the history's latest lines (0.6.19, AutopilotStore's
-         * {@code keepAccepts}), newest first: scored like the history's own ({@link #handAccepts}) for the floor and
-         * for which bars an accept held up ({@link Growth}), never counted as decided lines. Empty: the history's only.
+         * {@code keepAccepts}), newest first: scored like the history's own ({@link #handAccepts}) for the floor, never
+         * counted as decided lines. Empty: the history's only.
          */
         final List<OfferRecord> keptAccepts;
 

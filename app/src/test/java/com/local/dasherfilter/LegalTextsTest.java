@@ -46,7 +46,8 @@ public final class LegalTextsTest {
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
-     * 0.6.21 both (an accept holds the bar for the 24 offers after it; the split-screen divider).
+     * 0.6.21 both (an accept holds the bar for the 24 offers after it; the minimums grow from what offers paid,
+     * Autopilot on or off; the divider for a map in either half).
      */
     static final String PRIVACY_EFFECTIVE = "15 October 2026";
     static final String PRIVACY_VERSION = "0.6.21";
@@ -153,17 +154,24 @@ public final class LegalTextsTest {
                 "It never wakes or unlocks the phone; the power button still turns the screen off. This uses more "
                         + "battery.",
                 "if nothing of a dash is seen for 8 hours while Dasher is not in front and the screen is off",
-                // 0.5.1: the minimums grow (Growth), with its limits, Undo and the switch.
-                "Autopilot also raises your minimums once its bar has stayed at " + Growth.LEAST_BAR + "% or more for "
-                        + Growth.OFFERS + " offers over at least " + Growth.LEAST_DAYS + " days",
-                "all of them by the same share, at most " + Growth.MOST_PERCENT + "% at a time",
-                "while its bar comes down so offers are asked about the same right after",
+                // 0.5.1: the minimums grow (Growth), with its limits, Undo and the switch; from 0.6.21 from what offers
+                // paid, Autopilot on or off, the switch in Settings.
+                "Your minimums also grow, whether Autopilot is on or off",
+                "when at least 1 in 5 of your last " + Growth.OFFERS + " offers under your current minimums, over at "
+                        + "least " + Growth.LEAST_DAYS + " days, paid " + (Growth.LEAST_BAR
+                        - FilterSettings.BAR_AT_MINIMUMS) + "% or more above them",
+                "an offer whose pay was not read, or from a store on your skip list, counts as paying nothing above "
+                        + "them",
+                "all of them grow by the same share, as much as those offers paid above them and at most "
+                        + Growth.MOST_PERCENT + "% at a time",
+                "while an Autopilot bar above 100% comes down so offers are asked about the same right after",
                 "It never lowers them; you can.",
                 "A note on the homepage says what grew, with Undo, until you tap it or your minimums change another "
                         + "way.",
                 "Raised minimums can mean more declines.",
-                "Turn this off with " + AutopilotText.GROW_SWITCH + " in Autopilot's details; while Autopilot is "
-                        + "off, it does not grow your saved minimums."}) {
+                "and while Autopilot is recovering toward an acceptance goal",
+                "Turn this off with " + AutopilotText.GROW_SWITCH + " in Settings (from 0.6.21; before, in Autopilot's "
+                        + "details)."}) {
             assertTrue(fact, terms.contains(fact));
         }
         for (String retired : new String[] {"strict or compensating area mode", "minimums percentage",
@@ -311,16 +319,17 @@ public final class LegalTextsTest {
         // 0.5.1: what the minimums' growth keeps, its switch and what Clear history removes of it.
         for (String fact : new String[] {"and when your current minimums took effect",
                 "whether Let my minimums grow is on (it is unless you turn it off)",
-                "it also raises your minimums, at most 10% at a time, once the bars it recorded in your decision "
-                        + "history have stayed at 103% or more for 30 offers over at least 2 days, but not while it is "
-                        + "recovering toward your acceptance goal; how much they grow comes only from those bars, never "
-                        + "from what you accepted or declined",
-                "Autopilot keeps a note of the last growth: when, by how much, how many offers on how many days it "
-                        + "rested on, your minimums and its bar before and after, and whether its note on the "
+                "While Let my minimums grow is on, your minimums grow, at most 10% at a time, Autopilot on or off",
+                "once at least 1 in 5 of your last 30 offers under them, over at least 2 days, paid 3% or more above "
+                        + "them, but not while Autopilot is recovering toward your acceptance goal; how much they grow "
+                        + "comes only from what those offers paid, as your decision history records it, never from what "
+                        + "you accepted or declined",
+                "the app keeps a note of the last growth: when, by how much, how many offers on how many days it "
+                        + "rested on, your minimums and Autopilot's bar before and after, and whether its note on the "
                         + "homepage (with Undo) is still waiting",
                 "each growth of your minimums and its Undo (your minimums and the bar before and after)",
                 "the note of its last growth (and with it the Undo)",
-                "Turn off Let my minimums grow in Autopilot's details to stop Autopilot raising saved minimums."}) {
+                "Turn off Let my minimums grow in Settings to stop your saved minimums growing."}) {
             assertTrue(fact, privacy.contains(fact));
         }
         assertTrue("and Clear history's own words name the note",
@@ -373,6 +382,10 @@ public final class LegalTextsTest {
                 // After an update; the notification's ranking, and what the logs note of Dasher's channel
                 // (OfferNotificationService.logChannel).
                 "to reopen Offer Filter only over its own screen or the home screen",
+                // 0.6.21: which app is in each half of a split, only for a map's 70% (SplitDividerMover).
+                "In split screen (from 0.6.21), it checks which app is in each half the same way (window information "
+                        + "and, once for each window it does not already know as Dasher's or its own, that app's "
+                        + "identifier, never its text), only to give a navigation app's half about 70% of the screen.",
                 "whether it can pop up or sound, whether it sounded, and whether Do Not Disturb lets it through",
                 "Its logs note that channel's sound, vibration and importance settings, whether the notification asks "
                         + "to fill the screen, and the names (never the values) of the notification's fields.",

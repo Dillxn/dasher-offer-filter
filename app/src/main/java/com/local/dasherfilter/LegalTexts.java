@@ -102,19 +102,23 @@ final class LegalTexts {
             goal (turning Autopilot on with another goal included), minimums, max stops, mode or learning ends that \
             hold; turning Autopilot off and on again (from 0.6.19; before, turning it on ended it) and Adopt keep \
             it. Above 100% it declines offers that meet your minimums. Offers it lets through below your minimums \
-            are left to you. Autopilot also raises your minimums once its bar has stayed at 103% or more for 30 \
-            offers over at least 2 days (bars an accepted offer held up do not count): all of them by the same \
-            share, at most 10% at a time, while its bar comes down so offers are asked about the same right after. \
-            It never lowers them; you can. A note on the homepage says what grew, with Undo, until you tap it or \
-            your minimums change another way. This bar-based growth waits while an enabled learned floor exceeds \
-            its saved minimum, so growing saved knobs and lowering the bar cannot loosen a learned requirement. \
-            Raised minimums can mean more declines. Turn this off with Let my minimums grow in Autopilot's details; \
-            while Autopilot is off, it does not grow your saved minimums. Auto-accept starts off. If you separately \
-            enable it in Settings, it can tap Accept on a complete standalone offer that strictly meets every \
-            active saved and enabled learned minimum at 100% or any higher Autopilot bar, even in area mode, \
-            committing you to that delivery. Automatic acceptance leaves add-ons and unclear offers to you. Add-on \
-            filtering stays strict against saved minimums at the current bar; standalone learned floors do not \
-            apply to add-ons unless adopted as saved minimums.
+            are left to you. Your minimums also grow, whether Autopilot is on or off (from 0.6.21; before, \
+            Autopilot raised them once its bar had stayed at 103% or more for 30 offers over at least 2 days, and \
+            never while it was off): when at least 1 in 5 of your last 30 offers under your current minimums, over \
+            at least 2 days, paid 3% or more above them (an offer whose pay was not read, or from a store on your \
+            skip list, counts as paying nothing above them), all of them grow by the same share, as much as those \
+            offers paid above them and at most 10% at a time, while an Autopilot bar above 100% comes down so \
+            offers are asked about the same right after. It never lowers them; you can. A note on the homepage says \
+            what grew, with Undo, until you tap it or your minimums change another way. This growth waits while an \
+            enabled learned floor exceeds its saved minimum, so growing saved knobs and lowering the bar cannot \
+            loosen a learned requirement, and while Autopilot is recovering toward an acceptance goal. Raised \
+            minimums can mean more declines. Turn this off with Let my minimums grow in Settings (from 0.6.21; \
+            before, in Autopilot's details). Auto-accept starts off. If you separately enable it in Settings, it \
+            can tap Accept on a complete standalone offer that strictly meets every active saved and enabled \
+            learned minimum at 100% or any higher Autopilot bar, even in area mode, committing you to that \
+            delivery. Automatic acceptance leaves add-ons and unclear offers to you. Add-on filtering stays strict \
+            against saved minimums at the current bar; standalone learned floors do not apply to add-ons unless \
+            adopted as saved minimums.
             - It also declines a standalone offer from a store you put on your skip list (from an offer's details; \
             Settings → Skipped stores removes one), whatever it pays, when it reads that store's name on Dasher's \
             screen. An offer from two stores is declined when either is on the list; an offer whose store it cannot \
@@ -142,8 +146,10 @@ final class LegalTexts {
             it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
             checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \
             stops this recovery; an unknown loading screen alone never permits it.
-            - In split screen during a delivery, it moves the divider, using the divider's own controls (the ones \
-            Android gives screen readers), to give the navigating app more room, and puts it back afterward; if you \
+            - In split screen, whenever a navigation app (Google Maps, Google Maps Go or Waze) is in one half and \
+            Dasher or {app} is in the other, it moves the divider, using the divider's own controls (the ones \
+            Android gives screen readers), to give the map about 70% of the screen, and puts it back once no half \
+            shows a map (from 0.6.21; from 0.6.11, it gave the navigating app more room during a delivery); if you \
             move the divider yourself, it stops for that dash. It never moves it while an offer is up or during \
             Dasher's own turn-by-turn navigation. Some phones' dividers offer no such controls; then nothing moves.
             - Peek is on by default after you accept the current notice. On an unlocked, quiet phone it can briefly \
@@ -298,7 +304,10 @@ final class LegalTexts {
             of the app you tapped it from, only to offer a Back to map button when that app is a navigation app \
             (Google Maps, Google Maps Go or Waze). After an update installed while {app}'s screen was open, it \
             checks which app is in front the same way (window information and that app's identifier, never its \
-            text), to reopen {app} only over its own screen or the home screen.
+            text), to reopen {app} only over its own screen or the home screen. In split screen (from 0.6.21), it \
+            checks which app is in each half the same way (window information and, once for each window it does not \
+            already know as Dasher's or its own, that app's identifier, never its text), only to give a navigation \
+            app's half about 70% of the screen.
             - When a finger lands on the screen, as a time only. While it declines an offer (and for a few seconds \
             after), while it checks an offer before an automatic Accept, and before and during a peek, an invisible \
             one-pixel watch notes when a finger lands, so your touch hands the offer back or keeps Peek from \
@@ -587,12 +596,13 @@ final class LegalTexts {
             offers you accepted yourself, each for the 24 offers after it, across dashes, from 0.6.21; in the last \
             7 days from 0.6.18; before, for the rest of a dash), the figures it keeps of those accepted offers \
             (from 0.6.19, below), the wait-estimate records above and the acceptance rate Dasher shows. Turning it \
-            off puts the bar back to exactly your minimums. While it is on and Let my minimums grow is on, it also \
-            raises your minimums, at most 10% at a time, once the bars it recorded in your decision history have \
-            stayed at 103% or more for 30 offers over at least 2 days, but not while it is recovering toward your \
-            acceptance goal; how much they grow comes only from those bars, never from what you accepted or \
-            declined (bars an offer you accepted held up do not count). This growth waits while enabled learned \
-            floors exceed saved minimums; the acceptance learner retains its independent bests.
+            off puts the bar back to exactly your minimums. While Let my minimums grow is on, your minimums grow, \
+            at most 10% at a time, Autopilot on or off (from 0.6.21; before, only while Autopilot was on, from the \
+            bars it recorded), once at least 1 in 5 of your last 30 offers under them, over at least 2 days, paid \
+            3% or more above them, but not while Autopilot is recovering toward your acceptance goal; how much they \
+            grow comes only from what those offers paid, as your decision history records it, never from what you \
+            accepted or declined. This growth waits while enabled learned floors exceed saved minimums; the \
+            acceptance learner retains its independent bests.
 
             - What is kept. Only the latest acceptance-rate reading: a whole percent, when Dasher showed it, and \
             the offer it was shown for as a numeric fingerprint (pay in cents, miles, minutes, stops and, for \
@@ -616,11 +626,11 @@ final class LegalTexts {
             - The offers you accept yourself while Autopilot is on (from 0.6.19): for each, its pay in cents, \
             miles, minutes, stops and item count, and when you accepted it, so an accept still counts after newer \
             offers have pushed it out of the decision history: it holds the bar until 24 offers have come after it \
-            (from 0.6.21; before, for 7 days), and bars it held up never grow your minimums. At most 100, each for \
-            7 days and only since you last changed your goal or rules; that change removes them. They never leave \
-            the phone, not even in a report. Numbers only.
-            - When it raises your minimums, Autopilot keeps a note of the last growth: when, by how much, how many \
-            offers on how many days it rested on, your minimums and its bar before and after, and whether its note \
+            (from 0.6.21; before, for 7 days). At most 100, each for 7 days and only since you last changed your \
+            goal or rules; that change removes them. They never leave the phone, not even in a report. Numbers \
+            only.
+            - When your minimums grow, the app keeps a note of the last growth: when, by how much, how many offers \
+            on how many days it rested on, your minimums and Autopilot's bar before and after, and whether its note \
             on the homepage (with Undo) is still waiting. Undo removes it; tapping OK keeps it for Autopilot's \
             details. Numbers only.
             - The 24-hour logs note each new reading, and Autopilot's plans with the acceptance rate and the offer \
@@ -791,8 +801,8 @@ final class LegalTexts {
             confirmed Reset or Clear history clears them. Neither enables the optional timing study or sharing.
             - Autopilot is on by default; turning it off (from its chip on the homepage) puts the bar back to \
             exactly your minimums. The acceptance-rate reading is kept whether or not Autopilot is on; Clear \
-            history removes it. Turn off Let my minimums grow in Autopilot's details to stop Autopilot raising \
-            saved minimums. Enabled acceptance learning can still change effective requirements independently.
+            history removes it. Turn off Let my minimums grow in Settings to stop your saved minimums growing. \
+            Enabled acceptance learning can still change effective requirements independently.
             - Clear history (Settings) removes the decisions, both logs and the latest states, the observed-wait \
             records, the offer map and cached place names, the temporary restart/error records above, stop \
             summaries, the current dash's problem counts and after-dash summaries not yet sent, plus Autopilot's \

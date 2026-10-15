@@ -127,6 +127,7 @@ public class BundledNotesTest {
         both.addAll(notice(25));
         both.addAll(notice(26));
         both.addAll(notice(27));
+        both.addAll(notice(28));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -345,7 +346,8 @@ public class BundledNotesTest {
         since19.addAll(notice(25));
         since19.addAll(notice(26));
         since19.addAll(notice(27));
-        assertEquals("a reader of notice 19 sees 20's lines, then 21's to 27's", since19,
+        since19.addAll(notice(28));
+        assertEquals("a reader of notice 19 sees 20's lines, then 21's to 28's", since19,
                 BundledNotes.noticeChanges(19, true));
         for (String wrong : new String[] {"identifier", "track", "location", "earn more", "guarantee",
                 "only daily totals"}) {
@@ -467,14 +469,62 @@ public class BundledNotesTest {
     }
 
     /**
+     * 0.6.21 (the owner, 15 October 2026: "We may have to do it by like two dozen orders", "mins growing should not be
+     * narried to autopilot", "whenever one half has nav open make it 70% height", "I want to be able to see at a small
+     * glance the score of the offer as it's being declined", "let the map fade out at the edges"): notice 28's lines,
+     * then the score beside the tab and the map's fade.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.21", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(28, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.21");
+        assertEquals(lines.toString(), 6, lines.size());
+        assertEquals("first what notice 28 says", notice(28), lines.subList(0, 4));
+        String card = String.join(" ", lines);
+        for (String fact : new String[] {"Beside the tab over Dasher, each offer's score shows at a glance",
+                "✕ 52% while it's declined", "for " + DasherOverlay.SCORE_STAYS_MS / 1000 + " seconds after",
+                "The offer map's grid reaches its edges and fades out, with no outline."}) {
+            assertTrue(fact, card.contains(fact));
+        }
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
+    }
+
+    /**
+     * 0.6.21's notice (28): an accept holds the bar for the next 24 offers instead of 7 days; the minimums grow from what
+     * offers paid, Autopilot on or off, their switch in Settings; a map's half gets 70% of a split, not only during a
+     * delivery, until the user moves the divider.
+     */
+    @Test public void notice28SaysTheHoldGrowthAndTheMap() {
+        List<String> lines = BundledNotes.noticeChanges(27);
+        assertEquals(notice(28), lines);
+        assertEquals(lines.toString(), 4, lines.size());
+        String notice = String.join(" ", lines);
+        for (String fact : new String[] {"An offer you accept yourself now holds Autopilot's bar for your next "
+                + Autopilot.FLOOR_OFFERS + " offers, instead of 7 days.",
+                "Your minimums grow with Autopilot on or off", "when 1 in 5 of your last " + Growth.OFFERS
+                        + " offers paid " + (Growth.LEAST_BAR - FilterSettings.BAR_AT_MINIMUMS) + "% or more above them",
+                "up to " + Growth.MOST_PERCENT + "% at a time, with Undo",
+                "\"" + AutopilotText.GROW_SWITCH + "\" is in Settings now",
+                "a map in either half now gets " + SplitDivider.MAP_SHARE + "% of the screen, not only during a "
+                        + "delivery", "Move the divider yourself and it stops for that dash."}) {
+            assertTrue(fact, notice.contains(fact));
+        }
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
+    }
+
+    /**
      * 0.6.20 (the owner, 14 October 2026: "why is it auto 52 when offer was 67?", "share diagnostics was turned off by
      * default again on the splash screen even though I had it turned on last time. also that screen is way too long"):
      * the bar moves at once off a dash, and the notice is short with its switch showing the choice made. Notice 27
-     * stays: its words got shorter, not its substance.
+     * stayed: its words got shorter, not its substance.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.20", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(27, Consent.VERSION);
+    @Test public void release0620SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.20");
         assertEquals(lines.toString(), 2, lines.size());
         String card = String.join(" ", lines);
@@ -492,8 +542,10 @@ public class BundledNotesTest {
      * offers, from figures kept on the phone; with pay first the update counts the last 7 days' accepts again.
      */
     @Test public void notice27SaysOffAndOnKeepTheBestAccept() {
-        List<String> lines = BundledNotes.noticeChanges(26);
-        assertEquals(notice(27), lines);
+        List<String> lines = notice(27);
+        List<String> since26 = new ArrayList<>(lines);
+        since26.addAll(notice(28));
+        assertEquals(since26, BundledNotes.noticeChanges(26));
         assertEquals(lines.toString(), 3, lines.size());
         String notice = String.join(" ", lines);
         for (String fact : new String[] {"Turning Autopilot off and on no longer lets go of your best accept",
@@ -517,6 +569,7 @@ public class BundledNotesTest {
         List<String> lines = notice(26);
         List<String> since25 = new ArrayList<>(lines);
         since25.addAll(notice(27));
+        since25.addAll(notice(28));
         assertEquals(since25, BundledNotes.noticeChanges(25));
         assertEquals(lines.toString(), 6, lines.size());
         String notice = String.join(" ", lines);
