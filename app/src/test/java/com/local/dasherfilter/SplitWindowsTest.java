@@ -37,6 +37,7 @@ import org.robolectric.shadows.ShadowWindowManagerImpl;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -300,6 +301,48 @@ public class SplitWindowsTest {
         int dp72 = Math.round(DasherOverlay.GUIDE_BELOW_TOP_DP * app.getResources().getDisplayMetrics().density);
         WindowManager.LayoutParams params = (WindowManager.LayoutParams) guide.getLayoutParams();
         assertEquals("below the status bar and Dasher's top bar", TOP_HALF.top + statusBar + dp72, params.y);
+    }
+
+    // ---- 0.6.23: Dasher's half holds an update back only during a dash ----
+
+    /** Dasher's home before a dash, as the owner's screenshot of 15 October 2026 shows it in the bottom half. */
+    private AccessibilityNodeInfo dasherHome() {
+        AccessibilityNodeInfo root = dasher(null);
+        Shadows.shadowOf(root).addChild(dasher("Start your dash with lots of offers"));
+        Shadows.shadowOf(root).addChild(dasher("Avg. offer wait"));
+        Shadows.shadowOf(root).addChild(dasher("1 min"));
+        Shadows.shadowOf(root).addChild(node("com.doordash.driverapp", "Dash", true));
+        return root;
+    }
+
+    @Test
+    public void besideDashersHomeBeforeADashAnUpdateInstallsButDuringADashItWaits() {
+        Dashing.forgetCache();
+        app.getSharedPreferences("dashing", 0).edit().clear().commit();
+        ActiveRouteStore.clear(app);
+        AccessibilityNodeInfo ours = ours();
+        // 0.6.22 held every update here, the user's own tap too: "installation deferred while an offer/delivery is
+        // active", with no dash on.
+        windows(ours, app(ours, true, TOP_HALF), divider(), app(dasherHome(), false, BOTTOM_HALF));
+        assertTrue("Dasher's half is on screen", OfferFilterService.isDasherForeground());
+        assertTrue("its home before a dash was read", Dashing.homeShown());
+        assertNull("the user's own check installs", Updater.heldBack(app, true));
+        assertNull("and so does an automatic one", Updater.heldBack(app, false));
+
+        // A dash begins in that half: an offer could come up there while the update closes Offer Filter.
+        windows(ours, app(ours, true, TOP_HALF), divider(), app(dasher("Finding offers"), false, BOTTOM_HALF));
+        assertTrue(Dashing.on(app));
+        assertFalse(Dashing.homeShown());
+        assertEquals(Updater.AFTER_DASH, Updater.heldBack(app, true));
+        assertEquals(Updater.AFTER_DASH, Updater.heldBack(app, false));
+
+        // Dasher says the dash ended, and that screen stays up in that half: nothing of a dash is on, so it installs.
+        windows(ours, app(ours, true, TOP_HALF), divider(), app(dasher("Dash ended"), false, BOTTOM_HALF));
+        assertFalse("the read ended the dash", Dashing.awaitingEnd(app));
+        assertFalse(UpdateReadyRow.dashOn(app));
+        assertTrue(OfferFilterService.isDasherForeground());
+        assertNull(Updater.heldBack(app, true));
+        assertNull(Updater.heldBack(app, false));
     }
 
     private void at(double latitude, double longitude) {

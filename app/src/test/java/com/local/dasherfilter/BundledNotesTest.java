@@ -493,14 +493,28 @@ public class BundledNotesTest {
 
     /**
      * 0.6.22 (the owner, 15 October 2026: "i want to be able to drag the map on our app and it spring back into place on
-     * release"): one line. Nothing the notice says changed, so it stays 28.
+     * release"): one line. Nothing the notice says changed, so it stayed 28.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.22", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(28, Consent.VERSION);
+    @Test public void release0622SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.22");
         assertEquals(Collections.singletonList(
                 "Drag the offer map and it follows your finger, then springs back into place when you let go."), lines);
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
+    }
+
+    /**
+     * 0.6.23 (the owner, 15 October 2026, with every update held beside Dasher's Dash button: "in app won't update even
+     * though no ongoing dash"): one line. Nothing the notice says changed, so it stays 28.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.23", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(28, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.23");
+        assertEquals(Collections.singletonList(
+                "Updates install when you're not dashing, even with Dasher's home screen in the other half."), lines);
         for (String line : lines) {
             assertTrue(line, line.length() <= 160);
             assertFalse(line, line.contains("Offer Filter"));

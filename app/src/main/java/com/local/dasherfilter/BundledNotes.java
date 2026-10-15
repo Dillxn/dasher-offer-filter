@@ -340,6 +340,9 @@ final class BundledNotes {
                         + DasherOverlay.SCORE_STAYS_MS / 1000 + " seconds after.",
                 "The offer map's grid reaches its edges and fades out, with no outline.");
         release("0.6.22", "Drag the offer map and it follows your finger, then springs back into place when you let go.");
+        // 0.6.23 (the owner, 15 October 2026, with every update held beside Dasher's Dash button: "in app won't update
+        // even though no ongoing dash").
+        release("0.6.23", "Updates install when you're not dashing, even with Dasher's home screen in the other half.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

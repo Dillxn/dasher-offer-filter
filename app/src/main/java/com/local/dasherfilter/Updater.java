@@ -649,6 +649,8 @@ final class Updater {
 
     /** What an automatic install says while a dash is on: it waits for the dash to end. */
     static final String AFTER_DASH = "Update ready: installs after your dash";
+    /** What an automatic install says while an offer or delivery is up and no dash is open. */
+    static final String AFTER_OFFER = "Update ready: installs after this offer or delivery";
     /** What a verified update says while updates from this app are not allowed; a tap on Updates opens the switch. */
     static final String BLOCKED = "Update ready: tap to allow updates from " + AppName.NAME;
     /** What a held update says once updates from this app are allowed: a tap on Updates checks and installs it. */
@@ -700,7 +702,12 @@ final class Updater {
      * half of a split screen beside Dasher and anything it was watching; that wait ends at its ceiling
      * ({@link UpdateHold}), logged with its reason. It also waits while an offer or delivery is up, or while the user
      * is in the middle of something on Offer Filter's screen an update would lose (typing rules). The user's own
-     * check still installs mid-dash; only Dasher on screen holds it back.
+     * check still installs mid-dash; only Dasher on screen during a dash holds it back, as an offer could come up
+     * there while the update closes Offer Filter. Dasher on screen with no dash on ({@link UpdateReadyRow#dashOn}),
+     * or showing its home before a dash (its Dash button, read since the dash was last seen: {@link
+     * Dashing#homeShown}), holds nothing back, in a split screen beside it too. Why: the owner, 15 October 2026, with
+     * Offer Filter's Settings above Dasher's Dash button and every update held: "in app won't update even though no
+     * ongoing dash".
      */
     static String heldBack(Context context, boolean manual) {
         if (!manual && Dashing.awaitingEnd(context)) {
@@ -709,9 +716,11 @@ final class Updater {
             DiagnosticLog.log(context, "update", "dash hold reached its ceiling: " + ceiling
                     + "; the freshly verified update may install");
         }
-        boolean offerOrDelivery = OfferNotificationService.hasActiveOffer() || ActiveRouteStore.load(context) != null;
-        if (OfferFilterService.isDasherForeground() || (!manual && offerOrDelivery)) {
-            return "Update verified; installation deferred while an offer/delivery is active.";
+        if (OfferFilterService.isDasherForeground() && UpdateReadyRow.dashOn(context) && !Dashing.homeShown()) {
+            return AFTER_DASH;
+        }
+        if (!manual && (OfferNotificationService.hasActiveOffer() || ActiveRouteStore.load(context) != null)) {
+            return AFTER_OFFER;
         }
         // With Offer Filter open, the update installs too (the screen shows it and reopens after), except while the
         // user is in the middle of something an update would lose, such as typing rules.

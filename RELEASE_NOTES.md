@@ -1,3 +1,13 @@
+## 0.6.23 — Updates install beside Dasher's home screen
+
+Version 0.6.23 (code 115) answers the owner's message of 15 October 2026 on 0.6.21, sent with a screenshot of Settings above Dasher's Dash button: "in app won't update even though no ongoing dash".
+
+- **Updates install when you're not dashing, split screen included.** Before, an update waited whenever Dasher was on screen, and in a split screen Dasher's half always is, so neither Settings → Updates nor the homepage's Install now could install it, and Settings said "installation deferred while an offer/delivery is active" with no offer or delivery up. Now Dasher on screen holds an update back only during a dash, when an offer could come up while the update closes the app. Dasher's home screen before a dash, with its Dash button, holds nothing back. During a dash Settings says "Update ready: installs after your dash", and an update an automatic check found still waits for Dasher to show the dash ended, as before.
+- **Already on 0.6.22 or older?** Its update still waits beside Dasher's half. Drag the divider all the way down so this app fills the screen, then tap Updates in Settings. Or install the download from offerfilter.org/install over it.
+- Nothing in the notice, the Terms or Privacy changed, so the notice stays 28.
+
+No phone has run this build.
+
 ## 0.6.22 — Drag the offer map
 
 Version 0.6.22 (code 114) answers the owner's message of 15 October 2026 on 0.6.21: "i want to be able to drag the map on our app and it spring back into place on release".
