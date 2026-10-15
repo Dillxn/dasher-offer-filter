@@ -999,6 +999,16 @@ public final class OfferFilterService extends AccessibilityService {
      * REVIEW with auto-decline on; null for a decline, a takeover, auto-decline paused or no offer decided.
      */
     private OfferRule.Result offerVerdict;
+    /**
+     * The offer on screen's score as the last read decided it (its pay as a percent of what the minimums ask), for the
+     * score tag beside the slim bar (0.6.21, the owner: "I want to be able to see at a small glance the score of the
+     * offer as it's being declined"), and whether the app's Decline of it was taken; -1 with auto-decline paused, an
+     * offer the user took over, or none decided. The offer the app declined keeps its score over its question.
+     */
+    private int offerScore = -1;
+    private boolean offerDeclining;
+    /** The score of the offer whose Decline was last taken, for the tag over its question. */
+    private int declinedScore = -1;
     /** The last state the overlay was given, and when (uptime). */
     private OverlayState overlayGiven;
     private long overlayGivenAt;
@@ -3699,20 +3709,22 @@ public final class OfferFilterService extends AccessibilityService {
         Rect area = active == this ? seen.area : null;
         // Positive window metadata is enough to remove a gone overlay; showing controls requires fresh labels.
         if (area != null && overlayApprovedTransition != transition) return;
-        // The slim bar over an offer takes its verdict's tint (presentation only): pass green, review amber.
+        // The slim bar over an offer takes its verdict's tint (presentation only): pass green, review amber; the tag
+        // beside it, the offer's score.
         OfferRule.Result verdict = scene == DasherScene.OFFER ? offerVerdict : null;
+        int score = scene == DasherScene.OFFER ? offerScore : -1;
         boolean chip = area != null && backToMapShows(seen);
         // The chip takes touches only while the read that found the wait for offers began after Dasher's last event.
-        OverlayState next = new OverlayState(area, area != null && seen.split, seen.oursBeside, scene, verdict, chip,
-                chip ? lastReadEvents : -1);
+        OverlayState next = new OverlayState(area, area != null && seen.split, seen.oursBeside, scene, verdict, score,
+                score >= 0 && offerDeclining, chip, chip ? lastReadEvents : -1);
         long now = SystemClock.uptimeMillis();
         if (next.equals(overlayGiven) && now - overlayGivenAt < OVERLAY_CHECK_MS) return;
         overlayGiven = next;
         overlayGivenAt = now;
         onMain(() -> {
             if (!stopped && !scannerFaulted && overlay != null && overlayTransition.get() == transition) {
-                overlay.sync(next.area, next.split, next.oursBeside, next.scene, next.verdict, next.backToMap,
-                        next.backToMap && next.chipEvents == dasherEvents.get());
+                overlay.sync(next.area, next.split, next.oursBeside, next.scene, next.verdict, next.score,
+                        next.declining, next.backToMap, next.backToMap && next.chipEvents == dasherEvents.get());
             }
         });
     }
@@ -7076,13 +7088,21 @@ public final class OfferFilterService extends AccessibilityService {
         // The bar's tint is this read's verdict alone (a skipped read keeps the last): a new offer's first frames are
         // never tinted with the one before.
         OfferRule.Result verdictBefore = offerVerdict;
+        int scoreBefore = offerScore;
+        boolean decliningBefore = offerDeclining;
         offerVerdict = null;
+        offerScore = -1;
+        offerDeclining = false;
         // Whether this read went through Dasher's own screen whole and judged it (not skipped, cut short, too big or
         // failed): from then on what is up there is known (for Autopilot's bar, dasherScreenKnown).
         boolean judged = false;
         try {
             boolean more = checkReadableOffer();
-            if (readSkipped) offerVerdict = verdictBefore;
+            if (readSkipped) {
+                offerVerdict = verdictBefore;
+                offerScore = scoreBefore;
+                offerDeclining = decliningBefore;
+            }
             judged = !readSkipped && sceneLabels != null;
             return more;
         } catch (RuntimeException error) {
@@ -7379,6 +7399,8 @@ public final class OfferFilterService extends AccessibilityService {
             // Dasher never came up announces the offer as a launch Dasher never came up for does (one still arming,
             // as a peek not taken).
             offerVerdict = null;
+            offerScore = -1;
+            offerDeclining = false;
             forgetBackToMap("auto-decline paused");
             Peek.Request opening = peek.active() && peek.phase() == Peek.Phase.OPENING ? peek.request() : null;
             peekOver("left Dasher up because auto-decline was paused", Peek.Outcome.INTERRUPTED);
@@ -8162,6 +8184,11 @@ public final class OfferFilterService extends AccessibilityService {
         // thread. Nothing more is read for it, and nothing here waits for it (the tap below included).
         AutopilotRuntime.confirmationSeen(this, confirmation.text, questionOffer(confirmation, now));
         declinedOfferShowing = true;
+        // Over the question of the app's own Decline, the tag keeps the declined offer's score (0.6.21).
+        if (settings.enabled && declineUnderWay(now) && declinedScore >= 0) {
+            offerScore = declinedScore;
+            offerDeclining = true;
+        }
         if (!declineState.hasPendingConfirmation(now)) {
             if (episode.active(now) && !OfferParser.parse(confirmation.text, confirmation.metricParts)
                     .contradicts(episode.offer())) {
@@ -9155,10 +9182,13 @@ public final class OfferFilterService extends AccessibilityService {
         // The slim bar over the offer: green for a pass, amber for review or for a pass below the user's own minimums
         // (Autopilot's bar let it through; it is the user's to accept): presentation only, never a decision.
         offerVerdict = settings.enabled && !declines ? OfferNotificationService.announced(decision) : null;
+        // The score tag beside it (0.6.21): what the offer scored, marked declined once the app's Decline is taken.
+        offerScore = settings.enabled ? decision.scorePercent : -1;
         // The screen's line in the log comes after a decline's tap, so nothing delays the tap.
         if (!declines) diagnostic(phase, scan, offer, decision);
         if (isTakenOver(offer, now)) {
             offerVerdict = null;
+            offerScore = -1;
             cancelAutoAccept(true, "user_takeover");
             if (declines) diagnostic(phase, scan, offer, decision);
             declinedOfferShowing = false;
@@ -9366,6 +9396,8 @@ public final class OfferFilterService extends AccessibilityService {
             declineMinimumScale = settings.minimumScalePercent;
             declinedOffer = offer;
             declinedOfferShowing = true;
+            declinedScore = offerScore;
+            offerDeclining = offerScore >= 0;
             if (firstTap) {
                 declinedKey = key;
                 declinedHadRoute = routeStored || scene == DasherScene.ROUTE;
@@ -10679,18 +10711,23 @@ public final class OfferFilterService extends AccessibilityService {
         final DasherScene scene;
         /** The offer on screen passes (KEEP) or needs review (REVIEW), as decided: the slim bar's tint; else null. */
         final OfferRule.Result verdict;
+        /** The offer on screen's score for the tag beside the bar, -1 for none; and whether the app declines it. */
+        final int score;
+        final boolean declining;
         /** The Back to map chip shows. */
         final boolean backToMap;
         /** Dasher's events counted as the read that wants the chip began; -1 without the chip. */
         final long chipEvents;
 
         OverlayState(Rect area, boolean split, boolean oursBeside, DasherScene scene, OfferRule.Result verdict,
-                     boolean backToMap, long chipEvents) {
+                     int score, boolean declining, boolean backToMap, long chipEvents) {
             this.area = area == null ? null : new Rect(area);
             this.split = split;
             this.oursBeside = split && oursBeside;
             this.scene = scene;
             this.verdict = verdict;
+            this.score = score;
+            this.declining = declining;
             this.backToMap = backToMap;
             this.chipEvents = chipEvents;
         }
@@ -10699,13 +10736,15 @@ public final class OfferFilterService extends AccessibilityService {
             if (!(other instanceof OverlayState)) return false;
             OverlayState that = (OverlayState) other;
             return split == that.split && oursBeside == that.oursBeside && scene == that.scene
-                    && verdict == that.verdict && backToMap == that.backToMap && chipEvents == that.chipEvents
+                    && verdict == that.verdict && score == that.score && declining == that.declining
+                    && backToMap == that.backToMap && chipEvents == that.chipEvents
                     && (area == null ? that.area == null : area.equals(that.area));
         }
 
         @Override public int hashCode() {
             return (split ? 1 : 0) + (oursBeside ? 2 : 0) + (backToMap ? 4 : 0) + scene.ordinal() * 8
-                    + (verdict == null ? 0 : (verdict.ordinal() + 1) * 64) + (area == null ? 0 : area.hashCode());
+                    + (verdict == null ? 0 : (verdict.ordinal() + 1) * 64) + score * 256 + (declining ? 16 : 0)
+                    + (area == null ? 0 : area.hashCode());
         }
     }
 

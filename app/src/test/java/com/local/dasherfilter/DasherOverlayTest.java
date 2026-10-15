@@ -512,6 +512,85 @@ public class DasherOverlayTest {
         assertTrue(tab().onRight());
     }
 
+    private ScoreTag scoreTag() {
+        for (View view : windows()) if (view instanceof ScoreTag) return (ScoreTag) view;
+        return null;
+    }
+
+    /** What the rules make of the test's offer at {@code cents}: its score. */
+    private int scoreOf(int cents) {
+        return AreaScore.scorePercent(FilterStore.load(app), new OfferSnapshot(cents, 7.2, 21, 2));
+    }
+
+    /**
+     * The offer's score beside the slim peek, so a glance tells what it scored (0.6.21, the owner, a map beside
+     * Dasher: "on this screen I want to be able to see at a small glance the score of the offer as it's being
+     * declined"): red and marked ✕ once the app's Decline is taken, and for a few seconds after the offer left; touches
+     * pass through it, and the guide waits until it goes.
+     */
+    @Test
+    public void aDeclinedOffersScoreShowsBesideThePeekAndStaysAFewSeconds() {
+        seedBestArea();
+        show(screen("Finding offers"));
+        assertNull("no offer, no score", scoreTag());
+        assertNotNull(guide());
+
+        show(offer("$5.00"));
+        assertEquals("the app declined it", DecisionLog.Action.DECLINE_TAPPED, DecisionLog.recent(app, 1).get(0).action);
+        DasherTab tab = tab();
+        ScoreTag score = scoreTag();
+        assertNotNull("the score beside the peek", score);
+        assertEquals("✕ " + scoreOf(500) + "%", score.label());
+        assertEquals(Ui.CRITICAL, score.color());
+        assertTrue("touches pass through it", (params(score).flags & WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0);
+        assertEquals("beside the peek's shown part", dp(DasherTab.PEEK_SHOWN_DP + 4), params(score).x);
+        assertEquals("level with the tab's middle", params(tab).y + (dp(DasherTab.HEIGHT_DP) - dp(ScoreTag.HEIGHT_DP)) / 2,
+                params(score).y);
+        assertTrue(score.getContentDescription().toString().contains("Declined"));
+
+        // Over Dasher's question it keeps the declined offer's score.
+        show(screen("Are you sure you want to decline this offer?", "Does not lower acceptance rate"));
+        assertNotNull(scoreTag());
+        assertEquals("✕ " + scoreOf(500) + "%", scoreTag().label());
+
+        // Dasher is finding offers again: the score stays a few seconds, beside the tab at rest, and the guide waits.
+        show(screen("Finding offers"));
+        score = scoreTag();
+        assertNotNull("it stays once the offer left", score);
+        assertEquals(dp(DasherTab.REST_SHOWN_DP + 4), params(score).x);
+        assertNull("the guide waits for it", guide());
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(DasherOverlay.SCORE_STAYS_MS));
+        assertNull("gone after a few seconds", scoreTag());
+        assertNotNull("the guide is back", guide());
+    }
+
+    /** A passing offer's score shows in green, one needing the user in amber; each goes with its offer. */
+    @Test
+    public void aPassingOffersScoreShowsWhileItIsUpAndGoesWithIt() {
+        show(offer("$25.00"));
+        ScoreTag score = scoreTag();
+        assertNotNull(score);
+        assertEquals("✓ " + scoreOf(2500) + "%", score.label());
+        assertEquals(Ui.GOOD, score.color());
+        show(screen("Finding offers"));
+        assertNull("a passing offer's score goes with it", scoreTag());
+
+        // Paused, nothing is decided, so no score.
+        FilterStore.save(app, FilterSettings.of(false, 1000, 0, 0, 0));
+        show(offer("$5.00"));
+        assertNull(scoreTag());
+    }
+
+    /** Beside Offer Filter's own half its homepage shows the offer, so no score over Dasher's half. */
+    @Test
+    public void besideOfferFiltersOwnHalfNoScoreShows() {
+        besideOurOwnHalf(offer("$25.00"));
+        assertNotNull("the coloured peek", tab());
+        assertNull(scoreTag());
+        besideOurOwnHalf(offer("$5.00"));
+        assertNull(scoreTag());
+    }
+
     private static boolean hasAction(List<AccessibilityNodeInfo.AccessibilityAction> actions, String label) {
         for (AccessibilityNodeInfo.AccessibilityAction action : actions) {
             if (action.getLabel() != null && label.contentEquals(action.getLabel())) return true;

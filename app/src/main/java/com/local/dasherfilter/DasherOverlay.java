@@ -39,6 +39,13 @@ import android.widget.Toast;
  * touches ({@link #dasherChanged}). A tap on the tab acts only while Android's list of windows still has Dasher on
  * screen: the screen reader hears nothing of another app coming in front.
  *
+ * <p>Beside the tab's shown part, a {@link ScoreTag} says what the offer on screen scored, once the rules decided
+ * it: while the app declines it, while it passes and while it is the user's to decide, and for
+ * {@link #SCORE_STAYS_MS} after a declined one left, so a glance from the road still catches it (0.6.21, the owner,
+ * a map beside Dasher: "I want to be able to see at a small glance the score of the offer as it's being declined").
+ * Never beside Offer Filter's own half, whose homepage has it; touches pass through it, and the guide waits until it
+ * goes.
+ *
  * <p>All are laid out in screen coordinates (as Android reports Dasher's window bounds), not below the status bar,
  * so they land where they are placed over Dasher. All of it runs on the main thread.
  */
@@ -63,6 +70,11 @@ final class DasherOverlay implements DasherTab.Listener {
     /** In split screen, the guide's top is this far below the top of Dasher's half (below the status bar). */
     static final int GUIDE_BELOW_TOP_DP = 72;
 
+    /** A declined offer's score stays beside the tab this long after the offer left. */
+    static final long SCORE_STAYS_MS = 5_000;
+    /** Between the tab's shown part and the score tag beside it. */
+    private static final int SCORE_GAP_DP = 4;
+
     /** The guide is worked out again at most this often (it reads the areas and the last known position). */
     static final long GUIDE_EVERY_MS = 10_000;
 
@@ -70,6 +82,13 @@ final class DasherOverlay implements DasherTab.Listener {
     private DasherTab tab;
     private DasherGuide guide;
     private BackToMapChip chip;
+    private ScoreTag scoreTag;
+    /** What the score tag shows: a score (-1 for none) and what came of its offer (DECLINE, KEEP or REVIEW). */
+    private int tagScore = -1;
+    private OfferRule.Result tagResult;
+    /** Until when (uptime) a declined offer's score stays now that its offer left; 0 while the offer is up. */
+    private long tagStaysUntil;
+    private final Runnable tagAgain = this::tagTimedOut;
     /** What a tap on the chip does (the screen reader's: back to the map), or null for nothing. */
     private Runnable backToMap;
     /** Whether the screen reader wants the chip shown now. */
@@ -136,6 +155,10 @@ final class DasherOverlay implements DasherTab.Listener {
         return chip;
     }
 
+    ScoreTag scoreTag() {
+        return scoreTag;
+    }
+
     /** What a tap on the Back to map chip does (main thread). */
     void setBackToMap(Runnable tap) {
         backToMap = tap;
@@ -147,7 +170,7 @@ final class DasherOverlay implements DasherTab.Listener {
      * taken for Offer Filter's own (no tab).
      */
     void sync(Rect dasher, boolean split, DasherScene scene) {
-        sync(dasher, split, split, scene, null, false, false);
+        sync(dasher, split, split, scene, null, -1, false, false, false);
     }
 
     /**
@@ -159,6 +182,15 @@ final class DasherOverlay implements DasherTab.Listener {
      */
     void sync(Rect dasher, boolean split, boolean oursBeside, DasherScene scene, OfferRule.Result verdict,
               boolean backToMap, boolean chipCurrent) {
+        sync(dasher, split, oursBeside, scene, verdict, -1, false, backToMap, chipCurrent);
+    }
+
+    /**
+     * As above, with the offer on screen's {@code score} (-1 for none) for the score tag, and whether the app's
+     * Decline of it was taken ({@code declining}).
+     */
+    void sync(Rect dasher, boolean split, boolean oursBeside, DasherScene scene, OfferRule.Result verdict, int score,
+              boolean declining, boolean backToMap, boolean chipCurrent) {
         if (dasher == null || dasher.isEmpty() || !enabled(service)) {
             hide();
             return;
@@ -172,6 +204,7 @@ final class DasherOverlay implements DasherTab.Listener {
         this.chipWanted = backToMap;
         this.chipCurrent = backToMap && chipCurrent;
         dashing = Dashing.now(service);
+        noteScore(score, declining);
         // Beside Offer Filter's own half (which has the mascot) only the slim peek over a decided offer shows, in its
         // verdict's colour (the owner, 12 October 2026: "the color code should be available on split mode too"): it
         // takes no touches and covers none of the offer, as over Dasher full screen.
@@ -185,6 +218,7 @@ final class DasherOverlay implements DasherTab.Listener {
                 if (!dragging) layoutTab();
             }
         }
+        syncScore();
         syncGuide();
         syncChip();
     }
@@ -262,6 +296,7 @@ final class DasherOverlay implements DasherTab.Listener {
         tab.setMoves(top > minTop(), top < maxTop());
         place(tab, right ? area.right - width : area.left, top, width);
         touchable(scene != DasherScene.OFFER);
+        syncScore();
     }
 
     /** Over an offer the peek takes no touches at all: every touch there is Dasher's (the touch watch still sees it). */
@@ -316,6 +351,7 @@ final class DasherOverlay implements DasherTab.Listener {
     @Override public void dragStarted() {
         if (tab == null || suspended) return;
         dragging = true;
+        hideScore();
         hideGuide();
         hideChip();
         boolean right = onRight();
@@ -448,6 +484,87 @@ final class DasherOverlay implements DasherTab.Listener {
         remove(view);
     }
 
+    // ---- The score tag ----
+
+    /**
+     * What the tag shows: the offer on screen's score once the rules decided it; a declined offer's stays for
+     * {@link #SCORE_STAYS_MS} once its offer left, a passing one's goes with it.
+     */
+    private void noteScore(int score, boolean declining) {
+        OfferRule.Result result = declining ? OfferRule.Result.DECLINE
+                : verdict == OfferRule.Result.KEEP || verdict == OfferRule.Result.REVIEW ? verdict : null;
+        if (scene == DasherScene.OFFER && score >= 0 && result != null) {
+            tagScore = score;
+            tagResult = result;
+            tagStaysUntil = 0;
+            main.removeCallbacks(tagAgain);
+        } else if (tagScore >= 0) {
+            long now = SystemClock.uptimeMillis();
+            if (tagResult != OfferRule.Result.DECLINE) {
+                tagScore = -1;
+            } else if (tagStaysUntil == 0) {
+                tagStaysUntil = now + SCORE_STAYS_MS;
+                main.postDelayed(tagAgain, SCORE_STAYS_MS);
+            } else if (now >= tagStaysUntil) {
+                tagScore = -1;
+            }
+        }
+    }
+
+    private void tagTimedOut() {
+        if (tagStaysUntil != 0 && SystemClock.uptimeMillis() >= tagStaysUntil) tagScore = -1;
+        syncScore();
+        syncGuide();
+    }
+
+    /**
+     * Beside the tab's shown part, level with its middle: never beside Offer Filter's own half, whose homepage shows the
+     * offer, nor while the tab is moved or away.
+     */
+    private void syncScore() {
+        boolean wanted = tagScore >= 0 && tab != null && tab.getVisibility() == android.view.View.VISIBLE
+                && !oursBeside && !suspended && !dragging && !area.isEmpty();
+        if (!wanted) {
+            hideScore();
+            return;
+        }
+        Ui ui = ui();
+        if (scoreTag == null) {
+            ScoreTag view = new ScoreTag(service, ui);
+            view.show(tagScore, tagResult);
+            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT, ui.dp(ScoreTag.HEIGHT_DP),
+                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                    PixelFormat.TRANSLUCENT);
+            params.gravity = Gravity.TOP | Gravity.START;
+            try {
+                service.getSystemService(WindowManager.class).addView(view, params);
+                scoreTag = view;
+            } catch (RuntimeException refused) {
+                DiagnosticLog.log(service, "accessibility", "score tag unavailable: "
+                        + refused.getClass().getSimpleName());
+                return;
+            }
+        } else {
+            scoreTag.show(tagScore, tagResult);
+        }
+        scoreTag.measure(0, 0);
+        int width = scoreTag.getMeasuredWidth();
+        int beside = ui.dp(DasherTab.shownDp(tab.look()) + SCORE_GAP_DP);
+        int x = tab.onRight() ? Math.max(area.left, area.right - beside - width) : area.left + beside;
+        int y = tabTop() + (ui.dp(DasherTab.HEIGHT_DP) - ui.dp(ScoreTag.HEIGHT_DP)) / 2;
+        place(scoreTag, x, y, WindowManager.LayoutParams.WRAP_CONTENT);
+    }
+
+    private void hideScore() {
+        if (scoreTag == null) return;
+        ScoreTag view = scoreTag;
+        scoreTag = null;
+        remove(view);
+    }
+
     // ---- The guide ----
 
     private void syncGuide() {
@@ -461,10 +578,11 @@ final class DasherOverlay implements DasherTab.Listener {
                 pointer = null;
             }
         }
-        // Only over the wait for offers; never while the tab is being moved, or beside a tab that is not there; and
-        // never beside Offer Filter's own half, whose offer map and area line say the same (each fact once).
+        // Only over the wait for offers; never while the tab is being moved, or beside a tab that is not there; never
+        // beside Offer Filter's own half, whose offer map and area line say the same (each fact once); and not while
+        // the score tag is up.
         if (suspended || pointer == null || scene != DasherScene.WAITING || dragging || area.isEmpty()
-                || (!split && tab == null) || oursBeside) {
+                || (!split && tab == null) || oursBeside || scoreTag != null) {
             hideGuide();
             return;
         }
@@ -587,13 +705,17 @@ final class DasherOverlay implements DasherTab.Listener {
             touchable(false);
             tab.setVisibility(android.view.View.INVISIBLE);
         }
+        hideScore();
         hideGuide();
         hideChip();
     }
 
     void hide() {
         suspended = false;
+        tagScore = -1;
+        main.removeCallbacks(tagAgain);
         hideTab();
+        hideScore();
         hideGuide();
         hideChip();
     }
