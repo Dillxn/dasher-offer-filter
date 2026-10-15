@@ -2507,10 +2507,19 @@ public final class OfferFilterService extends AccessibilityService {
     /**
      * Main thread: one of Dasher's window changes, by its event alone, for the Directions watch ({@link
      * DirectionsWatch}): its class line while a watch is under way, each class it names described once an hour at most.
+     * Dasher's own in-app navigation page coming up begins a watch of its own (0.6.24), whatever watch is under way.
      */
     private void directionsWindow(String full, int windowId, long at) {
         boolean framework = frameworkClass(full);
         String shortName = shortClass(full);
+        if (!framework && DirectionsWatch.isNavigationPage(shortName)) {
+            String line = directionsWatch.armAtPage(at, shortName, lastDasherClass,
+                    new java.util.HashSet<>(dasherWindowIds));
+            if (line != null) {
+                DiagnosticLog.log(this, DirectionsWatch.SOURCE, line);
+                directionsLooks();
+            }
+        }
         if (directionsWatch.watching(at)) {
             for (String line : directionsWatch.window(at, shortName, realWindowId(windowId) ? windowId : -1,
                     framework)) {
@@ -2533,6 +2542,11 @@ public final class OfferFilterService extends AccessibilityService {
         String line = directionsWatch.arm(at, lastDasherClass, new java.util.HashSet<>(dasherWindowIds), directions);
         if (line == null) return;
         DiagnosticLog.log(this, DirectionsWatch.SOURCE, line);
+        directionsLooks();
+    }
+
+    /** The looks of the Directions watch just begun, at {@link DirectionsWatch#LOOKS_MS} after it began. */
+    private void directionsLooks() {
         long armed = directionsWatch.armedAt();
         for (long after : DirectionsWatch.LOOKS_MS) {
             scanner.postDelayed(() -> directionsLook(armed, after), Math.max(0, armed + after - SystemClock.uptimeMillis()));
@@ -2541,7 +2555,8 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * Scanner thread: a look of the Directions watch begun at {@code armed}, {@code after} ms in: Android's list of
-     * windows (nothing asked of any app) and what is in front, in fixed words; at its last, the verdict if none yet.
+     * windows (nothing asked of any app) and what is in front, in fixed words, with each window listed when Dasher is
+     * not the one in front ({@link SplitWindows#list}, 0.6.24); at its last, the verdict if none yet.
      */
     private void directionsLook(long armed, long after) {
         if (stopped) return;
@@ -2582,6 +2597,13 @@ public final class OfferFilterService extends AccessibilityService {
         if (dasher) {
             String shown = lastDasherClass;
             front = "Dasher" + (shown == null ? "" : " " + shown);
+        } else if (listed != null) {
+            // What is there instead, in fixed words (0.6.24): on 13 October Android listed no active window at all.
+            try {
+                windows += " " + SplitWindows.list(listed, this::knownOwner, display());
+            } catch (RuntimeException unavailable) {
+                windows += " windows=unknown";
+            }
         }
         for (String line : directionsWatch.look(armed, after, windows, front, dasher)) {
             DiagnosticLog.log(this, DirectionsWatch.SOURCE, line);

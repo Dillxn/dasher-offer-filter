@@ -176,6 +176,95 @@ final class SplitWindows {
         return "win=" + layout + "/" + edge + "/" + active + "/" + share;
     }
 
+    /** At most this many windows in {@link #list}: Android lists a handful. */
+    static final int LIST_MAX = 10;
+
+    /**
+     * Android's list of windows in fixed words (0.6.24), for the Directions watch's looks when Dasher is not the one
+     * in front: each window's kind ({@code app}, {@code system}, {@code keyboard}, {@code divider}, {@code overlay},
+     * {@code magnifier}), whose an app window or overlay is ({@code dasher}, {@code ours}, {@code other}), where it is
+     * in percent of the display ({@code @left,top-right,bottom}), and whether it is {@code active} or {@code focused}.
+     * A system window titled as Android's own dialog for an app not responding or stopped says {@code not-responding}
+     * or {@code app-error}, with {@code dasher} when the title names Dasher's package: never a window's own words, nor
+     * another app's name. Such as
+     * {@code windows=app:dasher@0,0-100,48 | divider@0,48-100,52 | app:ours@0,52-100,100:active,focused}.
+     *
+     * @param owner whose a listed application window or overlay is, as far as is known without asking it
+     * @param display the display's bounds (widened to every listed window)
+     */
+    static String list(List<AccessibilityWindowInfo> windows, Function<AccessibilityWindowInfo, Owner> owner,
+                       Rect display) {
+        if (windows == null) return "windows=unknown";
+        if (windows.isEmpty()) return "windows=none";
+        Rect screen = new Rect(display);
+        Rect bounds = new Rect();
+        for (AccessibilityWindowInfo window : windows) {
+            window.getBoundsInScreen(bounds);
+            if (!bounds.isEmpty()) screen.union(bounds);
+        }
+        StringBuilder out = new StringBuilder("windows=");
+        int listed = 0;
+        for (AccessibilityWindowInfo window : windows) {
+            if (listed == LIST_MAX) {
+                out.append(" | +").append(windows.size() - LIST_MAX).append(" more");
+                break;
+            }
+            if (listed++ > 0) out.append(" | ");
+            int type = window.getType();
+            out.append(kind(type));
+            if (type == AccessibilityWindowInfo.TYPE_APPLICATION
+                    || type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) {
+                Owner whose = owner.apply(window);
+                out.append(':').append(whose == Owner.DASHER ? "dasher" : whose == Owner.OURS ? "ours" : "other");
+            }
+            window.getBoundsInScreen(bounds);
+            if (!bounds.isEmpty() && screen.width() > 0 && screen.height() > 0) {
+                out.append('@').append(percent(bounds.left - screen.left, screen.width())).append(',')
+                        .append(percent(bounds.top - screen.top, screen.height())).append('-')
+                        .append(percent(bounds.right - screen.left, screen.width())).append(',')
+                        .append(percent(bounds.bottom - screen.top, screen.height()));
+            }
+            String flags = window.isActive() ? (window.isFocused() ? "active,focused" : "active")
+                    : window.isFocused() ? "focused" : "";
+            if (!flags.isEmpty()) out.append(':').append(flags);
+            if (type == AccessibilityWindowInfo.TYPE_SYSTEM) {
+                String dialog = systemDialog(window.getTitle());
+                if (dialog != null) out.append(':').append(dialog);
+            }
+        }
+        return out.toString();
+    }
+
+    private static String kind(int type) {
+        switch (type) {
+            case AccessibilityWindowInfo.TYPE_APPLICATION: return "app";
+            case AccessibilityWindowInfo.TYPE_SYSTEM: return "system";
+            case AccessibilityWindowInfo.TYPE_INPUT_METHOD: return "keyboard";
+            case AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER: return "divider";
+            case AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY: return "overlay";
+            case AccessibilityWindowInfo.TYPE_MAGNIFICATION_OVERLAY: return "magnifier";
+            default: return "type" + type;
+        }
+    }
+
+    private static int percent(int part, int whole) {
+        return Math.max(0, Math.min(100, Math.round(100f * part / whole)));
+    }
+
+    /**
+     * Android's own dialog for an app that stopped responding or stopped, by the title Android gives it ("Application
+     * Not Responding: <process>", "Application Error: <process>"), in fixed words; null for any other title.
+     */
+    static String systemDialog(CharSequence title) {
+        if (title == null) return null;
+        String words = title.toString().toLowerCase(java.util.Locale.US);
+        String dialog = words.contains("not responding") || words.contains("isn't responding") ? "not-responding"
+                : words.contains("application error") || words.contains("keeps stopping")
+                        || words.contains("has stopped") ? "app-error" : null;
+        if (dialog == null) return null;
+        return words.contains(DasherSplit.DASHER_PACKAGE) || words.contains("dasher") ? dialog + "+dasher" : dialog;
+    }
+
     /**
      * The screen on {@code edge}'s side of the divider, or null when the divider's bounds are not known (some phones
      * list it without them) or leave nothing on that side: then Dasher's biggest window stands in, as before.

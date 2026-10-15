@@ -97,6 +97,75 @@ public class DirectionsWatchTest {
         assertTrue(watch.look(T, 2_000, "win=x", "home", false).isEmpty());
     }
 
+    // 0.6.24. Before, the 13 October watch the receipt photo's tap began ended 4 s after Dasher's navigation page came
+    // up (18:17:55), before Dasher dropped back to its delivery screen: a page began no watch of its own.
+    @Test
+    public void dashersNavigationPageBeginsAWatchOfItsOwnOverTheTapsWatch() {
+        DirectionsWatch watch = new DirectionsWatch();
+        assertNotNull(watch.arm(T, "OnADashActivity", new HashSet<>(Arrays.asList(7, 9)), false));
+        long page = T + 16_200;
+        assertEquals(DirectionsWatch.PAGE_WATCH + "GoToLocationInAppNavigationActivity; on OnADashActivity",
+                watch.armAtPage(page, "GoToLocationInAppNavigationActivity", "OnADashActivity",
+                        new HashSet<>(Arrays.asList(7, 9, 12))));
+        assertEquals("watching 20 s after Dasher opened GoToLocationInAppNavigationActivity; on OnADashActivity",
+                DirectionsWatch.PAGE_WATCH + "GoToLocationInAppNavigationActivity; on OnADashActivity");
+        assertEquals(page, watch.armedAt());
+        // The tap's watch is over: its last look says nothing.
+        assertTrue(watch.look(T, 20_000, "win=x", "unknown", false).isEmpty());
+        assertEquals(Collections.singletonList("+0.0 s GoToLocationInAppNavigationActivity (new window)"),
+                watch.window(page, "GoToLocationInAppNavigationActivity", 14, false));
+        // Past where the tap's watch ended (T + 20 s), the page's still watches, and sees the drop back.
+        assertTrue(watch.watching(T + 26_000));
+        assertEquals(Arrays.asList("+5.8 s OnADashActivity (new window)",
+                "dropped back to OnADashActivity after 5 s (window new)"),
+                watch.window(page + 5_800, "OnADashActivity", 15, false));
+        assertEquals(Collections.singletonList("+2 s: win=hidden/-/none/0 screen=on locked=no windows=none; in front: "
+                + "unknown"), watch.look(page, 2_000, "win=hidden/-/none/0 screen=on locked=no windows=none", "unknown",
+                false));
+        // A tap within the minute begins no other watch.
+        assertNull(watch.arm(page + 30_000, "OnADashActivity", Collections.<Integer>emptySet(), true));
+    }
+
+    @Test
+    public void thePageAgainWithinItsWatchIsThatWatchAndStayingOnItBeginsNone() {
+        DirectionsWatch watch = new DirectionsWatch();
+        String page = "GoToLocationInAppNavigationActivity";
+        assertNotNull(watch.armAtPage(T, page, "OnADashActivity", Collections.<Integer>emptySet()));
+        // Dasher opening its page again and again: one watch's lines.
+        assertNull(watch.armAtPage(T + 3_000, page, "OnADashActivity", Collections.<Integer>emptySet()));
+        assertNull(watch.armAtPage(T + DirectionsWatch.WATCH_MS, page, "OnADashActivity",
+                Collections.<Integer>emptySet()));
+        // The page's own window changes while it stays up begin nothing.
+        assertNull(watch.armAtPage(T + 60_000, page, page, Collections.<Integer>emptySet()));
+        // Opened again from another screen, after its watch: another watch.
+        assertNotNull(watch.armAtPage(T + DirectionsWatch.WATCH_MS + 1, page, "OnADashActivity",
+                Collections.<Integer>emptySet()));
+        List<String> last = new ArrayList<>(watch.look(T + DirectionsWatch.WATCH_MS + 1, 20_000, "win=x",
+                "Dasher " + page, true));
+        assertEquals(DirectionsWatch.STAYED + "OnADashActivity", last.get(1));
+    }
+
+    @Test
+    public void onlyAnActivityNamedForNavigationIsThePage() {
+        assertTrue(DirectionsWatch.isNavigationPage("GoToLocationInAppNavigationActivity"));
+        assertTrue(DirectionsWatch.isNavigationPage("NavigationActivity"));
+        assertFalse(DirectionsWatch.isNavigationPage("OnADashActivity"));
+        assertFalse(DirectionsWatch.isNavigationPage("BottomNavigationView"));
+        assertFalse(DirectionsWatch.isNavigationPage("CameraReceiptVerificationActivityV2"));
+        assertFalse(DirectionsWatch.isNavigationPage(null));
+    }
+
+    @Test
+    public void androidsOwnDialogForAStoppedAppIsSaidInFixedWordsWithoutItsName() {
+        assertEquals("not-responding+dasher",
+                SplitWindows.systemDialog("Application Not Responding: com.doordash.driverapp"));
+        assertEquals("app-error+dasher", SplitWindows.systemDialog("Application Error: com.doordash.driverapp"));
+        assertEquals("app-error", SplitWindows.systemDialog("Application Error: com.example.maps"));
+        assertEquals("not-responding", SplitWindows.systemDialog("Maps isn't responding"));
+        assertNull(SplitWindows.systemDialog("Notification shade"));
+        assertNull(SplitWindows.systemDialog(null));
+    }
+
     @Test
     public void noLineNamesAnotherAppsPackage() {
         DirectionsWatch watch = armed();

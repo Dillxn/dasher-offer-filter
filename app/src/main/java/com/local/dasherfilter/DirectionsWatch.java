@@ -19,6 +19,11 @@ import java.util.Set;
  * to type in address manually on the last dash", and "never shows the map just shows multiple pages opening and then
  * drops back". His report showed eleven unrecognised Dasher screens in 25 s and could not say what they were.
  *
+ * <p>Since 0.6.24 Dasher's own in-app navigation page coming up begins a watch too ({@link #armAtPage}), whatever
+ * watch is under way: on 13 October the watch the receipt photo's tap began ended 4 s after that page came up, before
+ * it dropped back; and on 15 October ("freakin nav, man. still broken", 00:51 EDT) the report came after the log had
+ * rolled past it, so the log keeps such a watch for a day when it went wrong ({@link DiagnosticLog#fitLog}).
+ *
  * <p>Any thread: Dasher's window changes come on the main thread, the looks on the scanner.
  */
 final class DirectionsWatch {
@@ -33,7 +38,14 @@ final class DirectionsWatch {
 
     private static final long NEVER = Long.MIN_VALUE;
 
+    /** How a navigation page's watch begins in the log (0.6.24): what {@link DiagnosticLog#fitLog} keeps a day. */
+    static final String PAGE_WATCH = "watching " + WATCH_MS / 1000 + " s after Dasher opened ";
+    /** How its verdict reads when the page stayed: such a watch is not kept past the rest of the log. */
+    static final String STAYED = "stayed on ";
+
     private long armedAt = NEVER;
+    /** When the newest watch a navigation page began, began (uptime), or {@link #NEVER}. */
+    private long pageArmedAt = NEVER;
     private String before;
     private Set<Integer> known = Collections.emptySet();
     private String last;
@@ -51,6 +63,29 @@ final class DirectionsWatch {
      */
     synchronized String arm(long at, String before, Set<Integer> knownWindows, boolean directions) {
         if (armedAt != NEVER && at - armedAt < ARM_EVERY_MS && at >= armedAt) return null;
+        begin(at, before, knownWindows);
+        return "watching " + WATCH_MS / 1000 + " s after your tap on " + (directions ? "Directions" : "Dasher")
+                + " during a delivery; on " + named(before);
+    }
+
+    /**
+     * Dasher's window changed at {@code at} from {@code before} to {@code page}, its own in-app navigation page
+     * ({@link #isNavigationPage}): a watch begins there (0.6.24), whatever watch is under way, unless one a navigation
+     * page began is still under way (Dasher opening its page again and again is one watch's lines).
+     *
+     * @param before the class Dasher's last window change named before the page (short), or null
+     * @param knownWindows Dasher's window IDs known before the page
+     * @return the line to log for it, or null when no watch began
+     */
+    synchronized String armAtPage(long at, String page, String before, Set<Integer> knownWindows) {
+        if (page == null || page.equals(before)) return null;
+        if (pageArmedAt != NEVER && at >= pageArmedAt && at - pageArmedAt <= WATCH_MS) return null;
+        begin(at, before, knownWindows);
+        pageArmedAt = at;
+        return PAGE_WATCH + page + "; on " + named(before);
+    }
+
+    private void begin(long at, String before, Set<Integer> knownWindows) {
         armedAt = at;
         this.before = before;
         known = knownWindows == null ? Collections.<Integer>emptySet() : new HashSet<>(knownWindows);
@@ -59,8 +94,18 @@ final class DirectionsWatch {
         moved = false;
         lines = 0;
         verdict = false;
-        return "watching " + WATCH_MS / 1000 + " s after your tap on " + (directions ? "Directions" : "Dasher")
-                + " during a delivery; on " + (before == null ? "an unnamed screen" : before);
+    }
+
+    private static String named(String screen) {
+        return screen == null ? "an unnamed screen" : screen;
+    }
+
+    /**
+     * Whether a class Dasher's window change names (short) is Dasher's own in-app navigation page: an activity whose
+     * name says navigation, such as the drop-off leg's GoToLocationInAppNavigationActivity (13 October 2026).
+     */
+    static boolean isNavigationPage(String shortClass) {
+        return shortClass != null && shortClass.endsWith("Activity") && shortClass.contains("Navigation");
     }
 
     /** When the watch under way began (uptime), or {@link Long#MIN_VALUE} for none: a look carries it. */
@@ -115,7 +160,7 @@ final class DirectionsWatch {
         out.add("+" + after / 1000 + " s: " + windows + "; in front: " + front);
         if (after < WATCH_MS || verdict) return out;
         verdict = true;
-        out.add(dasherFront ? "stayed on " + (last == null ? "an unnamed screen" : last)
+        out.add(dasherFront ? STAYED + named(last)
                 + (last != null && !last.equals(before) ? " (window " + (lastNew ? "new" : "known") + ")" : "")
                 : front + " in front");
         return out;

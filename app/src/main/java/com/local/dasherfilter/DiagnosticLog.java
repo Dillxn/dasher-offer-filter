@@ -434,7 +434,21 @@ final class DiagnosticLog {
         return source >= 0 && line.startsWith("[" + NAVIGATION_SOURCE + "]", source + 1);
     }
 
-    /** Timing telemetry has a separate effective budget: it cannot evict decision/confirmation context. */
+    /**
+     * What the log keeps of Dasher's in-app navigation watches that went wrong (0.6.24), newest first: their lines go
+     * last ({@link #fitLog}), so a report sent hours after a failed Directions still has it, for the day the log keeps.
+     * The owner, 15 October 2026, 00:51 EDT: "freakin nav, man. still broken"; his report came after the log had rolled
+     * past it.
+     */
+    static final int TROUBLE_WATCH_CHARS = 5_000;
+    /** A watch's last look comes {@link DirectionsWatch#WATCH_MS} after it began, give or take the scanner's turn. */
+    private static final long WATCH_SLACK_MS = 5_000L;
+
+    /**
+     * Fits the log into {@code budget} (UTF-8 bytes, or characters), dropping whole lines, oldest first: timing
+     * telemetry first (it cannot evict decision/confirmation context), then every other line but the navigation
+     * watches that went wrong ({@link #troubleWatches}), and those only when the rest alone is still too big.
+     */
     static String fitLog(String log, int budget, boolean bytes) {
         if (size(log, bytes) <= budget) return log;
         List<String> lines = new ArrayList<>();
@@ -446,15 +460,16 @@ final class DiagnosticLog {
             start = end;
         }
         long total = size(log, bytes);
+        boolean[] trouble = troubleWatches(lines, bytes);
         boolean[] dropped = new boolean[lines.size()];
-        for (int pass = 0; pass < 2 && total > budget; pass++) {
+        for (int pass = 0; pass < 3 && total > budget; pass++) {
             for (int i = 0; i < lines.size() && total > budget; i++) {
                 String line = lines.get(i);
                 int source = line.indexOf(" [");
                 boolean timing = source >= 0 && (line.startsWith("[scan]", source + 1)
                         || line.startsWith("[screen] read load:", source + 1)
                         || line.startsWith("[screen] yielding to Dasher:", source + 1));
-                if (dropped[i] || (pass == 0 && !timing)) continue;
+                if (dropped[i] || (pass == 0 && !timing) || (pass == 1 && trouble[i])) continue;
                 dropped[i] = true;
                 total -= size(line, bytes);
             }
@@ -462,6 +477,61 @@ final class DiagnosticLog {
         StringBuilder kept = new StringBuilder();
         for (int i = 0; i < lines.size(); i++) if (!dropped[i]) kept.append(lines.get(i));
         return kept.toString();
+    }
+
+    /**
+     * Which of the log's lines are a navigation watch that went wrong: from a watch Dasher's in-app navigation page
+     * began ({@link DirectionsWatch#PAGE_WATCH}) to its last look, with the Directions lines of the
+     * {@link DirectionsWatch#WATCH_MS} before it (the tap's watch, Dasher re-making its screens), unless its verdict
+     * says the page stayed. Newest first, whole watches, while they fit in {@link #TROUBLE_WATCH_CHARS}.
+     */
+    static boolean[] troubleWatches(List<String> lines, boolean bytes) {
+        int n = lines.size();
+        boolean[] kept = new boolean[n];
+        long[] at = new long[n];
+        String[] said = new String[n];
+        List<Integer> starts = new ArrayList<>();
+        SimpleDateFormat time = new SimpleDateFormat(TIME_PATTERN, Locale.US);
+        for (int i = 0; i < n; i++) {
+            String line = lines.get(i);
+            String tag = " [" + DirectionsWatch.SOURCE + "] ";
+            int source = line.indexOf(" [");
+            if (source < 0 || !line.startsWith(tag, source)) continue;
+            Date when = time.parse(line, new ParsePosition(0));
+            if (when == null) continue;
+            at[i] = when.getTime();
+            said[i] = line.substring(source + tag.length()).trim();
+            if (said[i].startsWith(DirectionsWatch.PAGE_WATCH)) starts.add(i);
+        }
+        long left = TROUBLE_WATCH_CHARS;
+        for (int s = starts.size() - 1; s >= 0; s--) {
+            int begun = starts.get(s);
+            int until = s + 1 < starts.size() ? starts.get(s + 1) : n;
+            long from = at[begun] - DirectionsWatch.WATCH_MS;
+            long to = at[begun] + DirectionsWatch.WATCH_MS + WATCH_SLACK_MS;
+            List<Integer> watch = new ArrayList<>();
+            boolean stayed = false;
+            for (int i = s > 0 ? starts.get(s - 1) + 1 : 0; i < until; i++) {
+                if (said[i] == null || at[i] < from || at[i] > to) continue;
+                watch.add(i);
+                if (i > begun && stayedOnPage(said[i])) stayed = true;
+            }
+            if (stayed) continue;
+            long size = 0;
+            for (int i : watch) size += size(lines.get(i), bytes);
+            if (size > left) break;
+            left -= size;
+            for (int i : watch) kept[i] = true;
+        }
+        return kept;
+    }
+
+    /** Whether a Directions verdict says Dasher stayed on its navigation page: the page worked. */
+    private static boolean stayedOnPage(String said) {
+        if (!said.startsWith(DirectionsWatch.STAYED)) return false;
+        String rest = said.substring(DirectionsWatch.STAYED.length());
+        int end = rest.indexOf(' ');
+        return DirectionsWatch.isNavigationPage(end < 0 ? rest : rest.substring(0, end));
     }
 
     private static long size(String text, boolean bytes) {
