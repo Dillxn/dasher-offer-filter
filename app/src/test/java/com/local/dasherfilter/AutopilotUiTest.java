@@ -472,6 +472,9 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
             // From here plans wait to be worked out, the one screen reading asks for as it connects included.
             AutopilotRuntime.executorForTests = queued::add;
+            // A dash under way, so each bar below waits for its safe point as this walk expects (off a dash it moves
+            // at once, 0.6.20).
+            Dashing.seen(app);
             connectReader();
             // Max stops alone: nothing for Autopilot to scale. The chip says only "Auto"; the line says what it needs.
             FilterStore.save(app, FilterSettings.of(true, 0, 0, 0, 3));
@@ -1582,6 +1585,8 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
 
     @Test
     public void clearHistoryForgetsAutopilotsReadingAndChangeNoteAndKeepsItsSettings() {
+        // A dash under way: off one, the plan after clearing would commit at once and leave a new change (0.6.20).
+        Dashing.seen(app);
         setUpForDashing();
         minimums(2040, 400, 48);
         history(0, 20);
