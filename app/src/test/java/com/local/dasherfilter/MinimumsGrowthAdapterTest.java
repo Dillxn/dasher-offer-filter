@@ -115,6 +115,8 @@ public final class MinimumsGrowthAdapterTest {
                     DecisionLog.Action.PASSES, true, Collections.<String>emptyList()).withBar(108, true)
                     .withScoringRules(scoringRules));
         }
+        // A dash under way (an offer ten minutes ago): off one, a growth needs none of these safe points (0.6.20).
+        Dashing.seen(app);
         AutopilotRuntime.beforeWriteForTests = () -> {
             long at = now();
             if (offerUp) unsafe.add("a growth at " + at + " with an offer up");

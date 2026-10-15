@@ -72,7 +72,8 @@ final class NoticePage {
             params.topMargin = ui.dp(14);
             body.addView(line, params);
         }
-        // Pilot diagnostics (0.6.18): asked here, opt-in; it shows the choice already made (0.6.20), off on a new install.
+        // Pilot diagnostics (0.6.18): asked here, opt-in; it shows the choice already made (0.6.20), off on a new
+        // install.
         Switch diagnostics = ui.toggle(body, Consent.DIAGNOSTICS_ASK, Feedback.afterDashOn(context));
         diagnostics.setId(DIAGNOSTICS_ID);
         ((LinearLayout.LayoutParams) diagnostics.getLayoutParams()).topMargin = ui.dp(18);

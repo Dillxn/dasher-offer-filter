@@ -199,7 +199,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Peek can briefly open Dasher to read an offer that came in the background.",
                 // 0.6.3 (notice 20): the anonymous daily count.
                 "An anonymous daily count tells the developer how many people use the app.",
-                "Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the count in Settings."}) {
+                "Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the count in "
+                        + "Settings."}) {
             assertTrue(fact, defaults.contains(fact));
         }
         assertTrue(point("At your own risk.").contains("no warranty"));

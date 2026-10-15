@@ -66,7 +66,8 @@ final class Consent {
                 + "(\"Are you sure you want to decline this offer?\"). Any other question it leaves to you and pauses. "
                 + "It may also go Back after a Dasher error, tap Dasher's ⚙ once to bring up a missing offer, move "
                 + "the split-screen divider during a delivery, briefly turn offer sound down and keep your unlocked "
-                + "screen on during a dash. Auto-accept is off unless you turn it on in Settings. Your touch stops it."},
+                + "screen on during a dash. Auto-accept is off unless you turn it on in Settings. Your touch stops "
+                + "it."},
         {"On by default.", "Autopilot moves the bar offers must meet between " + FilterStore.BAR_MIN + "% and "
                 + FilterStore.BAR_MAX + "% of your minimums, putting pay first; above 100% it declines offers that "
                 + "meet them. It keeps the bar at or above the score of the best offer you accepted yourself in the "

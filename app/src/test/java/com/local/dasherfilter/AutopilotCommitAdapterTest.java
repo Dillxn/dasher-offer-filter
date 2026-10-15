@@ -239,14 +239,15 @@ public final class AutopilotCommitAdapterTest {
     }
 
     /**
-     * Off a dash (0.6.20: nothing of one seen for half an hour, or it ended), no offer is up, nor was one decided at the
-     * old bar: screen reading connects with another app in front, as after an update, and the bar moves at once, with
-     * nothing of Dasher's read. The owner, 14 October 2026, two minutes after updating: "why is it auto 52 when offer
-     * was 67?" During a dash (every other test here) commits wait for the safe points as before.
+     * Off a dash (0.6.20: nothing of one seen for half an hour, or it ended), no offer is up, nor was one decided at
+     * the old bar: screen reading connects with another app in front, as after an update, and the bar moves at once,
+     * with nothing of Dasher's read. The owner, 14 October 2026, two minutes after updating: "why is it auto 52 when
+     * offer was 67?" During a dash (every other test here) commits wait for the safe points as before.
      */
     @Test public void offADashTheBarMovesAtOnceWithNothingOfDashersRead() {
-        // The dash went quiet half an hour ago.
-        ShadowSystemClock.advanceBy(Duration.ofMillis(Dashing.WINDOW_MS + 1_000));
+        // The dash went quiet half an hour ago (its last sighting, as Dashing keeps it).
+        app.getSharedPreferences("dashing", 0).edit()
+                .putLong("seen_at", System.currentTimeMillis() - Dashing.WINDOW_MS - 1_000).commit();
         assertFalse(Dashing.on(app));
         connect(app(MAPS));
         wantCommit();
