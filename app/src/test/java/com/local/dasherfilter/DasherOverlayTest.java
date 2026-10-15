@@ -32,6 +32,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -548,9 +549,11 @@ public class DasherOverlayTest {
                 params(score).y);
         assertTrue(score.getContentDescription().toString().contains("Declined"));
 
-        // Over Dasher's question it keeps the declined offer's score.
+        // Over Dasher's question it keeps the declined offer's score, in the same window: the question's own window
+        // hides it only until the next read.
         show(screen("Are you sure you want to decline this offer?", "Does not lower acceptance rate"));
-        assertNotNull(scoreTag());
+        assertSame("its window kept", score, scoreTag());
+        assertEquals(View.VISIBLE, score.getVisibility());
         assertEquals("✕ " + scoreOf(500) + "%", scoreTag().label());
 
         // Dasher is finding offers again: the score stays a few seconds, beside the tab at rest, and the guide waits.

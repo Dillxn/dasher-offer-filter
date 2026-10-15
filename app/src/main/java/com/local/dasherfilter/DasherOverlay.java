@@ -549,6 +549,7 @@ final class DasherOverlay implements DasherTab.Listener {
             }
         } else {
             scoreTag.show(tagScore, tagResult);
+            scoreTag.setVisibility(android.view.View.VISIBLE);
         }
         scoreTag.measure(0, 0);
         int width = scoreTag.getMeasuredWidth();
@@ -705,7 +706,9 @@ final class DasherOverlay implements DasherTab.Listener {
             touchable(false);
             tab.setVisibility(android.view.View.INVISIBLE);
         }
-        hideScore();
+        // The score tag goes out of sight with the tab, its window kept: over Dasher's question, which comes in a new
+        // window, the declined offer's score comes back with the next read, without its window going and coming.
+        if (scoreTag != null) scoreTag.setVisibility(android.view.View.INVISIBLE);
         hideGuide();
         hideChip();
     }
