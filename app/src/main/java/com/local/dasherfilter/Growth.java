@@ -2,54 +2,49 @@ package com.local.dasherfilter;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TimeZone;
 
 /**
- * Your minimums grow (0.5.1, the owner's decision of 7 October 2026): when Autopilot's bar has stayed above 100% of the
- * minimums for a while, offers have paid above them, and that gain moves into the minimums. Pure and deterministic, with
- * no Android class: it reads only Autopilot's own recorded bars ({@link Autopilot.OfferRecord#bar}), never what the
- * user accepted or declined, and its arithmetic is exact whole numbers ({@code long}), no floating point.
+ * Your minimums grow (0.5.1, the owner's decision of 7 October 2026): when offers have paid above the minimums for a
+ * while, that gain moves into them. From 0.6.21 it follows the offers themselves, Autopilot on or off (the owner, 15
+ * October 2026: "mins growing should not be narried to autopilot"; before, it read Autopilot's recorded bars, so it
+ * never grew while Autopilot was off). Pure and deterministic, with no Android class: it reads what the offers paid,
+ * never what the user accepted or declined, and its arithmetic is exact whole numbers ({@code long}), no floating point.
  *
  * <ul>
- *   <li>Evidence ({@link #evidence}): of Autopilot's counted lines ({@link Autopilot#countedLines}, newest first), only
- *   the rules-model-2 lines decided with Autopilot on ({@link Autopilot.OfferRecord#autopilot}) at or after the time
- *   the current minimums took effect. Growth is due when the newest {@value #OFFERS} of those all have a bar of at
- *   least {@value #LEAST_BAR}% and fall on at least {@value #LEAST_DAYS} calendar days in the phone's time zone; it is
- *   {@code g = min(10, lowest bar − 100)} points, so 3 ≤ g ≤ 10. It waits while the bar now is below {@code 100 + g}
- *   (Autopilot lowered it since those offers): grown then, the bar could not come down with the minimums, so offers
- *   right after it would be asked more, not the same. A bar an offer the user accepted by hand could have held up
- *   ({@link Autopilot#acceptedFloor}, 0.6.11) counts as 100: the saved minimums never rise from an accept.</li>
+ *   <li>Evidence ({@link #evidence}): of the counted lines ({@link Autopilot#countedLines}, newest first), those
+ *   scored under exactly these rules ({@link #samePolicy}) at or after the time the current minimums took effect.
+ *   Growth is due when the newest {@value #OFFERS} of those fall on at least {@value #LEAST_DAYS} calendar days in the
+ *   phone's time zone and 1 in 5 of them ({@value #SHARE}%) paid at least {@value #LEAST_BAR}% of the minimums: their
+ *   share bar ({@link Autopilot#shareBar}, as pay first's bar is worked out, on each offer's score
+ *   {@link AreaScore#passThreshold}; pay not read counts as nothing above) is {@value #LEAST_BAR} or more. It is
+ *   {@code g = min(10, share bar − 100)} points, so 3 ≤ g ≤ 10.</li>
  *   <li>Effect ({@link #grown}): every set money minimum m becomes {@code ⌈m × (100 + g) ÷ 100⌉} in its own stored unit
- *   (cents; cents a mile; cents a minute, shown ×60 an hour); an unset one stays unset; max stops never changes. The
- *   bar becomes {@code max(100, round(bar × 100 ÷ (100 + g)))}, so an offer judged right after it meets the same
- *   requirement, within rounding. A minimum that would pass the knob's top ({@link FilterSettings#MOST_CENTS}) cannot
- *   grow, and then nothing grows: no growth is due.</li>
+ *   (cents; cents a mile; cents a minute, shown ×60 an hour); an unset one stays unset; max stops never changes. A bar
+ *   of Autopilot's above 100 becomes {@code max(100, round(bar × 100 ÷ (100 + g)))}, so an offer judged right after it
+ *   meets the same requirement, within rounding, as far as the bar can come down; a bar at or below 100 (exactly 100
+ *   while Autopilot is off) stays, so the minimums' growth asks more of the next offers. A minimum that would pass the
+ *   knob's top ({@link FilterSettings#MOST_CENTS}) cannot grow, and then nothing grows: no growth is due.</li>
  * </ul>
  *
- * When and where it is applied (only at Autopilot's safe point, by compare-and-set) is {@link AutopilotRuntime}'s and
- * {@link FilterStore#growMinimums}'s.
+ * When and where it is applied (only at Autopilot's safe point, by compare-and-set, Autopilot on or off) is
+ * {@link AutopilotRuntime}'s and {@link FilterStore#growMinimums}'s.
  */
 final class Growth {
     /** The newest lines the evidence looks at. */
     static final int OFFERS = 30;
-    /** Each of them had a bar of at least this, in percent of the minimums. */
+    /** 1 in 5 of them paid at least this, in percent of the minimums. */
     static final int LEAST_BAR = 103;
+    /** The share of them, in percent, that paid at least the growth's mark: pay first's 1 in 5. */
+    static final int SHARE = Autopilot.PAY_FIRST_FLOOR;
     /** They fall on at least this many calendar days. */
     static final int LEAST_DAYS = 2;
     /** One growth is at most this many points. */
     static final int MOST_PERCENT = 10;
     private static final long DAY_MS = 24L * 60 * 60_000;
-    /**
-     * An accept could have held the bar of a line decided at most this long after it, whatever came between: the
-     * accepted floor's 7 days from 0.6.18 to 0.6.20 (a day while it lasted a dash). From 0.6.21 it holds for the
-     * {@value Autopilot#FLOOR_OFFERS} offers after it however long they take, so a line fewer offers after one counts
-     * as held too ({@link #held}): bars an accept held up under any version never count.
-     */
-    static final long HELD_HORIZON_MS = 7 * DAY_MS;
 
     /** The minimums and the bar before and after one growth of {@link #percent} points (money in stored units). */
     static final class Grown {
@@ -78,22 +73,24 @@ final class Growth {
     }
 
     /**
-     * Why growth is due, and what it does: the newest {@link #offers} lines Autopilot judged under these minimums, on
-     * {@link #days} calendar days, the lowest bar among them, and the growth worked out for exactly the minimums, bar
-     * and "minimums since" ({@link #since}) it was computed for, which a compare-and-set must find unchanged.
+     * Why growth is due, and what it does: the newest {@link #offers} lines scored under these minimums, on
+     * {@link #days} calendar days, the share bar 1 in 5 of them met ({@link #shareBar}), and the growth worked out for
+     * exactly the minimums, bar and "minimums since" ({@link #since}) it was computed for, which a compare-and-set must
+     * find unchanged.
      */
     static final class Evidence {
         final int offers;
         final int days;
-        final int lowestBar;
+        /** The highest score, in percent of the minimums, that 1 in 5 of them met (at most 150). */
+        final int shareBar;
         /** When the minimums it was computed for took effect (wall clock). */
         final long since;
         final Grown grown;
 
-        Evidence(int offers, int days, int lowestBar, long since, Grown grown) {
+        Evidence(int offers, int days, int shareBar, long since, Grown grown) {
             this.offers = offers;
             this.days = days;
-            this.lowestBar = lowestBar;
+            this.shareBar = shareBar;
             this.since = since;
             this.grown = grown;
         }
@@ -105,63 +102,42 @@ final class Growth {
     }
 
     /**
-     * The growth due for {@code rules} from {@code counted} (Autopilot's counted lines, {@link Autopilot#countedLines},
-     * newest first), with the minimums in effect since {@code since} (wall clock) and calendar days in {@code zone};
-     * null when none is due: no money minimum, fewer than {@value #OFFERS} lines of Autopilot's under these minimums,
-     * any of the newest {@value #OFFERS} below {@value #LEAST_BAR}%, all of them on one day, the bar now below
-     * {@code 100 + g}, or a minimum that cannot grow ({@link #grown}).
+     * The growth due for {@code rules} from {@code counted} (the counted lines, {@link Autopilot#countedLines}, newest
+     * first), with the minimums in effect since {@code since} (wall clock) and calendar days in {@code zone}; null when
+     * none is due: no money minimum, fewer than {@value #OFFERS} lines scored under these minimums, all of the newest
+     * {@value #OFFERS} on one day, fewer than 1 in 5 of them at {@value #LEAST_BAR}% or more, or a minimum that cannot
+     * grow ({@link #grown}). Whether Autopilot was on for them, or is now, does not matter (0.6.21).
      */
     static Evidence evidence(FilterSettings rules, List<Autopilot.OfferRecord> counted, long since, TimeZone zone) {
-        return evidence(rules, counted, since, zone, Collections.<Autopilot.HandAccept>emptyList());
-    }
-
-    /**
-     * As {@link #evidence(FilterSettings, List, long, TimeZone)}, where a line whose bar some hand accept could have
-     * held (0.6.11: the accept came before the line, at most {@link #HELD_HORIZON_MS} before or fewer than
-     * {@value Autopilot#FLOOR_OFFERS} counted lines before (0.6.21), and scored at least the line's bar under these
-     * rules) counts as 100, below {@value #LEAST_BAR}: bars an accept held up never grow the
-     * minimums. The lines are all scored under exactly these rules ({@link #samePolicy}), so an accept's score is what
-     * it set the floor to then. A line Autopilot's own value rule set above every accept's score still counts.
-     *
-     * @param accepts the hand accepts ({@link Autopilot#handAccepts}), scored under {@code rules}
-     */
-    static Evidence evidence(FilterSettings rules, List<Autopilot.OfferRecord> counted, long since, TimeZone zone,
-                             List<Autopilot.HandAccept> accepts) {
         if (rules == null || !rules.hasMonetaryRule() || learningDominates(rules) || counted == null || zone == null) return null;
         List<Autopilot.OfferRecord> lines = new ArrayList<>(OFFERS);
         for (Autopilot.OfferRecord record : counted) {
             if (lines.size() == OFFERS) break;
-            if (record == null || !record.autopilot || record.at < since || !samePolicy(record, rules)) continue;
+            if (record == null || record.at < since || !samePolicy(record, rules)) continue;
             lines.add(record);
         }
         if (lines.size() < OFFERS) return null;
-        int lowest = Integer.MAX_VALUE;
+        int[] scores = new int[lines.size()];
         Set<Long> days = new HashSet<>();
-        for (Autopilot.OfferRecord record : lines) {
-            lowest = Math.min(lowest, held(record, accepts, counted) ? FilterSettings.BAR_AT_MINIMUMS : record.bar);
-            days.add(day(record.at, zone));
+        for (int i = 0; i < scores.length; i++) {
+            scores[i] = score(rules, lines.get(i));
+            days.add(day(lines.get(i).at, zone));
         }
-        if (lowest < LEAST_BAR || days.size() < LEAST_DAYS) return null;
-        int percent = Math.min(MOST_PERCENT, lowest - FilterSettings.BAR_AT_MINIMUMS);
-        // The bar comes down with the minimums only from 100 + g: below that, growing would ask offers for more.
-        if (rules.minimumScalePercent < FilterSettings.BAR_AT_MINIMUMS + percent) return null;
-        Grown grown = grown(rules, percent);
-        return grown == null ? null : new Evidence(lines.size(), days.size(), lowest, since, grown);
+        if (days.size() < LEAST_DAYS) return null;
+        int bar = Autopilot.shareBar(scores, SHARE).bar;
+        if (bar < LEAST_BAR) return null;
+        Grown grown = grown(rules, Math.min(MOST_PERCENT, bar - FilterSettings.BAR_AT_MINIMUMS));
+        return grown == null ? null : new Evidence(lines.size(), days.size(), bar, since, grown);
     }
 
     /**
-     * Whether some hand accept could have held {@code line}'s bar: before it, within the horizon or fewer than
-     * {@value Autopilot#FLOOR_OFFERS} of {@code counted} before it, scoring as much.
+     * What a line's offer paid, in percent of {@code rules}' minimums ({@link AreaScore#passThreshold}): a skipped
+     * store's offer, one with more stops than allowed, and one whose pay was not read count as 0, nothing above them.
      */
-    private static boolean held(Autopilot.OfferRecord line, List<Autopilot.HandAccept> accepts,
-                                List<Autopilot.OfferRecord> counted) {
-        if (accepts == null) return false;
-        for (Autopilot.HandAccept accept : accepts) {
-            if (accept.at >= line.at || accept.score < line.bar) continue;
-            if (line.at - accept.at <= HELD_HORIZON_MS
-                    || Autopilot.offersBetween(counted, accept.at, line.at) < Autopilot.FLOOR_OFFERS) return true;
-        }
-        return false;
+    private static int score(FilterSettings rules, Autopilot.OfferRecord line) {
+        if (line.skipped || line.facts == null) return 0;
+        int score = AreaScore.passThreshold(rules, line.facts);
+        return score == Integer.MAX_VALUE ? 0 : score;
     }
 
     /** Growing saved knobs cannot compensate a lower bar on stronger learned floors; wait for Adopt or learner off. */
@@ -214,9 +190,11 @@ final class Growth {
 
     /**
      * The bar after a growth of {@code percent} points: {@code max(100, round(bar × 100 ÷ (100 + g)))}, rounded half
-     * up, so the bar times the grown minimums asks what the bar asked of the minimums before, within rounding.
+     * up, so the bar times the grown minimums asks what the bar asked of the minimums before, within rounding; a bar at
+     * or below 100 stays (0.6.21: before, growth waited for a bar of {@code 100 + g}).
      */
     static int barAfter(int bar, int percent) {
+        if (bar <= FilterSettings.BAR_AT_MINIMUMS) return bar;
         long grown = 100L + percent;
         long rounded = (200L * bar + grown) / (2 * grown);
         return (int) Math.max(FilterSettings.BAR_AT_MINIMUMS, rounded);

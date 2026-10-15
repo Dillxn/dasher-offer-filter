@@ -23,9 +23,10 @@ import static org.junit.Assert.assertTrue;
 /**
  * The minimums grow through Autopilot's runtime (0.5.1): a plan finds the evidence, and the commit at a safe point grows
  * them in place of a bar move, at most once, logged in one fixed line, with the bar's change note "your minimums grew"
- * and the growth kept for its note; never while Autopilot recovers toward its goal, with "Let my minimums grow" off,
- * with Autopilot off, before the notice is accepted, while a change of the user's waits, or when anything changed
- * since the evidence. Undo is the user's change; Clear history removes the note and its Undo. Plans run on the
+ * and the growth kept for its note; with Autopilot off too (0.6.21, the owner: "mins growing should not be narried to
+ * autopilot"), the bar staying at exactly 100 and no plan logged; never while Autopilot recovers toward its goal, with
+ * "Let my minimums grow" off, before the notice is accepted, while a change of the user's waits, or when anything
+ * changed since the evidence. Undo is the user's change; Clear history removes the note and its Undo. Plans run on the
  * calling thread; the clocks are the test's.
  */
 @RunWith(RobolectricTestRunner.class)
@@ -34,9 +35,13 @@ import static org.junit.Assert.assertTrue;
 public class MinimumsGrowthRuntimeTest {
     private static final long MIN = 60_000L;
     private static final long HOUR = 60 * MIN;
-    /** What the spec's example logs. */
-    private static final String GREW = "minimums grew 8% after 30 offers above 103% on 2 days: $4.00/stop -> $4.32/stop, "
-            + "$1.00/mi -> $1.08/mi, $15.00/hr -> $16.20/hr (bar 112% -> 104%)";
+    /** What growing the typical minimums 10% at a bar of 112% logs: the fixture's offers paid 187% or more. */
+    private static final String GREW = "minimums grew 10% after 1 in 5 of 30 offers on 2 days paid 150% or more: "
+            + "$4.00/stop -> $4.40/stop, $1.00/mi -> $1.10/mi, $15.00/hr -> $16.80/hr (bar 112% -> 102%)";
+    /** The same with Autopilot off: the bar stays at exactly 100. */
+    private static final String GREW_OFF = "minimums grew 10% after 1 in 5 of 30 offers on 2 days paid 150% or more: "
+            + "$4.00/stop -> $4.40/stop, $1.00/mi -> $1.10/mi, $15.00/hr -> $16.80/hr (bar 100% -> 100%)";
+    private static final int[] GROWN = {440, 110, 28, 0, 0, 0};
 
     private Application app;
     private long wall;
@@ -87,7 +92,8 @@ public class MinimumsGrowthRuntimeTest {
 
     /**
      * 30 offers Autopilot judged at {@code bar} since the minimums took effect: 15 yesterday and 15 in the last two
-     * hours, each passed and left to the user.
+     * hours, each passed and left to the user. Each paid 187% of the typical minimums or more ($15.00 or more for 2
+     * stops, 6.6 mi and 27 min), so they pass at every bar and grow the minimums the most, 10 points.
      */
     private void history(int bar) {
         FilterSettings scoringRules = rules().withMinimumScalePercent(bar);
@@ -130,6 +136,7 @@ public class MinimumsGrowthRuntimeTest {
         assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, rules().minimums());
         assertNull(AutopilotStore.lastGrowth(app));
         assertEquals(0, count(GREW));
+        assertEquals(0, count(GREW_OFF));
     }
 
     // ---- Growth ----
@@ -137,41 +144,41 @@ public class MinimumsGrowthRuntimeTest {
     @Test public void theMinimumsGrowAtACommitInPlaceOfABarMoveOnceLoggedAndNoted() {
         history(108);
         Autopilot.Plan plan = plan();
-        assertNotNull("due: 30 offers at 108% over two days", plan.growth);
-        assertEquals(8, plan.growth.percent());
+        assertNotNull("due: 30 offers well above the minimums over two days", plan.growth);
+        assertEquals(10, plan.growth.percent());
         assertTrue("the plan asks the screen reader for a commit", requests > 0);
         assertTrue(AutopilotRuntime.commitWanted(app));
 
         assertEquals(AutopilotRuntime.Commit.GREW, AutopilotRuntime.commitIfDue(app));
         FilterSettings grown = rules();
-        assertArrayEquals(new int[] {432, 108, 27, 0, 0, 0}, grown.minimums());
-        assertEquals(104, grown.minimumScalePercent);
+        assertArrayEquals(GROWN, grown.minimums());
+        assertEquals(102, grown.minimumScalePercent);
         assertEquals("max stops never grows", 3, grown.maxStops);
         assertEquals(wall, FilterStore.minimumsSince(app));
         assertEquals(1, count(GREW));
         // The bar's change note says why it came down.
         AutopilotStore.Change change = AutopilotStore.lastChange(app);
         assertEquals(112, change.from);
-        assertEquals(104, change.to);
+        assertEquals(102, change.to);
         assertEquals("MINIMUMS_GREW", change.why);
         // The growth is kept, with its note.
         AutopilotStore.Grew grew = AutopilotStore.lastGrowth(app);
         assertEquals(wall, grew.at);
-        assertEquals(8, grew.grown.percent);
+        assertEquals(10, grew.grown.percent);
         assertEquals(30, grew.offers);
         assertEquals(2, grew.days);
         assertEquals(400, grew.grown.flatBefore);
-        assertEquals(432, grew.grown.flatAfter);
+        assertEquals(440, grew.grown.flatAfter);
         assertEquals(112, grew.grown.barBefore);
-        assertEquals(104, grew.grown.barAfter);
+        assertEquals(102, grew.grown.barAfter);
         assertTrue(grew.note);
         assertNotNull(AutopilotRuntime.growthNote(app));
         // Autopilot's details say when, and why the bar moved.
         List<String> details = AutopilotText.detailsLines(AutopilotRuntime.status(app, wall, true));
-        assertTrue(details.toString(), details.contains("Last change less than a minute ago: 112% → 104% (your "
+        assertTrue(details.toString(), details.contains("Last change less than a minute ago: 112% → 102% (your "
                 + "minimums grew)."));
-        assertTrue(details.toString(), details.contains("Your minimums last grew 8%, less than a minute ago: $4.00/stop → "
-                + "$4.32/stop · $1.00/mi → $1.08/mi · $15/hr → $16.20/hr."));
+        assertTrue(details.toString(), details.contains("Your minimums last grew 10%, less than a minute ago: "
+                + "$4.00/stop → $4.40/stop · $1.00/mi → $1.10/mi · $15/hr → $16.80/hr."));
 
         // At most once: the evidence starts again from the grown minimums, and these 30 offers are from before them.
         elapsed += 2 * MIN;
@@ -179,7 +186,7 @@ public class MinimumsGrowthRuntimeTest {
         Autopilot.Plan next = plan();
         assertNull(next.growth);
         assertTrue(AutopilotRuntime.commitIfDue(app) != AutopilotRuntime.Commit.GREW);
-        assertArrayEquals(new int[] {432, 108, 27, 0, 0, 0}, rules().minimums());
+        assertArrayEquals(GROWN, rules().minimums());
         assertEquals(1, count(GREW));
     }
 
@@ -209,20 +216,35 @@ public class MinimumsGrowthRuntimeTest {
         AutopilotRuntime.setMinimumsGrow(app, true);
         assertEquals(1, count("minimums growth on"));
         assertEquals(AutopilotRuntime.Commit.GREW, AutopilotRuntime.commitIfDue(app));
-        assertArrayEquals(new int[] {432, 108, 27, 0, 0, 0}, rules().minimums());
+        assertArrayEquals(GROWN, rules().minimums());
     }
 
-    @Test public void notWithAutopilotOffNorBeforeTheNoticeIsAccepted() {
+    @Test public void withAutopilotOffTooButNotBeforeTheNoticeIsAccepted() {
         history(108);
-        plan();
         AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
-        assertEquals(AutopilotRuntime.Commit.NO_PLAN, AutopilotRuntime.commitIfDue(app));
-        assertNotGrown();
-        AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        assertEquals("off, the bar is exactly 100", 100, rules().minimumScalePercent);
+        Autopilot.Plan plan = plan();
+        assertEquals("a plan for the growth alone", Autopilot.Mode.OFF, plan.mode);
+        assertNotNull(plan.growth);
+        assertTrue(AutopilotRuntime.commitWanted(app));
         ConsentedTestApp.forget(app);
         assertEquals(AutopilotRuntime.Commit.NO_PLAN, AutopilotRuntime.commitIfDue(app));
         assertNotGrown();
         ConsentedTestApp.accept(app);
+        assertEquals(AutopilotRuntime.Commit.GREW, AutopilotRuntime.commitIfDue(app));
+        assertArrayEquals(GROWN, rules().minimums());
+        assertEquals("the bar stays at exactly 100", 100, rules().minimumScalePercent);
+        assertFalse("Autopilot stays off", rules().autopilot);
+        assertEquals(1, count(GREW_OFF));
+        assertNull("no change note: the bar did not move", AutopilotStore.lastChange(app));
+        assertNotNull(AutopilotRuntime.growthNote(app));
+        for (String line : logged()) assertFalse("no plan is logged while Autopilot is off: " + line,
+                line.startsWith("plan "));
+        // Off with "Let my minimums grow" off too, nothing is planned at all.
+        AutopilotRuntime.setMinimumsGrow(app, false);
+        AutopilotRuntime.forgetCache();
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.USER);
+        assertNull(AutopilotRuntime.latest());
     }
 
     @Test public void neverForAUserWithNoMoneyMinimum() {
@@ -252,7 +274,7 @@ public class MinimumsGrowthRuntimeTest {
         assertNull(AutopilotStore.lastGrowth(app));
         // Then the growth, at the next commit.
         assertEquals(AutopilotRuntime.Commit.GREW, AutopilotRuntime.commitIfDue(app));
-        assertArrayEquals(new int[] {432, 108, 27, 0, 0, 0}, rules().minimums());
+        assertArrayEquals(GROWN, rules().minimums());
     }
 
     @Test public void aChangeBetweenTheEvidenceAndTheWriteWritesNothing() {
@@ -288,11 +310,12 @@ public class MinimumsGrowthRuntimeTest {
         FilterSettings undone = rules();
         assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, undone.minimums());
         assertEquals(wall, FilterStore.minimumsSince(app));
-        assertEquals("the bar waits for Autopilot", 104, undone.minimumScalePercent);
+        assertEquals("the bar waits for Autopilot", 102, undone.minimumScalePercent);
         assertEquals("other minimums: a jump at the next safe point", "RULES_CHANGED", AutopilotStore.jump(app));
         assertNull("the note and the growth's record go", AutopilotStore.lastGrowth(app));
         assertNull(AutopilotRuntime.growthNote(app));
-        assertEquals(1, count("minimums growth undone: $4.32/stop -> $4.00/stop, $1.08/mi -> $1.00/mi, $16.20/hr -> $15.00/hr"));
+        assertEquals(1, count("minimums growth undone: $4.40/stop -> $4.00/stop, $1.10/mi -> $1.00/mi, $16.80/hr -> "
+                + "$15.00/hr"));
         assertFalse("once", AutopilotRuntime.undoGrowth(app, grewAt));
         // The jump is the next commit's, as for any change of minimums; no growth comes back on the same evidence.
         AutopilotRuntime.Commit next = AutopilotRuntime.commitIfDue(app);
@@ -319,12 +342,12 @@ public class MinimumsGrowthRuntimeTest {
         AutopilotStore.recordGrowth(app, growthAgain(), wall);
         assertNotNull(AutopilotRuntime.growthNote(app));
         wall += MIN;
-        FilterStore.save(app, rules().withMinimums(432, 108, 30));
+        FilterStore.save(app, rules().withMinimums(440, 110, 30));
         assertNull(AutopilotRuntime.growthNote(app));
-        FilterStore.save(app, rules().withMinimums(432, 108, 27));
+        FilterStore.save(app, rules().withMinimums(440, 110, 28));
         assertNull("changed back, the note stays gone", AutopilotRuntime.growthNote(app));
         assertFalse(AutopilotRuntime.undoGrowth(app, grewAt));
-        assertArrayEquals(new int[] {432, 108, 27, 0, 0, 0}, rules().minimums());
+        assertArrayEquals(GROWN, rules().minimums());
     }
 
     /** The growth just made, as its record kept it, to note again. */
@@ -345,7 +368,7 @@ public class MinimumsGrowthRuntimeTest {
         assertNull(AutopilotRuntime.growthNote(app));
         assertFalse(AutopilotRuntime.undoGrowth(app, grewAt));
         FilterSettings kept = rules();
-        assertArrayEquals("the rules stay", new int[] {432, 108, 27, 0, 0, 0}, kept.minimums());
+        assertArrayEquals("the rules stay", GROWN, kept.minimums());
         assertTrue(kept.autopilot);
         assertFalse("and Autopilot's settings", FilterStore.minimumsGrow(app));
         List<String> details = AutopilotText.detailsLines(AutopilotRuntime.status(app, wall, true));

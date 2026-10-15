@@ -242,7 +242,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         return String.valueOf(Shadows.shadowOf(dialog).getTitle());
     }
 
-    /** A dialog's message; for Autopilot's details, the words over its switch (MainActivity.DETAILS_WORDS_ID). */
+    /** A dialog's message; for Autopilot's details, its words (MainActivity.DETAILS_WORDS_ID). */
     private static String message(AlertDialog dialog) {
         CharSequence message = Shadows.shadowOf(dialog).getMessage();
         if (message != null && message.length() > 0) return String.valueOf(message);

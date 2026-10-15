@@ -487,7 +487,9 @@ public class AutopilotFloorRuntimeTest {
         pinned();
         AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
         accepted(DecisionLog.StepKind.ACCEPTED);
-        assertNull(AutopilotRuntime.latest());
+        // Plans are still worked out for the minimums' growth (0.6.21), Autopilot off: they move no bar.
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertTrue(plan == null || plan.mode == Autopilot.Mode.OFF);
         assertEquals(AutopilotRuntime.Commit.NO_PLAN, AutopilotRuntime.commitIfDue(app));
         assertEquals(100, bar());
     }
@@ -622,10 +624,12 @@ public class AutopilotFloorRuntimeTest {
     // ---- Growth ----
 
     /**
-     * Typical minimums Autopilot has held at 108% over two days (growth is due), then a hand accept scoring past 150%
-     * this dash: while the floor binds, its commit comes in place of the growth, and nothing grows.
+     * Minimums Autopilot has held at 112% over two days, under offers paying well above them (growth is due), then a
+     * hand accept scoring past 150% this dash: the growth still comes first (0.6.21: it follows what offers paid, so a
+     * bar the floor holds up no longer stops it; before, nothing grew while the floor bound), and at the next commit the
+     * accept holds the bar at its score under the grown minimums.
      */
-    @Test public void noGrowthWhileTheFloorHoldsTheBar() {
+    @Test public void theMinimumsGrowWhileTheFloorHoldsTheBarAndTheAcceptHoldsItAfter() {
         zone = new MiddayZone(wall);
         long since = wall - 3 * 24 * HOUR;
         FilterStore.wallClock = () -> since;
@@ -657,10 +661,16 @@ public class AutopilotFloorRuntimeTest {
         assertNotNull("the 30 lines came before the accept: still evidence", plan.growth);
         assertEquals(150, plan.floor);
         assertTrue(plan.floorBinds());
+        assertEquals(AutopilotRuntime.Commit.GREW, AutopilotRuntime.commitIfDue(app));
+        assertArrayEquals("10%: every offer paid 50% or more above them", new int[] {220, 110, 28, 0, 0, 0},
+                FilterStore.load(app).minimums());
+        assertEquals("the bar comes down by the same share", 102, bar());
+        assertNotNull(AutopilotStore.lastGrowth(app));
+        int score = AreaScore.scorePercent(FilterStore.load(app), rich);
+        assertTrue("under the grown minimums it scores less, below 150%: " + score, score < 150);
+        assertEquals(score, AutopilotRuntime.latest().floor);
         assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
-        assertEquals(150, bar());
-        assertEquals("commit 112% -> 150% (you accepted an offer at this score)", lastCommit());
-        assertArrayEquals(new int[] {200, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
-        assertNull(AutopilotStore.lastGrowth(app));
+        assertEquals(score, bar());
+        assertEquals("commit 102% -> " + score + "% (you accepted an offer at this score)", lastCommit());
     }
 }

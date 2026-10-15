@@ -96,6 +96,8 @@ final class AutopilotStore {
     private static final String KEPT_ACCEPTS = "kept_accepts";
     /** At most this many kept accepts, the newest. */
     static final int KEPT_ACCEPTS_MAX = 100;
+    /** A hand accept is kept this long (0.6.19's 7 days, the accepted floor's reach from 0.6.18 to 0.6.20). */
+    static final long KEEP_ACCEPTS_MS = 7 * 24 * 60 * 60_000L;
 
     /** Changes whenever anything here is written or cleared, so a screen can skip redrawing unchanged state. */
     static volatile long version;
@@ -288,9 +290,9 @@ final class AutopilotStore {
 
     /**
      * Keeps the hand accepts in {@code newestFirst} for the accepted floor (0.6.19), so an accept still counts for 7
-     * days after its line leaves the latest 200 decisions, and returns every kept one, newest first, as a line
-     * Autopilot scores only for the floor. From 0.6.21 the floor lets go of an accept 24 offers after it, so a kept one
-     * rarely holds the bar, but {@link Growth} still asks which bars one held up. Kept: an offer the user accepted by hand at or after {@code since}
+     * days ({@link #KEEP_ACCEPTS_MS}) after its line leaves the latest 200 decisions, and returns every kept one, newest
+     * first, as a line Autopilot scores only for the floor. From 0.6.21 the floor lets go of an accept 24 offers after
+     * it, so a kept one rarely holds the bar. Kept: an offer the user accepted by hand at or after {@code since}
      * and the floor's last restart, with its pay read, and not an add-on, a replay, a skipped store's or misread; at
      * most {@link #KEPT_ACCEPTS_MAX}, the newest. Older ones are forgotten here. Written only when that changes.
      */

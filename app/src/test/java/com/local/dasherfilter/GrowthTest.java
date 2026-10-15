@@ -14,11 +14,13 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Your minimums grow (0.5.1, the owner's decision of 7 October 2026), the evidence and the arithmetic, exactly: of
- * Autopilot's counted lines, only those it decided (model 2, "auto") since the minimums took effect count; the newest
- * 30 must all be at a bar of 103% or more and fall on two calendar days in the phone's time zone; the growth is
- * {@code min(10, lowest − 100)} points; each set minimum is rounded up in its own unit, an unset one stays unset, and
- * the bar comes down so an offer is asked the same, within rounding.
+ * Your minimums grow (0.5.1, the owner's decision of 7 October 2026), the evidence and the arithmetic, exactly. From
+ * 0.6.21 it follows the offers, Autopilot on or off (the owner, 15 October 2026: "mins growing should not be narried to
+ * autopilot"): of the counted lines scored under these rules since the minimums took effect, the newest 30 must fall on
+ * two calendar days in the phone's time zone, and 1 in 5 of them must have paid 103% of the minimums or more; the
+ * growth is {@code min(10, share bar − 100)} points, the share bar being the highest score 1 in 5 of them met. Each set
+ * minimum is rounded up in its own unit, an unset one stays unset, and a bar above 100 comes down so an offer is asked
+ * the same, within rounding; a bar at or below 100 stays.
  */
 public final class GrowthTest {
     /** Cincinnati's time zone, where the phone is. */
@@ -34,31 +36,56 @@ public final class GrowthTest {
         return new FilterSettings(true, flat, mile, minute, 0, true, FilterSettings.GOAL_TOP_TIER, bar);
     }
 
-    /** A line Autopilot decided at {@code bar} at {@code at}, each a distinct offer (no two are deduplicated). */
-    private static Autopilot.OfferRecord line(long at, int bar) {
-        return line(at, bar, true, DecisionLog.STRICT_MODEL);
+    /** The pay that makes an offer of 6.6 mi, 27 min and 2 stops score {@code score} under {@code rules}. */
+    private static int payFor(FilterSettings rules, int score) {
+        int low = 1;
+        int high = 10_000_000;
+        while (low < high) {
+            int mid = (low + high) >>> 1;
+            if (AreaScore.passThreshold(rules, new OfferSnapshot(mid, 6.6, 27, 2)) >= score) high = mid;
+            else low = mid + 1;
+        }
+        assertEquals(score, AreaScore.passThreshold(rules, new OfferSnapshot(low, 6.6, 27, 2)));
+        return low;
     }
 
-    private static Autopilot.OfferRecord line(long at, int bar, boolean auto, int model) {
-        int pay = 900 + (int) Math.floorMod(at / MIN, 5_000L);
-        return new Autopilot.OfferRecord(new OfferSnapshot(pay, 6.6, 27, 2), at, false, false, false, false, false,
-                bar, auto, model);
+    /** An offer at {@code at} that scored {@code score} under {@link #TYPICAL}, decided with Autopilot on. */
+    private static Autopilot.OfferRecord line(long at, int score) {
+        return line(TYPICAL, at, score, true, DecisionLog.STRICT_MODEL);
+    }
+
+    private static Autopilot.OfferRecord line(FilterSettings rules, long at, int score, boolean auto, int model) {
+        return new Autopilot.OfferRecord(new OfferSnapshot(payFor(rules, score), 6.6, 27, 2), at, false, false, false,
+                false, false, rules.minimumScalePercent, auto, model);
     }
 
     /**
-     * {@code count} lines at {@code bar}, newest first: half on Tuesday afternoon, half on Wednesday afternoon (or all
-     * on Tuesday when {@code oneDay}), five minutes apart.
+     * {@code count} offers that scored {@code score} under {@link #TYPICAL}, newest first: half on Tuesday afternoon,
+     * half on Wednesday afternoon (or all on Tuesday when {@code oneDay}), five minutes apart.
      */
-    private static List<Autopilot.OfferRecord> lines(int count, int bar, boolean oneDay) {
+    private static List<Autopilot.OfferRecord> lines(int count, int score, boolean oneDay) {
+        return lines(TYPICAL, count, score, oneDay);
+    }
+
+    private static List<Autopilot.OfferRecord> lines(FilterSettings rules, int count, int score, boolean oneDay) {
         List<Autopilot.OfferRecord> lines = new ArrayList<>();
         int half = (count + 1) / 2;
         for (int i = 0; i < count; i++) {
             boolean wednesday = !oneDay && i < half;
             int step = oneDay || wednesday ? i : i - half;
-            lines.add(line(TUESDAY_NOON + (wednesday ? 24 * HOUR : 0) + 4 * HOUR - 5 * MIN * step, bar));
+            lines.add(line(rules, TUESDAY_NOON + (wednesday ? 24 * HOUR : 0) + 4 * HOUR - 5 * MIN * step, score, true,
+                    DecisionLog.STRICT_MODEL));
         }
         Collections.sort(lines, (a, b) -> Long.compare(b.at, a.at));
         return lines;
+    }
+
+    /** {@code history} with the lines at {@code indexes} scoring {@code score} instead. */
+    private static List<Autopilot.OfferRecord> scoring(List<Autopilot.OfferRecord> history, int score,
+                                                       int... indexes) {
+        List<Autopilot.OfferRecord> changed = new ArrayList<>(history);
+        for (int i : indexes) changed.set(i, line(changed.get(i).at, score));
+        return changed;
     }
 
     private static Growth.Evidence evidence(FilterSettings rules, List<Autopilot.OfferRecord> newestFirst, long since) {
@@ -67,15 +94,15 @@ public final class GrowthTest {
 
     // ---- The evidence ----
 
-    @Test public void thirtyOffersAboveYourMinimumsOnTwoDaysGrowThemByTheLowestBarsGain() {
-        List<Autopilot.OfferRecord> history = lines(30, 115, false);
-        // One of them at 108%: the lowest bar sets the growth, 8 points.
-        history.set(7, line(history.get(7).at, 108));
+    @Test public void oneInFiveOfThirtyOffersOnTwoDaysAboveYourMinimumsGrowThemByWhatTheyPaidAbove() {
+        // 24 offers at 90% of the minimums, and 6 (1 in 5) at 108% or more: the sixth best sets the growth, 8 points.
+        List<Autopilot.OfferRecord> history = scoring(lines(30, 90, false), 108, 1, 6, 11, 16, 21);
+        history = scoring(history, 125, 26);
         Growth.Evidence due = evidence(TYPICAL, history, TUESDAY_NOON - HOUR);
         assertNotNull(due);
         assertEquals(30, due.offers);
         assertEquals(2, due.days);
-        assertEquals(108, due.lowestBar);
+        assertEquals(108, due.shareBar);
         assertEquals(8, due.percent());
         assertEquals(TUESDAY_NOON - HOUR, due.since);
         // The spec's example: $4.00 · $1.00/mi · $15/hr grow 8% to $4.32 · $1.08/mi · $16.20/hr, and the bar 112% → 104%.
@@ -89,6 +116,8 @@ public final class GrowthTest {
         assertEquals(27, grown.minuteAfter);
         assertEquals(1620, grown.minuteAfter * 60);
         assertEquals(104, grown.barAfter);
+        // Five of them are not 1 in 5.
+        assertNull(evidence(TYPICAL, scoring(history, 90, 26), TUESDAY_NOON - HOUR));
     }
 
     @Test public void twentyNineOffersAreNotEnough() {
@@ -96,18 +125,17 @@ public final class GrowthTest {
         assertNotNull(evidence(TYPICAL, lines(30, 120, false), TUESDAY_NOON - HOUR));
     }
 
-    @Test public void oneOfTheNewestThirtyAtOneHundredAndTwoHoldsTheMinimums() {
-        List<Autopilot.OfferRecord> history = lines(30, 120, false);
-        history.set(29, line(history.get(29).at, 102));
-        assertNull("one offer at 102% among the newest 30", evidence(TYPICAL, history, TUESDAY_NOON - HOUR));
-        history.set(29, line(history.get(29).at, 103));
-        Growth.Evidence at103 = evidence(TYPICAL, history, TUESDAY_NOON - HOUR);
+    @Test public void oneInFiveAtOneHundredAndTwoHoldsTheMinimums() {
+        List<Autopilot.OfferRecord> history = scoring(lines(30, 80, false), 102, 0, 5, 10, 15, 20, 25);
+        assertNull("1 in 5 at 102%", evidence(TYPICAL, history, TUESDAY_NOON - HOUR));
+        Growth.Evidence at103 = evidence(TYPICAL, scoring(history, 103, 0, 5, 10, 15, 20, 25),
+                TUESDAY_NOON - HOUR);
         assertNotNull("103% is enough", at103);
         assertEquals("and grows them 3 points", 3, at103.percent());
-        // An older line at 102%, past the newest 30, says nothing.
-        List<Autopilot.OfferRecord> longer = new ArrayList<>(lines(30, 120, false));
-        longer.add(line(longer.get(29).at - 5 * MIN, 102));
-        assertNotNull(evidence(TYPICAL, longer, TUESDAY_NOON - 2 * HOUR));
+        // Older offers at 120%, past the newest 30, say nothing.
+        List<Autopilot.OfferRecord> longer = new ArrayList<>(history);
+        for (int i = 1; i <= 6; i++) longer.add(line(history.get(29).at - 5 * MIN * i, 120));
+        assertNull(evidence(TYPICAL, longer, TUESDAY_NOON - 2 * HOUR));
     }
 
     @Test public void oneCalendarDayInThePhonesTimeZoneIsNotEnough() {
@@ -117,15 +145,14 @@ public final class GrowthTest {
         long midnight = TUESDAY_NOON + 12 * HOUR;
         List<Autopilot.OfferRecord> evening = new ArrayList<>();
         for (int i = 0; i < 30; i++) evening.add(line(midnight + 70 * MIN - 9 * MIN * i, 120));
-        Growth.Evidence due = evidence(TYPICAL, evening, TUESDAY_NOON);
-        assertNotNull(due);
+        Growth.Evidence due = evidence(TYPICAL, evening, TUESDAY_NOON);        assertNotNull(due);
         assertEquals(2, due.days);
         assertNull("the same instants in UTC are one day",
                 Growth.evidence(TYPICAL, Autopilot.countedLines(evening), TUESDAY_NOON, TimeZone.getTimeZone("UTC")));
         assertEquals(Growth.day(midnight - MIN, EASTERN) + 1, Growth.day(midnight, EASTERN));
     }
 
-    @Test public void onlyLinesDecidedSinceTheMinimumsTookEffectCount() {
+    @Test public void onlyOffersSinceTheMinimumsTookEffectCount() {
         List<Autopilot.OfferRecord> history = lines(30, 120, false);
         long oldest = history.get(29).at;
         assertNotNull("decided at the very moment they took effect counts", evidence(TYPICAL, history, oldest));
@@ -139,19 +166,35 @@ public final class GrowthTest {
         assertNull("and not on the older ones", evidence(TYPICAL, forty, oldest + 1));
     }
 
-    @Test public void onlyLinesAutopilotDecidedUnderTheseRulesCountAndOthersAreSkipped() {
+    /**
+     * Autopilot on or off (0.6.21): offers decided with Autopilot off count the same, and so do offers whose pay
+     * Autopilot's own bar held to; an offer scored under other rules (an older version's line) is skipped, and one
+     * whose pay was not read counts as nothing above.
+     */
+    @Test public void offersCountWithAutopilotOnOrOffAndOnlyUnderTheseRules() {
+        List<Autopilot.OfferRecord> off = new ArrayList<>();
+        for (Autopilot.OfferRecord line : lines(30, 120, false)) {
+            off.add(new Autopilot.OfferRecord(line.facts, line.at, false, false, false, false, false, 100, false,
+                    DecisionLog.STRICT_MODEL));
+        }
+        Growth.Evidence due = evidence(TYPICAL.withAutopilot(false, FilterSettings.GOAL_TOP_TIER)
+                .withMinimumScalePercent(100), off, 0);
+        assertNotNull("Autopilot off, they grow", due);
+        assertEquals(10, due.percent());
+        assertEquals("the bar stays at exactly 100", 100, due.grown.barAfter);
+        assertEquals(440, due.grown.flatAfter);
+        // A line an older version wrote sits among them: skipped, it holds nothing back.
         List<Autopilot.OfferRecord> history = new ArrayList<>(lines(30, 120, false));
-        // Lines decided with Autopilot off (its bar was not Autopilot's), and a line an older version wrote, sit
-        // among them: they are not evidence, either way.
-        history.add(3, line(history.get(3).at + MIN, 100, false, DecisionLog.STRICT_MODEL));
-        history.add(9, line(history.get(9).at + MIN, 140, false, DecisionLog.STRICT_MODEL));
-        history.add(12, line(history.get(12).at + MIN, 100, true, DecisionLog.LEGACY_MODEL));
-        Growth.Evidence due = evidence(TYPICAL, history, TUESDAY_NOON - HOUR);
-        assertNotNull("skipped, they hold nothing back", due);
-        assertEquals(30, due.offers);
-        // With one of Autopilot's own lines gone, 29 are left: not enough, however many others there are.
-        history.remove(0);
-        assertNull(evidence(TYPICAL, history, TUESDAY_NOON - HOUR));
+        history.add(3, new Autopilot.OfferRecord(new OfferSnapshot(payFor(TYPICAL, 90), 6.6, 27, 2),
+                history.get(3).at + MIN, false, false, false, false, false, 100, true, DecisionLog.LEGACY_MODEL));
+        assertEquals(30, evidence(TYPICAL, history, TUESDAY_NOON - HOUR).offers);
+        // Six offers whose pay was not read are not 1 in 5 above.
+        List<Autopilot.OfferRecord> unread = scoring(lines(30, 90, false), 120, 0, 5, 10, 15, 20, 25);
+        assertNotNull(evidence(TYPICAL, unread, 0));
+        Autopilot.OfferRecord one = unread.get(25);
+        unread.set(25, new Autopilot.OfferRecord(new OfferSnapshot(null, 6.6, 27, 2), one.at, false, false, false,
+                false, false, 112, true, DecisionLog.STRICT_MODEL));
+        assertNull(evidence(TYPICAL, unread, 0));
         // Add-ons, replays and an offer read twice within two minutes are not counted lines at all.
         List<Autopilot.OfferRecord> counted = new ArrayList<>(lines(29, 120, false));
         Autopilot.OfferRecord newest = counted.get(0);
@@ -166,6 +209,8 @@ public final class GrowthTest {
 
     @Test public void theGrowthIsAtMostTenPointsAndAtLeastThree() {
         assertEquals(10, evidence(TYPICAL.withMinimumScalePercent(150), lines(30, 150, false), 0).percent());
+        assertEquals("a share bar of 150 at most", 150,
+                evidence(TYPICAL, lines(30, 180, false), 0).shareBar);
         assertEquals(10, evidence(TYPICAL, lines(30, 125, false), 0).percent());
         assertEquals(10, evidence(TYPICAL, lines(30, 110, false), 0).percent());
         assertEquals(9, evidence(TYPICAL, lines(30, 109, false), 0).percent());
@@ -176,15 +221,16 @@ public final class GrowthTest {
         assertNull(Growth.grown(TYPICAL, 11));
     }
 
-    @Test public void itWaitsWhileTheBarIsBelowWhereItCouldComeDownWithTheMinimums() {
+    /**
+     * 0.6.21: growth no longer waits for a bar of {@code 100 + g}. A bar above 100 comes down as far as it can, never
+     * below 100; one at or below 100 stays, so the grown minimums ask more of the next offers.
+     */
+    @Test public void aBarBelowWhereItCouldComeDownWithTheMinimumsNoLongerHoldsGrowthBack() {
         List<Autopilot.OfferRecord> history = lines(30, 115, false);
-        // Ten points are due, but Autopilot has since lowered the bar to 109%: grown now, the bar could not come down
-        // with the minimums (it would have to be 99%), and offers would be asked 1% more. It waits.
-        assertNull(evidence(TYPICAL.withMinimumScalePercent(109), history, 0));
-        assertNull(evidence(TYPICAL.withMinimumScalePercent(82), history, 0));
-        Growth.Evidence due = evidence(TYPICAL.withMinimumScalePercent(110), history, 0);
-        assertNotNull(due);
-        assertEquals(100, due.grown.barAfter);
+        assertEquals(100, evidence(TYPICAL.withMinimumScalePercent(109), history, 0).grown.barAfter);
+        assertEquals(100, evidence(TYPICAL.withMinimumScalePercent(110), history, 0).grown.barAfter);
+        assertEquals(82, evidence(TYPICAL.withMinimumScalePercent(82), history, 0).grown.barAfter);
+        assertEquals(100, evidence(TYPICAL.withMinimumScalePercent(100), history, 0).grown.barAfter);
     }
 
     @Test public void noMoneyMinimumNoGrowth() {
@@ -212,7 +258,7 @@ public final class GrowthTest {
 
     @Test public void anUnsetMinimumStaysUnsetAndNothingElseIsTouched() {
         FilterSettings perMileOnly = new FilterSettings(false, 0, 150, 0, 3, true, FilterSettings.GOAL_TIER, 118);
-        Growth.Evidence due = evidence(perMileOnly, lines(30, 118, false), 0);
+        Growth.Evidence due = evidence(perMileOnly, lines(perMileOnly, 30, 118, false), 0);
         assertNotNull(due);
         assertEquals(10, due.percent());
         assertEquals(0, due.grown.flatAfter);
@@ -225,11 +271,14 @@ public final class GrowthTest {
 
     @Test public void aMinimumAtTheKnobsTopCannotGrowSoNothingDoes() {
         assertNull(Growth.grown(rules(FilterSettings.MOST_CENTS, 100, 25, 120), 3));
-        assertNull(evidence(rules(400, 100, 92_000, 120), lines(30, 120, false), 0));
+        assertNull(Growth.grown(rules(400, 100, 92_000, 120), 10));
         assertEquals(FilterSettings.MOST_CENTS, Growth.grownCents(90_909, 10));
-        assertNotNull("up to the top it can", evidence(rules(400, 100, 90_909, 120), lines(30, 120, false), 0));
+        assertNotNull("up to the top it can", Growth.grown(rules(400, 100, 90_909, 120), 10));
         assertEquals(FilterSettings.MOST_CENTS + 1, Growth.grownCents(90_910, 10));
-        assertNull(evidence(rules(400, 100, 90_910, 120), lines(30, 120, false), 0));
+        assertNull(Growth.grown(rules(400, 100, 90_910, 120), 10));
+        // And then no growth is due, whatever the offers paid.
+        FilterSettings top = rules(FilterSettings.MOST_CENTS, 0, 0, 120);
+        assertNull(evidence(top, lines(top, 30, 120, false), 0));
     }
 
     @Test public void theBarComesDownToAtLeastOneHundredAndAsksTheSameWithinRounding() {
@@ -307,7 +356,7 @@ public final class GrowthTest {
                         .growth);
     }
 
-    @Test public void growthReadsOnlyAutopilotsOwnBarsNeverWhatTheUserAcceptedOrDeclined() {
+    @Test public void growthReadsOnlyWhatOffersPaidNeverWhatTheUserAcceptedOrDeclined() {
         List<Autopilot.OfferRecord> plain = lines(30, 112, false);
         List<Autopilot.OfferRecord> accepted = new ArrayList<>();
         List<Autopilot.OfferRecord> declined = new ArrayList<>();
@@ -333,8 +382,9 @@ public final class GrowthTest {
         assertNull(evidence(area,old,0));
         assertNotNull("model 2 remains valid for the unchanged strict regime",evidence(TYPICAL,old,0));
         List<Autopilot.OfferRecord> fresh = new ArrayList<>();
-        for (Autopilot.OfferRecord line : old) fresh.add(new Autopilot.OfferRecord(line.facts,line.at,false,false,
-                false,false,false,line.bar,true,DecisionLog.MODEL,area));
+        int pay = payFor(area, 112);
+        for (Autopilot.OfferRecord line : old) fresh.add(new Autopilot.OfferRecord(new OfferSnapshot(pay, 6.6, 27, 2),
+                line.at,false,false,false,false,false,line.bar,true,DecisionLog.MODEL,area));
         assertNotNull(evidence(area,fresh,0));
         assertNull(evidence(area.withScoreByArea(false),fresh,0));
         assertNull(evidence(area.withAcceptanceLearning(false),fresh,0));

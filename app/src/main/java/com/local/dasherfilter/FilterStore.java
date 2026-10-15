@@ -891,7 +891,10 @@ final class FilterStore {
 
     // ---- The minimums grow (0.5.1) ----
 
-    /** "Let my minimums grow", kept with Autopilot's settings: on unless turned off, so on for 0.5.0 installs too. */
+    /**
+     * "Let my minimums grow", kept with Autopilot's settings (its switch is in Settings from 0.6.21): on unless turned
+     * off, so on for 0.5.0 installs too.
+     */
     static boolean minimumsGrow(Context context) {
         return prefs(context).getBoolean(AUTOPILOT_GROW, true);
     }
@@ -903,8 +906,8 @@ final class FilterStore {
     }
 
     /**
-     * Autopilot grows the minimums ({@link Growth}): compare-and-set, under the same lock as every other rules write,
-     * with one apply. Nothing happens (false) unless Autopilot is on, "Let my minimums grow" is on, and the stored
+     * The minimums grow ({@link Growth}): compare-and-set, under the same lock as every other rules write, with one
+     * apply. Nothing happens (false) unless "Let my minimums grow" is on (Autopilot on or off, 0.6.21), and the stored
      * minimums, bar and "minimums since" are exactly those {@code evidence} was worked out for. Then every set money
      * minimum and the bar become {@code evidence}'s grown ones and the minimums take effect at {@code wall}; max stops,
      * auto-decline and auto-accept never change.
@@ -918,7 +921,8 @@ final class FilterStore {
         initializePayPerStop(context, prefs);
         initializeAutopilot(context, prefs);
         synchronized (FilterStore.class) {
-            if (!prefs.getBoolean(AUTOPILOT_ON, false) || !prefs.getBoolean(AUTOPILOT_GROW, true)) return false;
+            // Autopilot on or off (0.6.21): only the switch.
+            if (!prefs.getBoolean(AUTOPILOT_GROW, true)) return false;
             FilterSettings stored = read(prefs);
             if (stored.flatCents != grown.flatBefore || stored.perMileCents != grown.mileBefore
                     || stored.perMinuteCents != grown.minuteBefore || bar(prefs) != grown.barBefore

@@ -57,22 +57,25 @@ public class FilterStoreGrowthTest {
         return FilterStore.load(app);
     }
 
-    /** 30 lines Autopilot decided at {@code bar} over two days since the minimums took effect, newest first. */
+    /**
+     * 30 lines decided at {@code bar} over two days since the minimums took effect, newest first, each offer paying
+     * $8.64 for 2 stops, 6.6 mi and 27 min: 108% of the typical minimums ($8.00).
+     */
     private static List<Autopilot.OfferRecord> lines(long since, int bar) {
         List<Autopilot.OfferRecord> lines = new ArrayList<>();
         for (int i = 0; i < 30; i++) {
             long at = since + 2 * DAY - 7 * 60_000L * i - (i >= 15 ? DAY : 0);
-            lines.add(new Autopilot.OfferRecord(new OfferSnapshot(1000 + i, 6.6, 27, 2), at, false, false, false,
+            lines.add(new Autopilot.OfferRecord(new OfferSnapshot(864, 6.6, 27, 2), at, false, false, false,
                     false, false, bar, true, DecisionLog.STRICT_MODEL));
         }
         return lines;
     }
 
-    /** The growth due for {@code rules}: 8 points, from 30 lines at 108% since the minimums took effect. */
+    /** The growth due for {@code rules}: 8 points, from 30 offers that paid 108% since the minimums took effect. */
     private Growth.Evidence evidence(FilterSettings rules) {
         long since = FilterStore.minimumsSince(app);
-        Growth.Evidence due = Growth.evidence(rules, Autopilot.countedLines(lines(since, 108)), since,
-                TimeZone.getTimeZone("America/New_York"));
+        Growth.Evidence due = Growth.evidence(rules, Autopilot.countedLines(lines(since, rules.minimumScalePercent)),
+                since, TimeZone.getTimeZone("America/New_York"));
         assertNotNull(due);
         return due;
     }
@@ -165,20 +168,21 @@ public class FilterStoreGrowthTest {
         assertFalse(FilterStore.growMinimums(app, again, at));
         assertTrue(FilterStore.commitAutopilotBar(app, 117, 112));
 
-        // Let my minimums grow turned off, or Autopilot turned off.
+        // Let my minimums grow turned off; Autopilot turned off, which puts the bar back at exactly 100.
         FilterStore.setMinimumsGrow(app, false);
         assertFalse(FilterStore.growMinimums(app, again, at));
         FilterStore.setMinimumsGrow(app, true);
         FilterStore.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
-        assertFalse(FilterStore.growMinimums(app, again, at));
+        assertFalse("not the bar it was for", FilterStore.growMinimums(app, again, at));
         assertArrayEquals("nothing was written", new int[] {400, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
         assertEquals(100, FilterStore.load(app).minimumScalePercent);
 
-        // As it was: the growth lands.
-        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
-        assertTrue(FilterStore.commitAutopilotBar(app, 100, 112));
-        assertTrue(FilterStore.growMinimums(app, again, at));
+        // With Autopilot off, evidence for its bar of 100 lands (0.6.21), and the bar stays at 100.
+        Growth.Evidence off = evidence(FilterStore.load(app));
+        assertTrue(FilterStore.growMinimums(app, off, at));
         assertArrayEquals(new int[] {432, 108, 27, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertEquals(100, FilterStore.load(app).minimumScalePercent);
+        assertFalse(FilterStore.load(app).autopilot);
     }
 
     // ---- Undo ----

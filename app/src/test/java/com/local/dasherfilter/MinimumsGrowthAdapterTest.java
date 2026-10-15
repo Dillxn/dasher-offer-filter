@@ -46,9 +46,9 @@ import static org.junit.Assert.assertTrue;
  * The minimums grow only where Autopilot may move its bar (0.5.1): through the real screen reader, at a safe point
  * between offers, never while an offer is up or was seen in the last 10 s, a decline or its question is under way, or
  * a peek is under way; growth due then waits for Autopilot's next safe tick. Thirty offers Autopilot judged at 108% over
- * two days, since the typical minimums took effect three days ago, make 8% due: $4.00 · $1.00/mi · $15/hr become $4.32
- * · $1.08/mi · $16.20/hr and the bar 108% becomes 100%. On the main looper with simulated time; synthetic Android, no
- * handset claimed.
+ * two days, since the typical minimums took effect three days ago, each paying 187% of them or more, make 10% due
+ * (0.6.21: 1 in 5 of them paid 150% or more): $4.00 · $1.00/mi · $15/hr become $4.40 · $1.10/mi · $16.80/hr and the bar
+ * 108% becomes 100%. On the main looper with simulated time; synthetic Android, no handset claimed.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {35, 36})
@@ -63,8 +63,8 @@ public final class MinimumsGrowthAdapterTest {
     private static final String MAPS = "com.google.android.apps.maps";
     private static final ComponentName MAPS_HOME = new ComponentName(MAPS, MAPS + ".MapsActivity");
     private static final long HOUR = 3_600_000L;
-    private static final String GREW = "minimums grew 8% after 30 offers above 103% on 2 days: $4.00/stop -> $4.32/stop, "
-            + "$1.00/mi -> $1.08/mi, $15.00/hr -> $16.20/hr (bar 108% -> 100%)";
+    private static final String GREW = "minimums grew 10% after 1 in 5 of 30 offers on 2 days paid 150% or more: "
+            + "$4.00/stop -> $4.40/stop, $1.00/mi -> $1.10/mi, $15.00/hr -> $16.80/hr (bar 108% -> 100%)";
 
     private Application app;
     private ServiceController<OfferFilterService> controller;
@@ -227,7 +227,7 @@ public final class MinimumsGrowthAdapterTest {
 
     /**
      * Nothing grows before the first of Autopilot's ticks at or after {@code safeFrom} (uptime), when nothing else is
-     * under way, and that tick grows the minimums 8% and brings the bar from 108% to 100%, once.
+     * under way, and that tick grows the minimums 10% and brings the bar from 108% to 100%, once.
      */
     private void assertGrowsAtTheFirstTickFrom(long safeFrom) {
         long tick = tickAtOrAfter(safeFrom);
@@ -235,7 +235,7 @@ public final class MinimumsGrowthAdapterTest {
         assertNotGrown("nothing before Autopilot's next safe tick");
         passUntil(tick + 1);
         FilterSettings grown = FilterStore.load(app);
-        assertArrayEquals(autopilotLog().toString(), new int[] {432, 108, 27, 0, 0, 0}, grown.minimums());
+        assertArrayEquals(autopilotLog().toString(), new int[] {440, 110, 28, 0, 0, 0}, grown.minimums());
         assertEquals(100, grown.minimumScalePercent);
         assertEquals(1, logged(GREW));
         assertTrue(unsafe.toString(), unsafe.isEmpty());
@@ -243,7 +243,7 @@ public final class MinimumsGrowthAdapterTest {
         assertEquals("no commit line: the growth's own line says the bar's move", 0, commits());
         pass(120_000);
         assertEquals("once", 1, logged(GREW));
-        assertArrayEquals(new int[] {432, 108, 27, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertArrayEquals(new int[] {440, 110, 28, 0, 0, 0}, FilterStore.load(app).minimums());
     }
 
     private void assertNotGrown(String why) {

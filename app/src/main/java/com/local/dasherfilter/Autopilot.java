@@ -38,7 +38,8 @@ import java.util.TimeZone;
  * the offers the user accepted by hand since their own last change, each for the {@value #FLOOR_OFFERS} offers after it
  * ({@link #acceptedFloor}, at most 150%), in every mode. Nothing else is learned: the history only counts offers
  * and outcomes for the acceptance rate, and the market for the value. A plan also says whether the minimums are due to
- * grow ({@link Plan#growth}, {@link Growth}): from Autopilot's own recorded bars only, never a bar an accept held up.
+ * grow ({@link Plan#growth}, {@link Growth}): from what the offers under the minimums paid, Autopilot on or off
+ * (0.6.21; before, from Autopilot's own recorded bars only).
  */
 final class Autopilot {
     // ---- Bar ----
@@ -925,8 +926,8 @@ final class Autopilot {
      *   <li>Otherwise the acceptable bar closest to the current one, the lower of two equally close.</li>
      * </ol>
      * The acceptance rate, the offer rate, the display figures and whether the minimums are due to grow
-     * ({@link Growth#evidence}, from the counted lines Autopilot decided under these minimums) are worked out in every
-     * mode. So is the accepted floor ({@link #acceptedFloor}); the plan's target is never below it, except while off or
+     * ({@link Growth#evidence}, from what the counted offers under these minimums paid, Autopilot on or off) are worked
+     * out in every mode. So is the accepted floor ({@link #acceptedFloor}); the plan's target is never below it, except while off or
      * with no money minimum.
      */
     static Plan plan(Inputs in) {
@@ -945,7 +946,7 @@ final class Autopilot {
         Rate rate = lambda(in.waits, in.wallNow);
         List<MixLine> mix = mix(rules, window, thetas, in.costPerMileCents);
         List<HandAccept> accepts = handAccepts(rules, in.newestFirst, in.keptAccepts);
-        Growth.Evidence growth = Growth.evidence(rules, counted, in.minimumsSince, in.zone, accepts);
+        Growth.Evidence growth = Growth.evidence(rules, counted, in.minimumsSince, in.zone);
         Draft draft = new Draft(in, window, thetas, mix, ar, rate, ignoreExempt, growth);
         draft.floor = acceptedFloor(accepts, in.floorSince, counted);
         draft.floorOffersLeft = floorOffersLeft(accepts, in.floorSince, counted, draft.floor);

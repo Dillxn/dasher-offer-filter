@@ -63,12 +63,12 @@ final class AutopilotText {
     static final String DETAILS_AT_GOAL = "At or above your goal.";
     static final String DETAILS_NO_WAITING = "Not enough watched waiting yet to tell how often offers come.";
     static final String DETAILS_AUTO_ACCEPT = "Auto-accept only takes offers that meet 100% of your minimums.";
-    /** The details' switch for the minimums' growth ({@link Growth}), one of Autopilot's settings. */
+    /** Settings' switch for the minimums' growth ({@link Growth}; in Autopilot's details before 0.6.21). */
     static final String GROW_SWITCH = "Let my minimums grow";
     /** Under the switch: what it does, in a sentence. */
-    static final String GROW_ABOUT = "When offers pay above your minimums for " + Growth.OFFERS + " offers over "
-            + Growth.LEAST_DAYS + " days or more, Autopilot raises them, at most " + Growth.MOST_PERCENT + "% at a "
-            + "time, with Undo.";
+    static final String GROW_ABOUT = "When 1 in 5 of your last " + Growth.OFFERS + " offers, over " + Growth.LEAST_DAYS
+            + " days or more, paid " + (Growth.LEAST_BAR - FilterSettings.BAR_AT_MINIMUMS) + "% or more above your "
+            + "minimums, they grow, at most " + Growth.MOST_PERCENT + "% at a time, with Undo. Autopilot on or off.";
 
     // ---- The minimums grew: the homepage's one-time note ----
 
@@ -750,19 +750,20 @@ final class AutopilotText {
     }
 
     /**
-     * The note's one line: "Offers paid above your minimums for 30 offers over 2 days, so Autopilot raised them:
-     * $4.00/stop → $4.32/stop · $1.00/mi → $1.08/mi · $15/hr → $16.20/hr."
+     * The note's one line: "1 in 5 of your last 30 offers, over 2 days, paid 8% or more above your minimums, so they
+     * grew: $4.00/stop → $4.32/stop · $1.00/mi → $1.08/mi · $15/hr → $16.20/hr." (0.6.21; before, "Offers paid above
+     * your minimums for 30 offers over 2 days, so Autopilot raised them").
      */
     static String growthLine(AutopilotStore.Grew grew) {
-        return "Offers paid above your minimums for " + grew.offers + " " + plural(grew.offers, "offer") + " over "
-                + grew.days + " " + plural(grew.days, "day") + ", so Autopilot raised them: "
-                + grownMinimums(grew.grown) + ".";
+        return "1 in 5 of your last " + grew.offers + " " + plural(grew.offers, "offer") + ", over " + grew.days + " "
+                + plural(grew.days, "day") + ", paid " + grew.grown.percent + "% or more above your minimums, so they "
+                + "grew: " + grownMinimums(grew.grown) + ".";
     }
 
     /**
-     * The note as a screen reader hears it, in words: "Your minimums grew 8 percent. Offers paid above your minimums
-     * for 30 offers over 2 days, so Autopilot raised them: pay per stop $4.00 to $4.32, per mile $1.00 to $1.08, per
-     * hour $15 to $16.20."
+     * The note as a screen reader hears it, in words: "Your minimums grew 8 percent. 1 in 5 of your last 30 offers, over
+     * 2 days, paid 8 percent or more above your minimums, so they grew: pay per stop $4.00 to $4.32, per mile $1.00 to
+     * $1.08, per hour $15 to $16.20."
      */
     static String growthSaid(AutopilotStore.Grew grew) {
         Growth.Grown g = grew.grown;
@@ -773,9 +774,9 @@ final class AutopilotText {
                 + DecisionLog.money(g.mileAfter));
         if (g.minuteAfter > 0) parts.add("per hour " + DecisionLog.shortMoney(g.minuteBefore * 60L) + " to "
                 + DecisionLog.shortMoney(g.minuteAfter * 60L));
-        return "Your minimums grew " + g.percent + " percent. Offers paid above your minimums for " + grew.offers + " "
-                + plural(grew.offers, "offer") + " over " + grew.days + " " + plural(grew.days, "day")
-                + ", so Autopilot raised them: " + String.join(", ", parts) + ".";
+        return "Your minimums grew " + g.percent + " percent. 1 in 5 of your last " + grew.offers + " "
+                + plural(grew.offers, "offer") + ", over " + grew.days + " " + plural(grew.days, "day") + ", paid "
+                + g.percent + " percent or more above your minimums, so they grew: " + String.join(", ", parts) + ".";
     }
 
     /** The Undo's toast: "Minimums back to $4.00/stop · $1.00/mi · $15/hr". */
@@ -1001,13 +1002,13 @@ final class AutopilotText {
     }
 
     /**
-     * "minimums grew 8% after 30 offers above 103% on 2 days: $4.00 -> $4.32, $1.00/mi -> $1.08/mi, $15.00/hr ->
-     * $16.20/hr (bar 112% -> 104%)": only the set minimums.
+     * "minimums grew 8% after 1 in 5 of 30 offers on 2 days paid 108% or more: $4.00 -> $4.32, $1.00/mi -> $1.08/mi,
+     * $15.00/hr -> $16.20/hr (bar 112% -> 104%)": only the set minimums (0.6.21; before, "after 30 offers above 103%").
      */
     static String logGrowth(Growth.Evidence evidence) {
         Growth.Grown g = evidence.grown;
-        return "minimums grew " + g.percent + "% after " + evidence.offers + " offers above " + Growth.LEAST_BAR
-                + "% on " + evidence.days + " days: " + logMinimums(g.flatBefore, g.mileBefore, g.minuteBefore,
+        return "minimums grew " + g.percent + "% after 1 in 5 of " + evidence.offers + " offers on " + evidence.days
+                + " days paid " + evidence.shareBar + "% or more: " + logMinimums(g.flatBefore, g.mileBefore, g.minuteBefore,
                         g.flatAfter, g.mileAfter, g.minuteAfter)
                 + " (bar " + g.barBefore + "% -> " + g.barAfter + "%)";
     }
