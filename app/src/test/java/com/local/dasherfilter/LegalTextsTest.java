@@ -20,7 +20,8 @@ public final class LegalTextsTest {
                 "An offer permitted by the filter is not an accepted delivery", "confirmed manual standalone",
                 "Unknown facts do not teach their axes", "strictly meets every active saved and enabled learned",
                 "Add-on filtering stays strict against saved minimums", "it is conditional and cannot overwrite later changes",
-                "growth waits while an enabled learned floor exceeds"}) assertTrue(fact, terms.contains(fact));
+                "what offers must meet otherwise rises only through acceptance learning"})
+            assertTrue(fact, terms.contains(fact));
         String privacy = LegalTexts.Doc.PRIVACY.text();
         for (String fact : new String[] {"Learned evidence starts empty", "Raw learned-best snapshots and adoption receipts are not sent",
                 "Earlier decision snapshots keep their original numeric saved/learned requirements", "Clear history and uninstall remove both",
@@ -46,8 +47,8 @@ public final class LegalTextsTest {
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
-     * 0.6.21 both (an accept holds the bar for the 24 offers after it; the minimums grow from what offers paid,
-     * Autopilot on or off; the divider for a map in either half).
+     * 0.6.21 both (an accept holds the bar for the 24 offers after it; Autopilot no longer grows the minimums; the
+     * divider for a map in either half).
      */
     static final String PRIVACY_EFFECTIVE = "15 October 2026";
     static final String PRIVACY_VERSION = "0.6.21";
@@ -154,25 +155,20 @@ public final class LegalTextsTest {
                 "It never wakes or unlocks the phone; the power button still turns the screen off. This uses more "
                         + "battery.",
                 "if nothing of a dash is seen for 8 hours while Dasher is not in front and the screen is off",
-                // 0.5.1: the minimums grow (Growth), with its limits, Undo and the switch; from 0.6.21 from what offers
-                // paid, Autopilot on or off, the switch in Settings.
-                "Your minimums also grow, whether Autopilot is on or off",
-                "when at least 1 in 5 of your last " + Growth.OFFERS + " offers under your current minimums, over at "
-                        + "least " + Growth.LEAST_DAYS + " days, paid " + (Growth.LEAST_BAR
-                        - FilterSettings.BAR_AT_MINIMUMS) + "% or more above them",
-                "an offer whose pay was not read, or from a store on your skip list, counts as paying nothing above "
-                        + "them",
-                "all of them grow by the same share, as much as those offers paid above them and at most "
-                        + Growth.MOST_PERCENT + "% at a time",
-                "while an Autopilot bar above 100% comes down so offers are asked about the same right after",
-                "It never lowers them; you can.",
-                "A note on the homepage says what grew, with Undo, until you tap it or your minimums change another "
-                        + "way.",
-                "Raised minimums can mean more declines.",
-                "and while Autopilot is recovering toward an acceptance goal",
-                "Turn this off with " + AutopilotText.GROW_SWITCH + " in Settings (from 0.6.21; before, in Autopilot's "
-                        + "details)."}) {
+                // 0.5.1 to 0.6.20: the minimums grew (Growth), with its limits, Undo and the switch; from 0.6.21 Autopilot
+                // never changes them ("autopilot is the buffer"), and only an earlier growth's note and Undo are left.
+                "Autopilot never changes your minimums, only its bar (from 0.6.21; from 0.5.1 to 0.6.20 it also raised "
+                        + "them, at most 10% at a time, once its bar had stayed at 103% or more for 30 offers over at "
+                        + "least 2 days, with Let my minimums grow to turn that off)",
+                "what offers must meet otherwise rises only through acceptance learning, below, as you accept offers "
+                        + "that beat your best.",
+                "A growth made before 0.6.21 keeps its note on the homepage, with Undo, until you tap it or your "
+                        + "minimums change another way."}) {
             assertTrue(fact, terms.contains(fact));
+        }
+        for (String retired : new String[] {"Your minimums also grow", "Turn this off with Let my minimums grow",
+                "growth waits while"}) {
+            assertFalse(retired, terms.contains(retired));
         }
         for (String retired : new String[] {"strict or compensating area mode", "minimums percentage",
                 "passes your current rules"}) {
@@ -297,8 +293,7 @@ public final class LegalTextsTest {
                 "the scores of offers you accepted yourself, each for the 24 offers after it, across dashes, from "
                         + "0.6.21; in the last 7 days from 0.6.18",
                 "so an accept still counts after newer offers have pushed it out of the decision history: it holds "
-                        + "the bar until 24 offers have come after it (from 0.6.21; before, for 7 days), and bars it "
-                        + "held up never grow your minimums.",
+                        + "the bar until 24 offers have come after it (from 0.6.21; before, for 7 days).",
                 "the bar it was judged at and whether Autopilot set that bar",
                 "whether Dasher said declining it does not lower your acceptance rate",
                 "used for the wait estimate and by Autopilot to estimate how often offers arrive",
@@ -316,21 +311,25 @@ public final class LegalTextsTest {
         assertTrue(FeedbackDialogs.OFFER_REPORT_SAYS.contains(reportThisOffer()));
         assertTrue("Clear history's own words name the reading too",
                 MainActivity.CLEAR_HISTORY.contains("Autopilot's acceptance-rate reading"));
-        // 0.5.1: what the minimums' growth keeps, its switch and what Clear history removes of it.
+        // 0.5.1 to 0.6.20: what the minimums' growth kept and its switch; from 0.6.21 what is left of an earlier
+        // growth (its note and Undo), the switch's choice removed, and what Clear history removes of it.
         for (String fact : new String[] {"and when your current minimums took effect",
-                "whether Let my minimums grow is on (it is unless you turn it off)",
-                "While Let my minimums grow is on, your minimums grow, at most 10% at a time, Autopilot on or off",
-                "once at least 1 in 5 of your last 30 offers under them, over at least 2 days, paid 3% or more above "
-                        + "them, but not while Autopilot is recovering toward your acceptance goal; how much they grow "
-                        + "comes only from what those offers paid, as your decision history records it, never from what "
-                        + "you accepted or declined",
-                "the app keeps a note of the last growth: when, by how much, how many offers on how many days it "
-                        + "rested on, your minimums and Autopilot's bar before and after, and whether its note on the "
-                        + "homepage (with Undo) is still waiting",
-                "each growth of your minimums and its Undo (your minimums and the bar before and after)",
+                "(until 0.6.21, also whether Let my minimums grow was on; that choice is removed from the phone with "
+                        + "the growth it switched)",
+                "Autopilot never changes your minimums (from 0.6.21; from 0.5.1 to 0.6.20, while Let my minimums grow "
+                        + "was on, it raised them, at most 10% at a time, once the bars it recorded had stayed at 103% "
+                        + "or more for 30 offers over at least 2 days)",
+                "If Autopilot raised your minimums before 0.6.21, the app keeps a note of that last growth: when, by "
+                        + "how much, how many offers on how many days it rested on, your minimums and Autopilot's bar "
+                        + "before and after, and whether its note on the homepage (with Undo) is still waiting",
+                "and the Undo of such a growth (your minimums before and after)",
                 "the note of its last growth (and with it the Undo)",
-                "Turn off Let my minimums grow in Settings to stop your saved minimums growing."}) {
+                "From 0.6.21 nothing grows your saved minimums."}) {
             assertTrue(fact, privacy.contains(fact));
+        }
+        for (String retired : new String[] {"whether Let my minimums grow is on", "Turn off Let my minimums grow",
+                "when Let my minimums grow is turned on or off", "your minimums grow, at most 10% at a time"}) {
+            assertFalse(retired, privacy.contains(retired));
         }
         assertTrue("and Clear history's own words name the note",
                 MainActivity.CLEAR_HISTORY.contains("its note that your minimums grew"));

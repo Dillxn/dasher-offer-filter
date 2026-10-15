@@ -13,7 +13,7 @@ Selectors may include the com.local.dasherfilter. package prefix; wildcards and 
 Examples:
   tools/test-dev.sh BundledNotesTest
   tools/test-dev.sh BundledNotesTest.theCurrentNoticeAndVersionHaveTheirEntry
-  tools/test-dev.sh OfferRuleTest GrowthTest
+  tools/test-dev.sh OfferRuleTest AutopilotTest
 
 Results: app/build/test-results/devChecks/testDebugUnitTest/
 HTML:    app/build/reports/tests/devChecks/testDebugUnitTest/index.html

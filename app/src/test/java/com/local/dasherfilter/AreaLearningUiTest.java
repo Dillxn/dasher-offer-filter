@@ -325,33 +325,6 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
         assertFalse(zeroText, zeroText.contains("until every active measure is read"));
     }
 
-    @Test public void growthDetailsNameTheLearnedFloorHoldOnlyWhileGrowthIsEnabled() {
-        learn();
-        // The knobs dragged back below the learned bests the new high raised them to: those bests hold growth.
-        FilterSettings raised = FilterStore.load(app);
-        FilterStore.save(app, raised, raised.withMinimums(RULES.flatCents, RULES.perMileCents, RULES.perMinuteCents));
-        FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
-        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            View content = activity.get().findViewById(android.R.id.content);
-            settleSky(content);
-            find(content, AutopilotChip.class).performClick();
-            View details = ShadowAlertDialog.getLatestAlertDialog().getWindow().getDecorView();
-            TextView words = details.findViewById(MainActivity.DETAILS_WORDS_ID);
-            assertTrue(words.getText().toString(), words.getText().toString().contains("Minimum growth waits"));
-            assertTrue(words.getText().toString(), words.getText().toString().contains("hold Learn on the radar"));
-            ShadowAlertDialog.getLatestAlertDialog().dismiss();
-            // Let my minimums grow off (its switch is in Settings from 0.6.21): the details no longer name the hold.
-            AutopilotRuntime.setMinimumsGrow(app, false);
-            find(content, AutopilotChip.class).performClick();
-            TextView again = ShadowAlertDialog.getLatestAlertDialog().getWindow().getDecorView()
-                    .findViewById(MainActivity.DETAILS_WORDS_ID);
-            assertFalse(again.getText().toString(), again.getText().toString().contains("Minimum growth waits"));
-            assertFalse(FilterStore.minimumsGrow(app));
-            assertTrue(FilterStore.load(app).acceptanceLearning);
-            assertFalse(FilterStore.load(app).accepted.isEmpty());
-        }
-    }
-
     @Test @Config(qualifiers = "w360dp-h240dp-xhdpi")
     public void shortWindowKeepsFactsAndIndependentControlsReachable() { shortWindow(1f); }
 

@@ -24,9 +24,8 @@ import java.util.function.LongSupplier;
  * commits only where the screen reader says it is safe.
  *
  * <p><b>Planning</b> runs on one background executor, "offer-autopilot". {@link #requestPlan} is coalesced and returns
- * at once; it does nothing before the current notice is accepted, or while Autopilot and "Let my minimums grow" are
- * both off (the 60 s tick also needs auto-decline on and a dash under way, not paused). While Autopilot is off a plan
- * is only for the minimums' growth: it holds the bar at exactly 100 and is not logged. A plan loads the rules, the decision history and the watched
+ * at once; it does nothing before the current notice is accepted or while Autopilot is off (the 60 s tick also needs
+ * auto-decline on and a dash under way, not paused). A plan loads the rules, the decision history and the watched
  * waiting (each under its own lock, never nested), runs the pure {@link Autopilot#plan}, keeps the acceptance-rate
  * state it changed, logs it when its target or mode changed (else at most every 10 minutes), publishes it, and calls
  * the commit requester the screen reader registered ({@link #setCommitRequester}) when it wants the bar moved. A plan
@@ -42,13 +41,10 @@ import java.util.function.LongSupplier;
  * them. A user's change (Autopilot turned on, another goal, other minimums, history cleared) is a "jump": the next
  * commit goes straight to the target, still only at a safe point.
  *
- * <p><b>The minimums grow</b> (0.5.1, {@link Growth}) at that same safe point, in place of a bar move: when the latest
- * plan found the evidence ({@link Autopilot.Plan#growth}), no user's change waits for its commit, there is a money
- * minimum, "Let my minimums grow" is on and Autopilot is not recovering toward its goal; Autopilot on or off (0.6.21,
- * the owner: "mins growing should not be narried to autopilot"; before, only while it was on). One growth at most
- * per commit, by compare-and-set ({@link FilterStore#growMinimums}); its record and note are kept
- * ({@link AutopilotStore#recordGrowth}), its one line logged, and the plan, made for the minimums before, is dropped.
- * Its Undo ({@link #undoGrowth}) is the user's change.
+ * <p><b>The minimums never grow here</b> (0.6.21, the owner: "mins should grow as we accept offers with higher mins
+ * when adaptive / learned mins is on. autopilot is the buffer"): only learning raises what offers must meet, and
+ * Autopilot moves only its bar. From 0.5.1 to 0.6.20 a commit could grow them ({@link Growth}); a growth made then
+ * keeps its note and Undo ({@link #undoGrowth}, the user's change) while it still applies.
  *
  * <p><b>Dasher's acceptance rate</b> comes only from its decline question ({@link #confirmationSeen}): the labels are
  * parsed here, off the screen reader's thread, one number is kept (no text), and an offer Dasher says is free to
@@ -140,8 +136,6 @@ final class AutopilotRuntime {
         HELD,
         /** The bar moved. */
         COMMITTED,
-        /** The minimums grew, and the bar with them ({@link Growth}). */
-        GREW,
         /** The stored bar was not the one expected: nothing was written; a new plan was asked for. */
         CONFLICT,
         /** Something failed and was logged; nothing more was written. */
@@ -295,8 +289,8 @@ final class AutopilotRuntime {
 
     /**
      * Asks for a plan; returns at once. Coalesced: while one is waiting to start, more requests add nothing. Nothing
-     * happens before the current notice is accepted or while Autopilot and the minimums' growth are both off
-     * ({@link #plans}), and the tick also needs auto-decline on and a dash under way that is not paused.
+     * happens before the current notice is accepted or while Autopilot is off, and the tick also needs auto-decline on
+     * and a dash under way that is not paused.
      */
     static void requestPlan(Context context, Trigger trigger) {
         if (context == null || trigger == null) return;
@@ -304,7 +298,7 @@ final class AutopilotRuntime {
         try {
             if (!Consent.accepted(app)) return;
             FilterSettings rules = FilterStore.load(app);
-            if (!plans(app, rules)) return;
+            if (!rules.autopilot) return;
             if (trigger == Trigger.TICK && (!rules.enabled || !Dashing.on(app) || Dashing.isPaused(app))) return;
         } catch (RuntimeException unreadable) {
             log(app, AutopilotText.logPlanFailed(unreadable));
@@ -328,14 +322,6 @@ final class AutopilotRuntime {
         requestPlan(context, Trigger.NOTICE);
     }
 
-    /**
-     * Whether plans are worked out: while Autopilot is on, and while it is off with "Let my minimums grow" on and a money
-     * minimum, for the growth alone (0.6.21).
-     */
-    private static boolean plans(Context app, FilterSettings rules) {
-        return rules.autopilot || (rules.hasMonetaryRule() && FilterStore.minimumsGrow(app));
-    }
-
     /** One plan, on the planning thread. */
     private static void plan(Context app) {
         // A request from now on asks for a plan of its own: this one may already have read its inputs.
@@ -346,7 +332,7 @@ final class AutopilotRuntime {
             // Before the state is read: a user's change from here on drops this plan instead of meeting its state.
             long epoch = goalEpoch.get();
             FilterSettings rules = FilterStore.load(app);
-            if (!plans(app, rules)) return;
+            if (!rules.autopilot) return;
             long wall = wallClock.getAsLong();
             List<Autopilot.OfferRecord> lines = records(DecisionLog.recent(app, HISTORY_LINES));
             List<QualifyingWait.Sample> waits = QualifyingWaitStore.snapshot(app);
@@ -406,8 +392,6 @@ final class AutopilotRuntime {
                         checkpoint ? plan.checkpointAr : -1);
             }
             latest.set(plan);
-            // While Autopilot is off a plan is for the minimums' growth alone: nothing of it is logged.
-            if (plan.mode == Autopilot.Mode.OFF) return null;
             Runnable hook = beforePlanLogForTests;
             if (hook != null) hook.run();
             logPlan(app, plan, stored, wall);
@@ -441,7 +425,7 @@ final class AutopilotRuntime {
      * which a stored line does not keep either: {@link Autopilot.OfferRecord#facts}) and time, add-on and replay,
      * accepted ({@link DecisionLog#accepted}), declined (the app's decline went through, a "not accepted" or "counted
      * as your Decline" step, or a hidden notification of a failing offer), Dasher's "does not lower acceptance rate"
-     * mark, and the bar it was decided at, whether Autopilot set it, and its rules model (for {@link Growth}), and when
+     * mark, and the bar it was decided at, whether Autopilot set it, and its rules model, and when
      * the user accepted it by hand ({@link DecisionLog#handAcceptedAt}, for the accepted floor).
      */
     static List<Autopilot.OfferRecord> records(List<DecisionLog.Entry> newestFirst) {
@@ -488,7 +472,7 @@ final class AutopilotRuntime {
             Autopilot.Plan plan = latest.get();
             if (plan == null) return Commit.NO_PLAN;
             FilterSettings rules = FilterStore.load(app);
-            if (!plans(app, rules)) {
+            if (!rules.autopilot) {
                 latest.compareAndSet(plan, null);
                 return Commit.NO_PLAN;
             }
@@ -498,10 +482,6 @@ final class AutopilotRuntime {
             if (stale != null || plan.current != current) return discard(app, plan, stale);
             Autopilot.Reason jump = jumpCause(app);
             long elapsed = elapsedClock.getAsLong();
-            // The minimums grow in place of a move, when due and no change of the user's waits for its commit.
-            if (jump == null && growthDue(app, plan, rules)) return grow(app, plan, wall, elapsed);
-            // Off, the bar stays at exactly 100: the plan was for the growth alone.
-            if (!rules.autopilot) return Commit.NO_PLAN;
             Autopilot.Step step = step(app, plan, jump, elapsed);
             if (step.next == current && jump == null) return Commit.HELD;
             if (step.next != current) {
@@ -559,73 +539,6 @@ final class AutopilotRuntime {
     }
 
     /**
-     * The minimums grow as the plan's evidence says ({@link Growth}), at this safe point: under {@link #LOCK} the plan
-     * must still be the latest, for the same generation and rules, with no user's change waiting and the gates still
-     * holding ({@link #growthDue}); then {@link FilterStore#growMinimums} compares and sets the minimums, the bar and
-     * "minimums since" together, the growth is kept with its note, and the bar's move gets its change note ("your
-     * minimums grew"). The plan, made for the minimums before, is dropped and a new one asked for. Never announced.
-     */
-    private static Commit grow(Context app, Autopilot.Plan plan, long wall, long elapsed) {
-        Runnable hook = beforeWriteForTests;
-        if (hook != null) hook.run();
-        Growth.Evidence growth = plan.growth;
-        String stale;
-        Commit outcome;
-        synchronized (LOCK) {
-            if (latest.get() != plan) return Commit.DISCARDED;
-            FilterSettings now = FilterStore.load(app);
-            if (!plans(app, now)) {
-                latest.compareAndSet(plan, null);
-                return Commit.NO_PLAN;
-            }
-            stale = staleness(plan, now, wall);
-            if (stale != null || jumpCause(app) != null || !growthDue(app, plan, now)) {
-                latest.compareAndSet(plan, null);
-                outcome = Commit.DISCARDED;
-            } else if (!FilterStore.growMinimums(app, growth, wall)) {
-                // The minimums, the bar or when they took effect are not those the evidence was for: nothing written.
-                latest.compareAndSet(plan, null);
-                outcome = Commit.CONFLICT;
-            } else {
-                Growth.Grown grown = growth.grown;
-                AutopilotStore.recordGrowth(app, growth, wall);
-                if (grown.barAfter != grown.barBefore) {
-                    boolean raised = grown.barAfter > grown.barBefore;
-                    AutopilotStore.recordChange(app, grown.barBefore, grown.barAfter,
-                            Autopilot.Reason.MINIMUMS_GREW.name(), wall, raised);
-                    lastCommitElapsed = elapsed;
-                    if (raised) lastRaiseElapsed = elapsed;
-                }
-                latest.compareAndSet(plan, null);
-                outcome = Commit.GREW;
-            }
-        }
-        if (outcome != Commit.GREW) {
-            if (stale != null) log(app, stale);
-            requestPlan(app, Trigger.COMMIT);
-            return outcome;
-        }
-        log(app, AutopilotText.logGrowth(growth));
-        notifyListeners();
-        // The next plan works from the grown minimums, and its evidence from the lines decided under them.
-        requestPlan(app, Trigger.COMMIT);
-        return Commit.GREW;
-    }
-
-    /**
-     * Whether the minimums are due to grow from {@code plan} now: it found the evidence ({@link Autopilot.Plan#growth})
-     * for exactly {@code rules} and their bar, there is a pay, per-mile or hourly minimum, "Let my minimums grow" is on,
-     * and Autopilot is not recovering toward its acceptance-rate goal (as planned, nor as stored); Autopilot on or off
-     * (0.6.21). The evidence is what offers paid, so an accept holding the bar up no longer matters (it did from
-     * 0.6.11, when the evidence was Autopilot's own bars).
-     */
-    private static boolean growthDue(Context app, Autopilot.Plan plan, FilterSettings rules) {
-        return plan.growth != null && rules.hasMonetaryRule()
-                && plan.rulesKey.equals(rules.rulesKey()) && plan.current == rules.minimumScalePercent
-                && FilterStore.minimumsGrow(app) && !plan.recovering && !AutopilotStore.recovering(app);
-    }
-
-    /**
      * Drops a plan that can no longer be committed from and asks for a new one; {@code stale} is its log line, null
      * when the plan is only behind the bar (its own last commit moved it), which is no news.
      */
@@ -649,7 +562,7 @@ final class AutopilotRuntime {
             Autopilot.Plan plan = latest.get();
             if (plan == null) return false;
             FilterSettings rules = FilterStore.load(app);
-            if (!plans(app, rules) || plan.generation != generation.get() || !plan.rulesKey.equals(rules.rulesKey())
+            if (!rules.autopilot || plan.generation != generation.get() || !plan.rulesKey.equals(rules.rulesKey())
                     || plan.current != rules.minimumScalePercent) {
                 return false;
             }
@@ -669,12 +582,7 @@ final class AutopilotRuntime {
     }
 
     private static boolean wanted(Context app, Autopilot.Plan plan) {
-        Autopilot.Reason jump = jumpCause(app);
-        FilterSettings rules = FilterStore.load(app);
-        if (plan.growth != null && growthDue(app, plan, rules)) return true;
-        // Off, nothing but the growth: the bar stays at exactly 100.
-        if (!rules.autopilot) return false;
-        return jump != null || step(app, plan, null, elapsedClock.getAsLong()).next != plan.current;
+        return jumpCause(app) != null || step(app, plan, null, elapsedClock.getAsLong()).next != plan.current;
     }
 
     /**
@@ -812,21 +720,6 @@ final class AutopilotRuntime {
         }
         AutopilotStore.forgetGrowthNote(app, grew.at);
         return null;
-    }
-
-    /**
-     * "Let my minimums grow" turned on or off (in Settings from 0.6.21; in Autopilot's details before): kept and
-     * logged. Off, the minimums never grow and nothing else changes; on, a plan is asked for, Autopilot on or off, so
-     * growth that is due is made at the next safe point.
-     */
-    static void setMinimumsGrow(Context context, boolean on) {
-        if (context == null) return;
-        Context app = app(context);
-        if (FilterStore.minimumsGrow(app) == on) return;
-        FilterStore.setMinimumsGrow(app, on);
-        log(app, AutopilotText.logGrowSwitch(on));
-        notifyListeners();
-        if (on) requestPlan(app, Trigger.USER);
     }
 
     /**

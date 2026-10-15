@@ -1333,13 +1333,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * Autopilot's details ({@link AutopilotText#detailsLines}): each line only when its facts are known, then the cost
-     * per mile, the words and the rest scrolling together as the dialog's one view ({@link #DETAILS_WORDS_ID}), so its
+     * Autopilot's details ({@link AutopilotText#detailsLines}): each line only when its facts are known, the words
+     * ({@link #DETAILS_WORDS_ID}) and the cost per mile under them scrolling together as the dialog's one view, so its
      * buttons keep their room in a short window at a large font (words set as the dialog's message beside a view of
-     * its own would push them out of it); "Let my minimums grow" is in Settings from 0.6.21, since the minimums grow
-     * with Autopilot on or off; its buttons ({@link AutopilotText#detailsButtons}): while on, "Change goal" ("Use
-     * typical minimums" while even the lowest bar passes too few and the minimums are not those already), "Turn off"
-     * and "Close"; while off, "Turn on" (the goal chooser) and "Close".
+     * its own would push them out of it); "Let my minimums grow" is gone from 0.6.21, since nothing grows the minimums;
+     * its buttons ({@link AutopilotText#detailsButtons}): while on, "Change goal" ("Use typical minimums" while even the
+     * lowest bar passes too few and the minimums are not those already), "Turn off" and "Close"; while off, "Turn on"
+     * (the goal chooser) and "Close".
      */
     private void showAutopilotDetails() {
         AutopilotText.Status status = autopilotStatus();
@@ -1448,13 +1448,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     private String autopilotDetailWords(AutopilotText.Status status) {
-        String words = String.join("\n\n", AutopilotText.detailsLines(status));
-        if (FilterStore.minimumsGrow(this) && Growth.learningDominates(status.rules)) {
-            words += "\n\nMinimum growth waits while enabled learned minimums exceed your saved minimums. "
-                    + "Adopt those bests (hold Learn on the radar) or turn learning off to remove this hold; the other "
-                    + "growth checks still apply.";
-        }
-        return words;
+        return String.join("\n\n", AutopilotText.detailsLines(status));
     }
 
     /**
@@ -1695,10 +1689,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
             FilterStore.setPeek(this, on);
             DiagnosticLog.log(this, "peek", "turned " + (on ? "on" : "off") + " in Settings");
         });
-        // The minimums' growth (Growth), Autopilot on or off (0.6.21; in Autopilot's details before).
-        Switch grow = ui.toggle(switches, AutopilotText.GROW_SWITCH, FilterStore.minimumsGrow(this));
-        grow.setText(ui.twoLines(AutopilotText.GROW_SWITCH, AutopilotText.GROW_ABOUT));
-        grow.setOnCheckedChangeListener((view, on) -> AutopilotRuntime.setMinimumsGrow(this, on));
         Switch autoAccept = ui.toggle(switches, "Auto-accept matching offers", FilterStore.autoAcceptEnabled(this));
         autoAccept.setOnCheckedChangeListener((view, on) -> {
             if (on == FilterStore.autoAcceptEnabled(this)) return;

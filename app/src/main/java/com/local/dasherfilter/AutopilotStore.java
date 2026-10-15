@@ -25,8 +25,9 @@ import org.json.JSONObject;
  *   <li>a pending user-change cause (the "jump") for the next commit;</li>
  *   <li>a note of the last bar change (time, old and new bar, a fixed reason name), when the bar last rose, and when
  *       the exemption valve was last logged;</li>
- *   <li>the last growth of the minimums ({@link Growth}, 0.5.1): when, how much, how many offers on how many days, the
- *       minimums and the bar before and after, and whether its homepage note (with Undo) still waits for a tap;</li>
+ *   <li>the last growth of the minimums ({@link Growth}, made by 0.5.1 to 0.6.20; nothing grows them from 0.6.21):
+ *       when, how much, how many offers on how many days, the minimums and the bar before and after, and whether its
+ *       homepage note (with Undo) still waits for a tap;</li>
  *   <li>when the user's own last change restarted the accepted floor (0.6.11, {@link #floorSince}), and the figures
  *       of the hand accepts kept for it for 7 days (0.6.19, {@link #keepAccepts}).</li>
  * </ul>
@@ -512,12 +513,15 @@ final class AutopilotStore {
         }
     }
 
-    /** The minimums grew as {@code evidence} said, at {@code wall}: kept, replacing any before, with its note. */
-    static void recordGrowth(Context context, Growth.Evidence evidence, long wall) {
-        Growth.Grown grown = evidence.grown;
+    /**
+     * The minimums grew as {@code grown} says, after {@code offers} offers on {@code days} days, at {@code wall}: kept,
+     * replacing any before, with its note, as 0.5.1 to 0.6.20 kept a growth. Nothing grows the minimums from 0.6.21, so
+     * only the tests call this, to keep a growth an earlier version made.
+     */
+    static void recordGrowth(Context context, Growth.Grown grown, int offers, int days, long wall) {
         synchronized (AutopilotStore.class) {
             prefs(context).edit().putLong(GREW_AT, wall).putInt(GREW_PERCENT, grown.percent)
-                    .putInt(GREW_OFFERS, evidence.offers).putInt(GREW_DAYS, evidence.days)
+                    .putInt(GREW_OFFERS, offers).putInt(GREW_DAYS, days)
                     .putInt(GREW_FLAT_FROM, grown.flatBefore).putInt(GREW_FLAT_TO, grown.flatAfter)
                     .putInt(GREW_MILE_FROM, grown.mileBefore).putInt(GREW_MILE_TO, grown.mileAfter)
                     .putInt(GREW_MINUTE_FROM, grown.minuteBefore).putInt(GREW_MINUTE_TO, grown.minuteAfter)

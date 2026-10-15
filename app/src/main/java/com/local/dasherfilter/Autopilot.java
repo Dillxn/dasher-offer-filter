@@ -37,9 +37,10 @@ import java.util.TimeZone;
  * higher score"; across dashes from 0.6.18): the bar never stays below the best score, under the current rules, among
  * the offers the user accepted by hand since their own last change, each for the {@value #FLOOR_OFFERS} offers after it
  * ({@link #acceptedFloor}, at most 150%), in every mode. Nothing else is learned: the history only counts offers
- * and outcomes for the acceptance rate, and the market for the value. A plan also says whether the minimums are due to
- * grow ({@link Plan#growth}, {@link Growth}): from what the offers under the minimums paid, Autopilot on or off
- * (0.6.21; before, from Autopilot's own recorded bars only).
+ * and outcomes for the acceptance rate, and the market for the value. Autopilot is the buffer and never changes the
+ * minimums themselves (0.6.21, the owner: "mins should grow as we accept offers with higher mins when adaptive /
+ * learned mins is on. autopilot is the buffer"): only learning raises what offers must meet. From 0.5.1 to 0.6.20 a
+ * plan could also grow them ({@link Growth}); that is retired.
  */
 final class Autopilot {
     // ---- Bar ----
@@ -190,7 +191,10 @@ final class Autopilot {
         AT_MINIMUMS(false, "holding at your minimums"),
         VALUE_UP(false, "offers are coming often"),
         VALUE_DOWN(false, "offers are slower"),
-        /** The minimums grew ({@link Growth}) and the bar came down with them, keeping what it asks. */
+        /**
+         * The minimums grew ({@link Growth}) and the bar came down with them, keeping what it asks: kept for the bar's
+         * history of 0.5.1 to 0.6.20; nothing grows the minimums from 0.6.21.
+         */
         MINIMUMS_GREW(false, "your minimums grew"),
         /**
          * A lesson raised the learned minimums (0.6.11): a jump, but not the user's own, so it never restarts the
@@ -395,11 +399,10 @@ final class Autopilot {
         final long wallNow;
         final long generation;
         /**
-         * When the current minimums took effect (wall clock; FilterStore's "minimums since"): only lines decided from
-         * then on are evidence that they can grow. {@link Long#MAX_VALUE}: none is.
+         * When the current minimums took effect (wall clock; FilterStore's "minimums since"), and the phone's time zone:
+         * the evidence that the minimums could grow until 0.6.20 ({@link Growth}); no plan reads them from 0.6.21.
          */
         final long minimumsSince;
-        /** The phone's time zone, for the calendar days of that evidence. */
         final TimeZone zone;
         /**
          * The driver's own cost per mile, in cents (0.6.10; 0 is off, the default): the value rule counts each offer's
@@ -419,7 +422,7 @@ final class Autopilot {
          */
         final List<OfferRecord> keptAccepts;
 
-        /** Inputs with no evidence for growth (no line is decided after {@link Long#MAX_VALUE}). */
+        /** Inputs with no "minimums since" ({@link Long#MAX_VALUE}) and UTC. */
         Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
                Reading reading, State state, long wallNow, long generation) {
             this(rules, newestFirst, waits, reading, state, wallNow, generation, Long.MAX_VALUE,
@@ -737,12 +740,6 @@ final class Autopilot {
         /** Display only: watched waiting and arrivals over the last two hours. */
         final long recentWaitMs;
         final int recentArrivals;
-        /**
-         * The minimums are due to grow ({@link Growth#evidence}), for exactly these rules and the minimums since the
-         * plan read; null when not. Applied only at a safe point, and only while the gates there hold
-         * ({@link AutopilotRuntime}).
-         */
-        final Growth.Evidence growth;
 
         private final int[] windowThetas;
         private final int[] mixThetas;
@@ -788,7 +785,6 @@ final class Autopilot {
             this.checkpointAr = d.checkpointAr;
             this.recentWaitMs = d.recentWaitMs;
             this.recentArrivals = d.recentArrivals;
-            this.growth = d.growth;
             this.windowThetas = d.windowThetas;
             this.mixThetas = d.mixThetas;
             this.mixPay = d.mixPay;
@@ -845,7 +841,6 @@ final class Autopilot {
         final int[] mixThetas;
         final long[] mixPay;
         final long[] mixMinutes;
-        final Growth.Evidence growth;
         int need = -1;
         int barShare = -1;
         boolean pinned;
@@ -860,9 +855,8 @@ final class Autopilot {
         int floorOffersLeft;
 
         Draft(Inputs in, List<OfferRecord> window, int[] thetas, List<MixLine> mix, ArNow ar, Rate rate,
-              boolean exemptionsIgnored, Growth.Evidence growth) {
+              boolean exemptionsIgnored) {
             rules = in.rules;
-            this.growth = growth;
             state = in.state;
             wallNow = in.wallNow;
             generation = in.generation;
@@ -925,10 +919,8 @@ final class Autopilot {
      *   <li>With fewer than 20 readable offers, {@code min(share bar, 100)}.</li>
      *   <li>Otherwise the acceptable bar closest to the current one, the lower of two equally close.</li>
      * </ol>
-     * The acceptance rate, the offer rate, the display figures and whether the minimums are due to grow
-     * ({@link Growth#evidence}, from what the counted offers under these minimums paid, Autopilot on or off) are worked
-     * out in every mode. So is the accepted floor ({@link #acceptedFloor}); the plan's target is never below it, except while off or
-     * with no money minimum.
+     * The acceptance rate, the offer rate and the display figures are worked out in every mode. So is the accepted floor
+     * ({@link #acceptedFloor}); the plan's target is never below it, except while off or with no money minimum.
      */
     static Plan plan(Inputs in) {
         FilterSettings rules = in.rules;
@@ -946,8 +938,7 @@ final class Autopilot {
         Rate rate = lambda(in.waits, in.wallNow);
         List<MixLine> mix = mix(rules, window, thetas, in.costPerMileCents);
         List<HandAccept> accepts = handAccepts(rules, in.newestFirst, in.keptAccepts);
-        Growth.Evidence growth = Growth.evidence(rules, counted, in.minimumsSince, in.zone);
-        Draft draft = new Draft(in, window, thetas, mix, ar, rate, ignoreExempt, growth);
+        Draft draft = new Draft(in, window, thetas, mix, ar, rate, ignoreExempt);
         draft.floor = acceptedFloor(accepts, in.floorSince, counted);
         draft.floorOffersLeft = floorOffersLeft(accepts, in.floorSince, counted, draft.floor);
 

@@ -404,7 +404,8 @@ public class PeekRecoveryTest {
         ShadowWindowManagerImpl windows = Shadow.extract(app.getSystemService(WindowManager.class));
         List<View> watches = new ArrayList<>();
         for (View view : windows.getViews()) {
-            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)) {
+            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)
+                    && !(view instanceof ScoreTag)) {
                 watches.add(view);
             }
         }

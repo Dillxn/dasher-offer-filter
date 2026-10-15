@@ -218,7 +218,8 @@ public class ScannerThreadTest {
         ShadowWindowManagerImpl windows = Shadow.extract(app.getSystemService(WindowManager.class));
         List<View> watches = new ArrayList<>();
         for (View view : windows.getViews()) {
-            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)) {
+            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)
+                    && !(view instanceof ScoreTag)) {
                 watches.add(view);
             }
         }
@@ -292,7 +293,7 @@ public class ScannerThreadTest {
         @Override
         public void addView(View view, ViewGroup.LayoutParams params) {
             if (refuse && !(view instanceof DasherTab) && !(view instanceof DasherGuide)
-                    && !(view instanceof BackToMapChip)) {
+                    && !(view instanceof BackToMapChip) && !(view instanceof ScoreTag)) {
                 refusedAttempts.incrementAndGet();
                 throw new WindowManager.BadTokenException("refused");
             }

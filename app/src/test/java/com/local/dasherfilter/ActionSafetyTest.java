@@ -240,7 +240,8 @@ public class ActionSafetyTest {
     private List<View> touchWatches() {
         List<View> watches = new ArrayList<>();
         for (View view : overlays()) {
-            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)) {
+            if (!(view instanceof DasherTab) && !(view instanceof DasherGuide) && !(view instanceof BackToMapChip)
+                    && !(view instanceof ScoreTag)) {
                 watches.add(view);
             }
         }

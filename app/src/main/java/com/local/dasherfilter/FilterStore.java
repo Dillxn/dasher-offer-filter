@@ -23,13 +23,13 @@ import org.json.JSONObject;
  * three money minimums and max stops, and, given the rules its change was made from, only what that change changed. The
  * bar is written only by {@link #commitAutopilotBar} (Autopilot, compare-and-set at a safe point on the scanner thread)
  * and reset to exactly 100 by {@link #setAutopilot} turning Autopilot off; {@link #save} never writes it, so a rule
- * saved from a stale copy can never restore an old bar. Autopilot's one other write, {@link #growMinimums} (0.5.1, the
- * minimums grow), is a compare-and-set of the minimums and the bar at that same safe point, which a change saved from a
- * copy made before it never undoes: such a save writes only the fields the user changed ({@link #save(Context,
- * FilterSettings, FilterSettings)}).
+ * saved from a stale copy can never restore an old bar. Autopilot never writes the minimums (0.6.21; from 0.5.1 to
+ * 0.6.20 it could grow them, {@link Growth}, and only a growth made then can still be undone, {@link #undoGrowth}). A
+ * save writes only the fields the user changed ({@link #save(Context, FilterSettings, FilterSettings)}).
  *
  * <p>"Minimums since" ({@link #minimumsSince}) is when the current minimums took effect: set whenever the minimum pay,
- * per mile or per minute changes (the user's save, a growth, its Undo, the 0.5.0 migration), never by the bar.
+ * per mile or per minute changes (the user's save, a growth's Undo, the 0.5.0 migration; a growth until 0.6.20), never
+ * by the bar.
  *
  * <p>The first {@link #load} after the update runs {@link #migrateToModel2} once: the retired rules (score by area,
  * per stop, per item, hotspot, the minimums scale) and every learned minimum leave, per stop is folded into minimum pay
@@ -75,8 +75,11 @@ final class FilterStore {
      * which minimums judged them).
      */
     private static final String MINIMUMS_SINCE = "minimums_since";
-    /** "Let my minimums grow", one of Autopilot's settings: on unless turned off (0.5.0 installs too). */
-    private static final String AUTOPILOT_GROW = "autopilot_grow";
+    /**
+     * "Let my minimums grow" (0.5.1 to 0.6.20): retired with the growth it switched, so a stored choice is removed
+     * ({@link #forgetGrowSwitch}).
+     */
+    private static final String RETIRED_AUTOPILOT_GROW = "autopilot_grow";
     // Fresh restoration state. The model-2 migration's deleted evidence is never read into these keys.
     private static final String LEARNER_SCHEMA = "learner_v3_schema";
     /** 1: 0.6.0's fresh state, learning off; 2: learning on by default (0.6.1). */
@@ -355,7 +358,7 @@ final class FilterStore {
      * and once an install updating from an earlier version whatever it had, get Autopilot on with its stored goal (the
      * suggested one when none was chosen: 70% then, pay first from 0.6.18, {@link #initializeGoalDefault}) and the bar
      * at exactly the minimums. Nothing else changes: not the
-     * minimums, "minimums since", "Let my minimums grow" or whether the goal was asked (the goal chooser still asks
+     * minimums, "minimums since" or whether the goal was asked (the goal chooser still asks
      * once, with Autopilot already on). It makes no jump: Autopilot moves the bar from 100% only by its own commits, at
      * its safe points, and plans nothing before the current notice is accepted. Runs after the model-2 migration
      * (which writes it off) and before every read of the switch. It writes prefs, forgets any goal state left from an
@@ -365,6 +368,18 @@ final class FilterStore {
     private static void initializeAutopilot(Context context, SharedPreferences prefs) {
         initializeAutopilotOn(context, prefs);
         initializeGoalDefault(context, prefs);
+        forgetGrowSwitch(prefs);
+    }
+
+    /**
+     * "Let my minimums grow" went with the growth it switched (0.6.21, the owner: "mins should grow as we accept offers
+     * with higher mins when adaptive / learned mins is on. autopilot is the buffer"): a stored choice is removed, once.
+     */
+    private static void forgetGrowSwitch(SharedPreferences prefs) {
+        if (!prefs.contains(RETIRED_AUTOPILOT_GROW)) return;
+        synchronized (FilterStore.class) {
+            prefs.edit().remove(RETIRED_AUTOPILOT_GROW).apply();
+        }
     }
 
     private static void initializeAutopilotOn(Context context, SharedPreferences prefs) {
@@ -795,9 +810,9 @@ final class FilterStore {
 
     /**
      * Saves the user's change from {@code base} (the rules as loaded when the change was made) to {@code next}: only
-     * the fields it changed are written, so a change made from a copy loaded before Autopilot grew the minimums
-     * ({@link #growMinimums}) never puts the old ones back (pausing writes only the switch; one knob only its own
-     * minimum). A null {@code base} writes every field, as {@link #save(Context, FilterSettings)} does.
+     * the fields it changed are written, so a change made from a copy loaded before another write of the minimums (a
+     * growth's Undo; a growth until 0.6.20) never puts the old ones back (pausing writes only the switch; one knob only
+     * its own minimum). A null {@code base} writes every field, as {@link #save(Context, FilterSettings)} does.
      */
     static void save(Context context, FilterSettings base, FilterSettings next) {
         SharedPreferences prefs = prefs(context);
@@ -889,54 +904,7 @@ final class FilterStore {
         }
     }
 
-    // ---- The minimums grow (0.5.1) ----
-
-    /**
-     * "Let my minimums grow", kept with Autopilot's settings (its switch is in Settings from 0.6.21): on unless turned
-     * off, so on for 0.5.0 installs too.
-     */
-    static boolean minimumsGrow(Context context) {
-        return prefs(context).getBoolean(AUTOPILOT_GROW, true);
-    }
-
-    static void setMinimumsGrow(Context context, boolean on) {
-        synchronized (FilterStore.class) {
-            prefs(context).edit().putBoolean(AUTOPILOT_GROW, on).apply();
-        }
-    }
-
-    /**
-     * The minimums grow ({@link Growth}): compare-and-set, under the same lock as every other rules write, with one
-     * apply. Nothing happens (false) unless "Let my minimums grow" is on (Autopilot on or off, 0.6.21), and the stored
-     * minimums, bar and "minimums since" are exactly those {@code evidence} was worked out for. Then every set money
-     * minimum and the bar become {@code evidence}'s grown ones and the minimums take effect at {@code wall}; max stops,
-     * auto-decline and auto-accept never change.
-     */
-    static boolean growMinimums(Context context, Growth.Evidence evidence, long wall) {
-        if (evidence == null) return false;
-        Growth.Grown grown = evidence.grown;
-        if (grown.barAfter < BAR_MIN || grown.barAfter > BAR_MAX) return false;
-        SharedPreferences prefs = prefs(context);
-        migrateToModel2(context, prefs);
-        initializePayPerStop(context, prefs);
-        initializeAutopilot(context, prefs);
-        synchronized (FilterStore.class) {
-            // Autopilot on or off (0.6.21): only the switch.
-            if (!prefs.getBoolean(AUTOPILOT_GROW, true)) return false;
-            FilterSettings stored = read(prefs);
-            if (stored.flatCents != grown.flatBefore || stored.perMileCents != grown.mileBefore
-                    || stored.perMinuteCents != grown.minuteBefore || bar(prefs) != grown.barBefore
-                    || !prefs.contains(MINIMUMS_SINCE) || prefs.getLong(MINIMUMS_SINCE, 0) != evidence.since) {
-                return false;
-            }
-            SharedPreferences.Editor edit = prefs.edit().putInt(FLAT, grown.flatAfter).putInt(PER_MILE, grown.mileAfter)
-                    .putInt(PER_MINUTE, grown.minuteAfter).putInt(AUTOPILOT_BAR, grown.barAfter)
-                    .putLong(MINIMUMS_SINCE, wall);
-            minimaChanged(prefs, edit);
-            edit.apply();
-            return true;
-        }
-    }
+    // ---- The minimums grew (0.5.1 to 0.6.20): the Undo of a growth made then ----
 
     /**
      * Undo of a growth: the minimums from before it come back, by compare-and-set, only while they are still exactly

@@ -3,7 +3,6 @@ package com.local.dasherfilter;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -192,14 +191,6 @@ public final class PayPerStopRuleTest {
         assertEquals(OfferRule.Result.REVIEW, judge(offer(700, 5.0, 20, null), learning).result);
         assertEquals("one best from before 0.6.12 counts as one stop", 1,
                 new AcceptedFloors(2600, 0, 0, 0, 0).payUnits);
-    }
-
-    @Test public void learningDominatesComparesPerStop() {
-        AcceptedFloors best = new AcceptedFloors(2600, 2, 0, 0, 0, 0);
-        assertTrue(Growth.learningDominates(FilterSettings.of(true, 1300, 0, 0, 0).withAcceptanceLearning(true)
-                .withAccepted(best)));
-        assertFalse(Growth.learningDominates(FilterSettings.of(true, 1301, 0, 0, 0).withAcceptanceLearning(true)
-                .withAccepted(best)));
     }
 
     @Test public void theRulesSayPerStop() {

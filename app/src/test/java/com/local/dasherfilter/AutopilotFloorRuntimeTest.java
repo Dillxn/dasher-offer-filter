@@ -36,8 +36,8 @@ import static org.junit.Assert.assertTrue;
  * (0.6.19); turning Autopilot off and on (0.6.19), a lesson and Adopt keep it. Automatic, add-on and
  * observed accepts, an accept before the user's last change, Autopilot off and the notice not accepted change nothing;
  * Clear history forgets it. The update to 0.6.19 brings back, once and with pay first, an accept that turning
- * Autopilot on let go. The minimums still grow while the floor holds the bar (0.6.21: growth reads what offers paid,
- * not the bars). Plans run on the calling thread; Autopilot's
+ * Autopilot on let go. However well offers pay, an accept raises only the bar: the minimums never grow (0.6.21,
+ * "autopilot is the buffer"). Plans run on the calling thread; Autopilot's
  * clocks are the test's, starting at the real one (the decision lines' steps and the dash go by the real clock).
  */
 @RunWith(RobolectricTestRunner.class)
@@ -53,7 +53,6 @@ public class AutopilotFloorRuntimeTest {
     private Application app;
     private long wall;
     private long elapsed;
-    private MiddayZone zone;
 
     @Before public void setUp() {
         app = RuntimeEnvironment.getApplication();
@@ -73,7 +72,6 @@ public class AutopilotFloorRuntimeTest {
     }
 
     @After public void tearDown() {
-        if (zone != null) zone.restore();
         AutopilotRuntime.forgetCache();
         AutopilotRuntime.executorForTests = null;
         AutopilotRuntime.wallClock = System::currentTimeMillis;
@@ -488,9 +486,7 @@ public class AutopilotFloorRuntimeTest {
         pinned();
         AutopilotRuntime.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
         accepted(DecisionLog.StepKind.ACCEPTED);
-        // Plans are still worked out for the minimums' growth (0.6.21), Autopilot off: they move no bar.
-        Autopilot.Plan plan = AutopilotRuntime.latest();
-        assertTrue(plan == null || plan.mode == Autopilot.Mode.OFF);
+        assertNull(AutopilotRuntime.latest());
         assertEquals(AutopilotRuntime.Commit.NO_PLAN, AutopilotRuntime.commitIfDue(app));
         assertEquals(100, bar());
     }
@@ -622,16 +618,14 @@ public class AutopilotFloorRuntimeTest {
         assertEquals(0, repairs());
     }
 
-    // ---- Growth ----
+    // ---- The buffer ----
 
     /**
-     * Minimums Autopilot has held at 112% over two days, under offers paying well above them (growth is due), then a
-     * hand accept scoring past 150% this dash: the growth still comes first (0.6.21: it follows what offers paid, so a
-     * bar the floor holds up no longer stops it; before, nothing grew while the floor bound), and at the next commit the
-     * accept holds the bar at its score under the grown minimums.
+     * Typical minimums Autopilot has held at 112% over two days, under offers paying well above them (until 0.6.20,
+     * enough to grow the minimums), then a hand accept scoring past 150% this dash: the accept raises only the bar, and
+     * the minimums never grow (0.6.21, the owner: "autopilot is the buffer").
      */
-    @Test public void theMinimumsGrowWhileTheFloorHoldsTheBarAndTheAcceptHoldsItAfter() {
-        zone = new MiddayZone(wall);
+    @Test public void anAcceptPastTheBarRaisesOnlyTheBarAndTheMinimumsNeverGrow() {
         long since = wall - 3 * 24 * HOUR;
         FilterStore.wallClock = () -> since;
         FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 3));
@@ -653,25 +647,17 @@ public class AutopilotFloorRuntimeTest {
                 Collections.<String>emptyList()).withBar(108, true).withScoringRules(scoring));
         Dashing.seen(app);
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.USER);
-        Autopilot.Plan due = AutopilotRuntime.latest();
-        assertNotNull("growth is due", due.growth);
-        assertFalse(due.floorBinds());
+        assertFalse(AutopilotRuntime.latest().floorBinds());
         assertTrue(DecisionLog.markStep(app, rich, DecisionLog.StepKind.ACCEPTED, "", 10 * MIN));
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.ACCEPTED);
         Autopilot.Plan plan = AutopilotRuntime.latest();
-        assertNotNull("the 30 lines came before the accept: still evidence", plan.growth);
         assertEquals(150, plan.floor);
         assertTrue(plan.floorBinds());
-        assertEquals(AutopilotRuntime.Commit.GREW, AutopilotRuntime.commitIfDue(app));
-        assertArrayEquals("10%: every offer paid 50% or more above them", new int[] {220, 110, 28, 0, 0, 0},
-                FilterStore.load(app).minimums());
-        assertEquals("the bar comes down by the same share", 102, bar());
-        assertNotNull(AutopilotStore.lastGrowth(app));
-        int score = AreaScore.scorePercent(FilterStore.load(app), rich);
-        assertTrue("under the grown minimums it scores less, below 150%: " + score, score < 150);
-        assertEquals(score, AutopilotRuntime.latest().floor);
         assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
-        assertEquals(score, bar());
-        assertEquals("commit 102% -> " + score + "% (you accepted an offer at this score)", lastCommit());
+        assertEquals(150, bar());
+        assertEquals("commit 112% -> 150% (you accepted an offer at this score)", lastCommit());
+        assertArrayEquals(new int[] {200, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertEquals(since, FilterStore.minimumsSince(app));
+        assertNull(AutopilotStore.lastGrowth(app));
     }
 }

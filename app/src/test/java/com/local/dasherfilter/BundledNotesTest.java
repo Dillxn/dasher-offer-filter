@@ -109,7 +109,7 @@ public class BundledNotesTest {
         assertTrue(fifteen.toString(), fifteen.size() >= 2 && fifteen.size() <= 3);
         String notice = String.join(" ", fifteen);
         for (String headline : new String[] {"raises your minimums", "paid above them for a while",
-                "at most " + Growth.MOST_PERCENT + "% at a time", "Undo", "more declines", AutopilotText.GROW_SWITCH,
+                "at most 10% at a time", "Undo", "more declines", "\"Let my minimums grow\" in Autopilot's details",
                 "last growth"}) {
             assertTrue(headline, notice.contains(headline));
         }
@@ -133,9 +133,8 @@ public class BundledNotesTest {
         List<String> news = BundledNotes.whatsNew("0.5.1");
         assertTrue(news.toString(), news.size() >= 2 && news.size() <= 3);
         String card = String.join(" ", news);
-        for (String headline : new String[] {"Your minimums grow", Growth.LEAST_BAR + "% or more",
-                Growth.OFFERS + " offers over " + Growth.LEAST_DAYS + " days",
-                "at most " + Growth.MOST_PERCENT + "% at a time", "Undo", "All the minimums you set grow together",
+        for (String headline : new String[] {"Your minimums grow", "103% or more", "30 offers over 2 days",
+                "at most 10% at a time", "Undo", "All the minimums you set grow together",
                 "max stops never changes", "lower its bar to protect your acceptance rate", "Turn growth off"}) {
             assertTrue(headline, card.contains(headline));
         }
@@ -303,7 +302,7 @@ public class BundledNotesTest {
         String notice = String.join(" ", notice(19));
         for (String fact : new String[] {"Autopilot is on by default", "turns it on once", "the goal you chose before",
                 "70% acceptance rate", "turns it off", FilterStore.BAR_MIN + "% and " + FilterStore.BAR_MAX + "%",
-                "declines offers that meet them", "yours to decide", "at most " + Growth.MOST_PERCENT + "% at a time",
+                "declines offers that meet them", "yours to decide", "at most 10% at a time",
                 "Undo", "by time of day", "as a percent of your minimums now"}) {
             assertTrue(fact, notice.contains(fact));
         }
@@ -469,17 +468,18 @@ public class BundledNotesTest {
     }
 
     /**
-     * 0.6.21 (the owner, 15 October 2026: "We may have to do it by like two dozen orders", "mins growing should not be
-     * narried to autopilot", "whenever one half has nav open make it 70% height", "I want to be able to see at a small
-     * glance the score of the offer as it's being declined", "let the map fade out at the edges"): notice 28's lines,
-     * then the score beside the tab and the map's fade.
+     * 0.6.21 (the owner, 15 October 2026: "We may have to do it by like two dozen orders", "mins should grow as we
+     * accept offers with higher mins when adaptive / learned mins is on. autopilot is the buffer", "whenever one half
+     * has nav open make it 70% height", "I want to be able to see at a small glance the score of the offer as it's
+     * being declined", "let the map fade out at the edges"): notice 28's lines, then the score beside the tab and the
+     * map's fade.
      */
     @Test public void theCurrentReleaseSaysWhatChanged() {
         assertEquals("0.6.21", Updater.version(RuntimeEnvironment.getApplication()));
         assertEquals(28, Consent.VERSION);
         List<String> lines = BundledNotes.whatsNew("0.6.21");
-        assertEquals(lines.toString(), 6, lines.size());
-        assertEquals("first what notice 28 says", notice(28), lines.subList(0, 4));
+        assertEquals(lines.toString(), 5, lines.size());
+        assertEquals("first what notice 28 says", notice(28), lines.subList(0, 3));
         String card = String.join(" ", lines);
         for (String fact : new String[] {"Beside the tab over Dasher, each offer's score shows at a glance",
                 "✕ 52% while it's declined", "for " + DasherOverlay.SCORE_STAYS_MS / 1000 + " seconds after",
@@ -493,21 +493,20 @@ public class BundledNotesTest {
     }
 
     /**
-     * 0.6.21's notice (28): an accept holds the bar for the next 24 offers instead of 7 days; the minimums grow from what
-     * offers paid, Autopilot on or off, their switch in Settings; a map's half gets 70% of a split, not only during a
-     * delivery, until the user moves the divider.
+     * 0.6.21's notice (28): an accept holds the bar for the next 24 offers instead of 7 days; the minimums no longer grow
+     * on their own (learning raises what offers must meet; Autopilot only moves its bar); a map's half gets 70% of a
+     * split, not only during a delivery, until the user moves the divider.
      */
-    @Test public void notice28SaysTheHoldGrowthAndTheMap() {
+    @Test public void notice28SaysTheHoldThatNothingGrowsTheMinimumsAndTheMap() {
         List<String> lines = BundledNotes.noticeChanges(27);
         assertEquals(notice(28), lines);
-        assertEquals(lines.toString(), 4, lines.size());
+        assertEquals(lines.toString(), 3, lines.size());
         String notice = String.join(" ", lines);
         for (String fact : new String[] {"An offer you accept yourself now holds Autopilot's bar for your next "
                 + Autopilot.FLOOR_OFFERS + " offers, instead of 7 days.",
-                "Your minimums grow with Autopilot on or off", "when 1 in 5 of your last " + Growth.OFFERS
-                        + " offers paid " + (Growth.LEAST_BAR - FilterSettings.BAR_AT_MINIMUMS) + "% or more above them",
-                "up to " + Growth.MOST_PERCENT + "% at a time, with Undo",
-                "\"" + AutopilotText.GROW_SWITCH + "\" is in Settings now",
+                "Your minimums no longer grow on their own.",
+                "Learning raises the minimums offers must meet when you accept one that beats your best",
+                "Autopilot only moves its bar.",
                 "a map in either half now gets " + SplitDivider.MAP_SHARE + "% of the screen, not only during a "
                         + "delivery", "Move the divider yourself and it stops for that dash."}) {
             assertTrue(fact, notice.contains(fact));

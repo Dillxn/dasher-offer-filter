@@ -3,9 +3,6 @@ package com.local.dasherfilter;
 import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.TimeZone;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -17,15 +14,14 @@ import org.robolectric.annotation.Config;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Where the minimums grow (0.5.1): FilterStore's compare-and-set of the minimums, the bar and "minimums since" together,
- * under its lock, against exactly what the evidence was worked out for; its Undo, which puts the minimums back only
- * while they are still the grown ones and counts as the user's change; "minimums since", moved by every change of a
- * money minimum and never by the bar; a change saved from a copy loaded before a growth, which never puts the old
- * minimums back; and "Let my minimums grow", on unless turned off.
+ * What is left in FilterStore of the minimums' growth, retired in 0.6.21 (nothing grows them from then on): the Undo
+ * of a growth an earlier version made, which puts the minimums back only while they are still the grown ones and counts
+ * as the user's change; "minimums since", moved by every change of a money minimum and never by the bar; a change saved
+ * from a copy loaded before another write of the minimums, which never puts the old ones back; and "Let my minimums
+ * grow", whose stored choice is removed.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {35, 36})
@@ -58,26 +54,18 @@ public class FilterStoreGrowthTest {
     }
 
     /**
-     * 30 lines decided at {@code bar} over two days since the minimums took effect, newest first, each offer paying
-     * $8.64 for 2 stops, 6.6 mi and 27 min: 108% of the typical minimums ($8.00).
+     * A growth of 8 points as 0.6.20 wrote it at {@code at}: the typical minimums grown to $4.32, $1.08 a mile and
+     * $16.20 an hour, in effect since then, and Autopilot's bar from {@code barBefore} to {@code barAfter}.
      */
-    private static List<Autopilot.OfferRecord> lines(long since, int bar) {
-        List<Autopilot.OfferRecord> lines = new ArrayList<>();
-        for (int i = 0; i < 30; i++) {
-            long at = since + 2 * DAY - 7 * 60_000L * i - (i >= 15 ? DAY : 0);
-            lines.add(new Autopilot.OfferRecord(new OfferSnapshot(864, 6.6, 27, 2), at, false, false, false,
-                    false, false, bar, true, DecisionLog.STRICT_MODEL));
-        }
-        return lines;
-    }
-
-    /** The growth due for {@code rules}: 8 points, from 30 offers that paid 108% since the minimums took effect. */
-    private Growth.Evidence evidence(FilterSettings rules) {
-        long since = FilterStore.minimumsSince(app);
-        Growth.Evidence due = Growth.evidence(rules, Autopilot.countedLines(lines(since, rules.minimumScalePercent)),
-                since, TimeZone.getTimeZone("America/New_York"));
-        assertNotNull(due);
-        return due;
+    private Growth.Grown grewAt(long at, int barBefore, int barAfter) {
+        FilterSettings before = FilterStore.load(app);
+        long now = clock;
+        clock = at;
+        FilterStore.save(app, before, before.withMinimums(432, 108, 27));
+        clock = now;
+        assertTrue(FilterStore.commitAutopilotBar(app, barBefore, barAfter));
+        return new Growth.Grown(8, before.flatCents, before.perMileCents, before.perMinuteCents, barBefore, 432, 108,
+                27, barAfter);
     }
 
     // ---- Minimums since ----
@@ -112,7 +100,6 @@ public class FilterStoreGrowthTest {
         assertEquals("its older lines say nothing of which minimums judged them", clock + 1,
                 prefs().getLong("minimums_since", 0));
         assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, rules.minimums());
-        assertTrue("and Let my minimums grow is on for it", FilterStore.minimumsGrow(app));
         clock += DAY;
         FilterStore.load(app);
         assertEquals("once", clock - DAY + 1, FilterStore.minimumsSince(app));
@@ -126,128 +113,71 @@ public class FilterStoreGrowthTest {
         assertEquals(clock + 1, FilterStore.minimumsSince(app));
     }
 
-    // ---- The growth's compare-and-set ----
-
-    @Test public void theMinimumsAndTheBarGrowTogetherAndNothingElseChanges() {
-        FilterSettings before = typicalAt(112);
-        FilterStore.setAutoAcceptEnabled(app, true);
-        Growth.Evidence due = evidence(before);
-        long at = clock + 3 * DAY;
-        assertTrue(FilterStore.growMinimums(app, due, at));
-        FilterSettings after = FilterStore.load(app);
-        assertArrayEquals(new int[] {432, 108, 27, 0, 0, 0}, after.minimums());
-        assertEquals(1620, after.perHourCents());
-        assertEquals(104, after.minimumScalePercent);
-        assertEquals("the minimums take effect at the growth", at, FilterStore.minimumsSince(app));
-        assertEquals("max stops never grows", 3, after.maxStops);
-        assertTrue("auto-decline stays as it was", after.enabled);
-        assertTrue("Autopilot stays on", after.autopilot);
-        assertEquals(FilterSettings.GOAL_TOP_TIER, after.autopilotGoalPercent);
-        assertTrue("auto-accept's own switch never changes", FilterStore.autoAcceptEnabled(app));
-        assertFalse("once: the evidence was for the minimums before", FilterStore.growMinimums(app, due, at + 1));
-        assertArrayEquals(new int[] {432, 108, 27, 0, 0, 0}, FilterStore.load(app).minimums());
-    }
-
-    @Test public void anythingChangedSinceTheEvidenceWritesNothing() {
-        FilterSettings before = typicalAt(112);
-        Growth.Evidence due = evidence(before);
-        long at = clock + 3 * DAY;
-
-        // A minimum the user changed.
-        clock += 60_000;
-        FilterStore.save(app, before.withMinimums(400, 100, 26));
-        assertFalse(FilterStore.growMinimums(app, due, at));
-        clock += 60_000;
-        FilterStore.save(app, before);
-        assertFalse("changed back is not the same: the minimums took effect again", FilterStore.growMinimums(app, due,
-                at));
-        Growth.Evidence again = evidence(FilterStore.load(app));
-
-        // The bar Autopilot moved.
-        assertTrue(FilterStore.commitAutopilotBar(app, 112, 117));
-        assertFalse(FilterStore.growMinimums(app, again, at));
-        assertTrue(FilterStore.commitAutopilotBar(app, 117, 112));
-
-        // Let my minimums grow turned off; Autopilot turned off, which puts the bar back at exactly 100.
-        FilterStore.setMinimumsGrow(app, false);
-        assertFalse(FilterStore.growMinimums(app, again, at));
-        FilterStore.setMinimumsGrow(app, true);
-        FilterStore.setAutopilot(app, false, FilterSettings.GOAL_TOP_TIER);
-        assertFalse("not the bar it was for", FilterStore.growMinimums(app, again, at));
-        assertArrayEquals("nothing was written", new int[] {400, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
-        assertEquals(100, FilterStore.load(app).minimumScalePercent);
-
-        // With Autopilot off, evidence for its bar of 100 lands (0.6.21), and the bar stays at 100.
-        Growth.Evidence off = evidence(FilterStore.load(app));
-        assertTrue(FilterStore.growMinimums(app, off, at));
-        assertArrayEquals(new int[] {432, 108, 27, 0, 0, 0}, FilterStore.load(app).minimums());
-        assertEquals(100, FilterStore.load(app).minimumScalePercent);
-        assertFalse(FilterStore.load(app).autopilot);
-    }
-
     // ---- Undo ----
 
     @Test public void undoPutsTheMinimumsBackOnlyWhileTheyAreStillTheGrownOnes() {
-        FilterSettings before = typicalAt(112);
-        Growth.Evidence due = evidence(before);
+        typicalAt(112);
         long grewAt = clock + 3 * DAY;
-        assertTrue(FilterStore.growMinimums(app, due, grewAt));
+        Growth.Grown grown = grewAt(grewAt, 112, 104);
         long undoneAt = grewAt + 60_000;
-        assertTrue(FilterStore.undoGrowth(app, due.grown, grewAt, undoneAt));
+        assertTrue(FilterStore.undoGrowth(app, grown, grewAt, undoneAt));
         FilterSettings undone = FilterStore.load(app);
         assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, undone.minimums());
         assertEquals("the user's change: the minimums take effect now", undoneAt, FilterStore.minimumsSince(app));
         assertEquals("the bar is Autopilot's to move", 104, undone.minimumScalePercent);
         assertEquals(3, undone.maxStops);
-        assertFalse("once", FilterStore.undoGrowth(app, due.grown, grewAt, undoneAt + 1));
+        assertFalse("once", FilterStore.undoGrowth(app, grown, grewAt, undoneAt + 1));
 
         // Grown again, then a minimum changed by hand: nothing to undo.
-        assertTrue(FilterStore.commitAutopilotBar(app, 104, 112));
-        Growth.Evidence next = evidence(FilterStore.load(app));
         long nextAt = undoneAt + 3 * DAY;
-        assertTrue(FilterStore.growMinimums(app, next, nextAt));
+        Growth.Grown next = grewAt(nextAt, 104, 112);
         clock = nextAt + 60_000;
         FilterStore.save(app, FilterStore.load(app).withMinimums(500, 108, 27));
-        assertFalse(FilterStore.undoGrowth(app, next.grown, nextAt, clock + 1));
+        assertFalse(FilterStore.undoGrowth(app, next, nextAt, clock + 1));
         assertArrayEquals(new int[] {500, 108, 27, 0, 0, 0}, FilterStore.load(app).minimums());
         // Changed back to exactly the grown ones: still not the grown ones in effect since the growth.
         FilterStore.save(app, FilterStore.load(app).withMinimums(432, 108, 27));
-        assertFalse(FilterStore.undoGrowth(app, next.grown, nextAt, clock + 2));
+        assertFalse(FilterStore.undoGrowth(app, next, nextAt, clock + 2));
         assertArrayEquals(new int[] {432, 108, 27, 0, 0, 0}, FilterStore.load(app).minimums());
     }
 
-    // ---- A change saved from a copy loaded before the growth ----
+    // ---- A change saved from a copy loaded before another write of the minimums ----
 
-    @Test public void aChangeMadeFromACopyLoadedBeforeAGrowthNeverPutsTheOldMinimumsBack() {
-        FilterSettings loaded = typicalAt(112);
-        Growth.Evidence due = evidence(loaded);
-        assertTrue(FilterStore.growMinimums(app, due, clock + 3 * DAY));
-        // Pausing from that copy writes the switch only.
+    @Test public void aChangeMadeFromACopyLoadedBeforeAnUndoNeverPutsTheGrownMinimumsBack() {
+        typicalAt(112);
+        long grewAt = clock + 3 * DAY;
+        Growth.Grown grown = grewAt(grewAt, 112, 104);
+        FilterSettings loaded = FilterStore.load(app);
+        long undoneAt = grewAt + 60_000;
+        assertTrue(FilterStore.undoGrowth(app, grown, grewAt, undoneAt));
+        // Pausing from the copy loaded before the Undo writes the switch only.
         FilterStore.save(app, loaded, loaded.withEnabled(false));
         FilterSettings paused = FilterStore.load(app);
         assertFalse(paused.enabled);
-        assertArrayEquals(new int[] {432, 108, 27, 0, 0, 0}, paused.minimums());
-        assertEquals(clock + 3 * DAY, FilterStore.minimumsSince(app));
+        assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, paused.minimums());
+        assertEquals(undoneAt, FilterStore.minimumsSince(app));
         // One knob set from it writes its own minimum only, and the minimums take effect again.
         clock += 4 * DAY;
-        FilterStore.save(app, loaded, loaded.withMinimums(450, 100, 25).withEnabled(false));
-        assertArrayEquals(new int[] {450, 108, 27, 0, 0, 0}, FilterStore.load(app).minimums());
+        FilterStore.save(app, loaded, loaded.withMinimums(450, 108, 27).withEnabled(false));
+        assertArrayEquals(new int[] {450, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
         assertEquals(clock, FilterStore.minimumsSince(app));
         // Max stops alone, likewise.
         FilterStore.save(app, loaded, loaded.withMaxStops(2));
         assertEquals(2, FilterStore.load(app).maxStops);
-        assertArrayEquals(new int[] {450, 108, 27, 0, 0, 0}, FilterStore.load(app).minimums());
+        assertArrayEquals(new int[] {450, 100, 25, 0, 0, 0}, FilterStore.load(app).minimums());
     }
 
     // ---- Let my minimums grow ----
 
-    @Test public void letMyMinimumsGrowIsOnUnlessTurnedOffAndStaysThroughClearHistory() {
-        assertTrue(FilterStore.minimumsGrow(app));
-        FilterStore.setMinimumsGrow(app, false);
-        assertFalse(FilterStore.minimumsGrow(app));
-        AutopilotStore.clear(app);
-        assertFalse("one of Autopilot's settings: Clear history keeps it", FilterStore.minimumsGrow(app));
-        FilterStore.setMinimumsGrow(app, true);
-        assertTrue(FilterStore.minimumsGrow(app));
+    @Test public void letMyMinimumsGrowsStoredChoiceIsRemovedAndNothingElseChanges() {
+        typicalAt(112);
+        prefs().edit().putBoolean("autopilot_grow", false).commit();
+        long since = FilterStore.minimumsSince(app);
+        FilterSettings rules = FilterStore.load(app);
+        assertFalse("retired with the growth it switched (0.6.21)", prefs().contains("autopilot_grow"));
+        assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, rules.minimums());
+        assertEquals(112, rules.minimumScalePercent);
+        assertTrue(rules.autopilot);
+        assertEquals(since, FilterStore.minimumsSince(app));
     }
 }

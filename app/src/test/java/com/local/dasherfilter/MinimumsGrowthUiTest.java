@@ -4,15 +4,11 @@ import android.app.AlertDialog;
 import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.accessibility.AccessibilityEvent;
-import android.view.accessibility.AccessibilityManager;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
 import android.widget.Switch;
 import android.widget.TextView;
 import java.time.Duration;
-import java.util.Collections;
-import java.util.List;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -35,11 +31,12 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The minimums grew (0.5.1), on the real homepage: the one-time note among the page's lines, "Your minimums grew 10%"
- * over one line of what grew and why, with Undo and OK; it stays until a button is tapped (a recreated screen shows it
- * again), and goes with its Undo once the minimums change any other way or Clear history runs; Undo puts the minimums
- * back as the user's change; nothing is announced and no live region is used; Autopilot's details say when the minimums
- * last grew; Settings hold "Let my minimums grow", on by default (0.6.21; in Autopilot's details before).
+ * The minimums grew (0.5.1 to 0.6.20), on the real homepage, for a growth an earlier version made (nothing grows them
+ * from 0.6.21): the one-time note among the page's lines, "Your minimums grew 10%" over one line of what grew and why,
+ * with Undo and OK; it stays until a button is tapped (a recreated screen shows it again), and goes with its Undo once
+ * the minimums change any other way or Clear history runs; Undo puts the minimums back as the user's change; nothing is
+ * announced and no live region is used; Autopilot's details say when the minimums last grew; and "Let my minimums grow"
+ * is gone, from Settings and from Autopilot's details.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {35, 36}, qualifiers = "w411dp-h914dp-xxhdpi")
@@ -47,16 +44,16 @@ import static org.junit.Assert.assertTrue;
 public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
     private static final long HOUR = 3_600_000L;
     private static final String TITLE = "Your minimums grew 10%";
-    private static final String LINE = "1 in 5 of your last 30 offers, over 2 days, paid 10% or more above your "
-            + "minimums, so they grew: $4.00/stop → $4.40/stop · $1.00/mi → $1.10/mi · $15/hr → $16.80/hr.";
-    private static final String SAID = "Your minimums grew 10 percent. 1 in 5 of your last 30 offers, over 2 days, "
-            + "paid 10 percent or more above your minimums, so they grew: pay per stop $4.00 to $4.40, per mile $1.00 to "
-            + "$1.10, per hour $15 to $16.80.";
+    private static final String LINE = "Offers paid above your minimums for 30 offers over 2 days, so Autopilot raised "
+            + "them: $4.00/stop → $4.40/stop · $1.00/mi → $1.10/mi · $15/hr → $16.80/hr.";
+    private static final String SAID = "Your minimums grew 10 percent. Offers paid above your minimums for 30 offers "
+            + "over 2 days, so Autopilot raised them: pay per stop $4.00 to $4.40, per mile $1.00 to $1.10, per hour $15 "
+            + "to $16.80.";
     private static final int[] GROWN = {440, 110, 28, 0, 0, 0};
+    /** The switch of 0.5.1 to 0.6.20. */
+    private static final String GROW_SWITCH = "Let my minimums grow";
 
     private long grewAt;
-    /** Midday now, whatever hour the suite runs at, so the offers' days are the same days ({@link MiddayZone}). */
-    private MiddayZone zone;
 
     @Before public void grown() {
         AutopilotRuntime.forgetCache();
@@ -65,33 +62,24 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
         DecisionLog.clear(app);
         DiagnosticLog.clear(app);
         AutopilotStore.clear(app);
-        // The typical minimums, set three days ago; Autopilot on at 108%; 30 offers since, over two days, every one
-        // paying 87% or more above the minimums; then the commit at a safe point (as the screen reader makes it) grows
-        // them the most it can, 10%, and the bar comes down to 100%.
+        // The typical minimums, set three days ago, Autopilot on at 108%; then a growth as 0.6.20 made it, just now:
+        // 10%, in effect since, with the bar down to 100%, kept with its note.
         long wall = System.currentTimeMillis();
-        zone = new MiddayZone(wall);
         FilterStore.wallClock = () -> wall - 3 * 24 * HOUR;
         FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
-        FilterStore.wallClock = System::currentTimeMillis;
+        FilterStore.wallClock = () -> wall;
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 108));
-        FilterSettings scoringRules = FilterStore.load(app);
-        for (int i = 29; i >= 0; i--) {
-            long at = wall - 10 * 60_000L - 7 * 60_000L * (i % 15) - (i >= 15 ? 24 * HOUR : 0);
-            DecisionLog.record(app, new DecisionLog.Entry(at, DecisionLog.Source.SCREEN, false,
-                    new OfferSnapshot(1500 + i, 6.6, 27, 2), 729, OfferRule.Result.KEEP, "passes your rules",
-                    DecisionLog.Action.PASSES, true, Collections.<String>emptyList()).withBar(108, true)
-                    .withScoringRules(scoringRules));
-        }
-        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.CONNECT);
-        assertEquals(AutopilotRuntime.Commit.GREW, AutopilotRuntime.commitIfDue(app));
+        FilterStore.save(app, FilterStore.load(app).withMinimums(440, 110, 28));
+        assertTrue(FilterStore.commitAutopilotBar(app, 108, 100));
+        FilterStore.wallClock = System::currentTimeMillis;
+        AutopilotStore.recordGrowth(app, new Growth.Grown(10, 400, 100, 25, 108, 440, 110, 28, 100), 30, 2, wall);
         assertArrayEquals(GROWN, FilterStore.load(app).minimums());
-        assertEquals(100, FilterStore.load(app).minimumScalePercent);
-        grewAt = AutopilotStore.lastGrowth(app).at;
+        assertEquals(wall, FilterStore.minimumsSince(app));
+        grewAt = wall;
     }
 
     @After public void plansOnTheirOwnThread() {
-        if (zone != null) zone.restore();
         RuntimeEnvironment.setFontScale(1f);
         FilterStore.wallClock = System::currentTimeMillis;
         AutopilotRuntime.executorForTests = null;
@@ -135,26 +123,6 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
             assertTrue(AutopilotText.detailsLines(status).toString(), AutopilotText.detailsLines(status).contains(
                     "Your minimums last grew 10%, less than a minute ago: $4.00/stop → $4.40/stop · $1.00/mi → $1.10/mi · "
                             + "$15/hr → $16.80/hr."));
-        }
-    }
-
-    @Test public void aGrowthWhileThePageIsUpShowsTheNoteWithoutAnnouncingIt() {
-        asBeforeTheGrowth();
-        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            View content = page(activity);
-            settleSky(content);
-            assertNull(note(content));
-            AccessibilityManager accessibility = app.getSystemService(AccessibilityManager.class);
-            Shadows.shadowOf(accessibility).setEnabled(true);
-            int sent = Shadows.shadowOf(accessibility).getSentAccessibilityEvents().size();
-            AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.USER);
-            assertEquals(AutopilotRuntime.Commit.GREW, AutopilotRuntime.commitIfDue(app));
-            settleSky(content);
-            assertNotNull("the page follows", note(content));
-            List<AccessibilityEvent> events = Shadows.shadowOf(accessibility).getSentAccessibilityEvents();
-            for (AccessibilityEvent event : events.subList(sent, events.size())) {
-                assertTrue("no announcement: " + event, event.getEventType() != AccessibilityEvent.TYPE_ANNOUNCEMENT);
-            }
         }
     }
 
@@ -226,42 +194,22 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
         }
     }
 
-    // ---- The switch ----
+    // ---- No switch ----
 
-    @Test public void letMyMinimumsGrowIsInSettingsOnByDefaultAndNoLongerInAutopilotsDetails() {
-        asBeforeTheGrowth();
+    @Test public void letMyMinimumsGrowIsGoneFromSettingsAndAutopilotsDetails() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
             AlertDialog details = details(content);
-            assertNull("no switch in Autopilot's details", find(details.getWindow().getDecorView(), Switch.class));
+            View decor = details.getWindow().getDecorView();
+            assertNull("no switch in Autopilot's details", find(decor, Switch.class));
+            assertNull(shownTextContaining(decor, "Minimum growth"));
             details.dismiss();
             idle();
-            Switch grow = settingsSwitch(content);
-            assertTrue("on by default", grow.isChecked());
-            assertTrue(grow.getText().toString().startsWith(AutopilotText.GROW_SWITCH + "\n"));
-            assertTrue(grow.getText().toString().endsWith(AutopilotText.GROW_ABOUT));
-            grow.performClick();
+            iconDescribed(content, "Settings").performClick();
             idle();
-            assertFalse(FilterStore.minimumsGrow(app));
-            assertTrue(DiagnosticLog.read(app).contains("[autopilot] minimums growth off"));
-
-            // Off: no growth, and nothing else changes.
-            AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.USER);
-            assertNotNull(AutopilotRuntime.latest().growth);
-            assertFalse(AutopilotRuntime.commitIfDue(app) == AutopilotRuntime.Commit.GREW);
-            FilterSettings kept = FilterStore.load(app);
-            assertArrayEquals(new int[] {400, 100, 25, 0, 0, 0}, kept.minimums());
-            assertTrue(kept.autopilot);
-
-            // On again in Settings: the growth is made at the next commit.
-            Switch again = settingsSwitch(content);
-            assertFalse(again.isChecked());
-            again.performClick();
-            idle();
-            assertTrue(FilterStore.minimumsGrow(app));
-            assertEquals(AutopilotRuntime.Commit.GREW, AutopilotRuntime.commitIfDue(app));
-            assertArrayEquals(GROWN, FilterStore.load(app).minimums());
+            assertNull("nor in Settings", growSwitch(content));
+            assertNull(shownTextContaining(content, GROW_SWITCH));
         }
     }
 
@@ -297,22 +245,6 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
 
     // ---- Helpers ----
 
-    /**
-     * As just before the growth: the minimums back to the typical ones in effect since three days ago, the growth and
-     * the jump its Undo left forgotten, and the bar at 108% again, so the same evidence makes the growth due.
-     */
-    private void asBeforeTheGrowth() {
-        assertTrue(AutopilotRuntime.undoGrowth(app, grewAt));
-        AutopilotStore.clear(app);
-        long wall = System.currentTimeMillis();
-        FilterStore.wallClock = () -> wall - 3 * 24 * HOUR;
-        FilterStore.save(app, FilterSettings.of(true, 401, 100, 25, 0));
-        FilterStore.save(app, FilterSettings.of(true, 400, 100, 25, 0));
-        FilterStore.wallClock = System::currentTimeMillis;
-        assertTrue(FilterStore.commitAutopilotBar(app, 100, 108));
-        assertEquals(wall - 3 * 24 * HOUR, FilterStore.minimumsSince(app));
-    }
-
     private static View page(ActivityController<MainActivity> activity) {
         return activity.get().findViewById(android.R.id.content);
     }
@@ -334,21 +266,10 @@ public class MinimumsGrowthUiTest extends AndroidAdapterTestBase {
         return details;
     }
 
-    /** Settings' "Let my minimums grow", the Settings page opened first where it is not up. */
-    private Switch settingsSwitch(View content) {
-        if (growSwitch(content) == null) {
-            iconDescribed(content, "Settings").performClick();
-            idle();
-        }
-        Switch grow = growSwitch(content);
-        assertNotNull("Let my minimums grow, in Settings", grow);
-        return grow;
-    }
-
     /** The shown switch whose words start "Let my minimums grow", or null. */
     private static Switch growSwitch(View view) {
         if (view instanceof Switch && view.isShown()
-                && ((Switch) view).getText().toString().startsWith(AutopilotText.GROW_SWITCH)) {
+                && ((Switch) view).getText().toString().startsWith(GROW_SWITCH)) {
             return (Switch) view;
         }
         if (view instanceof ViewGroup) {

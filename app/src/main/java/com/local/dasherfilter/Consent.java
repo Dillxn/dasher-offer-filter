@@ -42,9 +42,10 @@ final class Consent {
     // so it lasts past the latest 200 offers, and with pay first the update counts the accepts of the last 7 days again
     // (the owner's report, 14 October 2026: "it dropped the auto score below my recent high again on 6.18").
     // 28 (0.6.21): an accept holds the bar for the 24 offers after it instead of 7 days (the owner: "We may have to do
-    // it by like two dozen orders"); the minimums grow from what offers paid, Autopilot on or off, with their switch
-    // in Settings ("mins growing should not be narried to autopilot"); and in split screen the divider gives a map's
-    // half 70% whenever one shows, not only during a delivery (all the owner's, 15 October 2026).
+    // it by like two dozen orders"); the minimums no longer grow on their own, so the notice no longer says they do
+    // ("mins should grow as we accept offers with higher mins when adaptive / learned mins is on. autopilot is the
+    // buffer": learning raises them, Autopilot moves its bar); and in split screen the divider gives a map's half 70%
+    // whenever one shows, not only during a delivery (all the owner's, 15 October 2026).
     static final int VERSION = 28;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
@@ -75,13 +76,11 @@ final class Consent {
         {"On by default.", "Autopilot moves the bar offers must meet between " + FilterStore.BAR_MIN + "% and "
                 + FilterStore.BAR_MAX + "% of your minimums, putting pay first; above 100% it declines offers that "
                 + "meet them. After you accept an offer yourself, the bar stays at or above its score for your next "
-                + Autopilot.FLOOR_OFFERS + " offers. Your minimums grow up to " + Growth.MOST_PERCENT + "% at a time, "
-                + "with Undo, when 1 in 5 offers pay above them. Learning raises the minimums offers must meet when you "
-                + "accept an offer that beats your best. Peek can briefly open Dasher to read an offer that came in "
-                + "the background. "
-                + "An anonymous daily count tells the developer how many people use the app. "
-                + "Turn any of them off: Autopilot from its chip, learning with Learn, growth, Peek and the count "
-                + "in Settings."},
+                + Autopilot.FLOOR_OFFERS + " offers. Learning raises the minimums offers must meet when you accept an "
+                + "offer that beats your best. Peek can briefly open Dasher to read an offer that came in the "
+                + "background. An anonymous daily count tells the developer how many people use the app. "
+                + "Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the count in "
+                + "Settings."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},
         {"Your data.", "Your offers, rules and history stay on this phone. Feedback and reports leave only when you "

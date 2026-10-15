@@ -165,7 +165,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         int words = 0;
         for (String[] point : Consent.POINTS) words += (point[0] + " " + point[1]).split("\\s+").length;
         assertTrue(words + " words", words <= 420);
-        assertEquals("28 (0.6.21): the 24-offer hold, growth apart from Autopilot, the divider for a map", 28,
+        assertEquals("28 (0.6.21): the 24-offer hold, no more growth of the minimums, the divider for a map", 28,
                 Consent.VERSION);
         // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
         String account = point("Your Dasher account.");
@@ -195,18 +195,17 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                         + "that meet them.",
                 "After you accept an offer yourself, the bar stays at or above its score for your next "
                         + Autopilot.FLOOR_OFFERS + " offers.",
-                // 0.5.1 (notice 15): the minimums grow, at most 10% at a time, with Undo; from 0.6.21 (notice 28) from
-                // what offers paid, Autopilot on or off.
-                "Your minimums grow up to " + Growth.MOST_PERCENT + "% at a time, with Undo, when 1 in 5 offers pay "
-                        + "above them.",
                 "Learning raises the minimums offers must meet when you accept an offer that beats your best.",
                 "Peek can briefly open Dasher to read an offer that came in the background.",
                 // 0.6.3 (notice 20): the anonymous daily count.
                 "An anonymous daily count tells the developer how many people use the app.",
-                "Turn any of them off: Autopilot from its chip, learning with Learn, growth, Peek and the count in "
+                "Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the count in "
                         + "Settings."}) {
             assertTrue(fact, defaults.contains(fact));
         }
+        // 0.5.1 (notice 15) to 0.6.20: the minimums grew, at most 10% at a time, with Undo; from 0.6.21 (notice 28)
+        // nothing grows them ("autopilot is the buffer"), so the notice no longer says it.
+        assertFalse(defaults, defaults.contains("grow"));
         assertTrue(point("At your own risk.").contains("no warranty"));
         assertTrue(point("Not while driving.").contains("Don't handle your phone while driving."));
     }
@@ -226,10 +225,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "From 0.6.18 it confirms only a decline question worded as Dasher's usual one",
                 "It also declines a standalone offer from a store you put on your skip list",
                 "Autopilot can weigh your own cost per mile, off unless you set it in its details",
-                "Your minimums also grow, whether Autopilot is on or off",
-                "when at least 1 in 5 of your last 30 offers under your current minimums, over at least 2 days, paid "
-                        + "3% or more above them",
-                "Turn this off with Let my minimums grow in Settings", "Auto-accept starts off.",
+                "Autopilot never changes your minimums, only its bar",
+                "what offers must meet otherwise rises only through acceptance learning", "Auto-accept starts off.",
                 "it can press Back and retry the same offer, at most twice",
                 "it moves the divider, using the divider's own controls (the ones Android gives screen readers), to "
                         + "give the map about 70% of the screen",
@@ -386,8 +383,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // growth; 20, the anonymous daily count; 21, the store skip list and the cost per mile; 22, the bar an accepted
         // offer holds and the divider moved during a delivery; 23, pay per stop; 24, the pickup counted; 25, the plain
         // account warning; 26, pay first by default and the 7-day floor; 27, the floor kept through Autopilot off and
-        // on, and its accepts kept 7 days; 28, the 24-offer hold, growth from what offers paid, Autopilot on or off,
-        // and the divider moved for a map. A phone that accepted 14 (0.5.0) sees it again too.
+        // on, and its accepts kept 7 days; 28, the 24-offer hold, the minimums no longer growing on their own, and the
+        // divider moved for a map. A phone that accepted 14 (0.5.0) sees it again too.
         assertEquals(28, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
