@@ -187,12 +187,13 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         String defaults = point("On by default.");
         for (String fact : new String[] {
                 // Autopilot's bar goes both ways (FilterStore.BAR_MIN to BAR_MAX); raised, it declines offers that
-                // meet the minimums. 0.6.18: pay first; the best accept of 7 days holds the bar.
+                // meet the minimums. 0.6.18: pay first; an accept holds the bar (the best of 7 days; from 0.6.21, each
+                // for the 24 offers after it).
                 "Autopilot moves the bar offers must meet between " + FilterStore.BAR_MIN + "% and "
                         + FilterStore.BAR_MAX + "% of your minimums, putting pay first; above 100% it declines offers "
                         + "that meet them.",
-                "It keeps the bar at or above the score of the best offer you accepted yourself in the last "
-                        + Autopilot.FLOOR_DAYS + " days",
+                "After you accept an offer yourself, it keeps the bar at or above that offer's score for your next "
+                        + Autopilot.FLOOR_OFFERS + " offers",
                 // 0.5.1 (notice 15): the minimums grow, at most 10% at a time, with Undo.
                 "can raise your minimums up to " + Growth.MOST_PERCENT + "% at a time, with Undo.",
                 "Learning raises the minimums offers must meet when you accept an offer that beats your best.",
@@ -240,7 +241,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Up to 200 numeric wait-estimate records in a rolling 24-hour window", "The latest 200 decisions",
                 "This history has no age-based expiry",
                 // 0.6.19: the hand accepts kept for the accepted floor.
-                "At most " + AutopilotStore.KEPT_ACCEPTS_MAX + ", each for " + Autopilot.FLOOR_DAYS + " days",
+                "At most " + AutopilotStore.KEPT_ACCEPTS_MAX + ", each for 7 days",
                 // Dasher's acceptance rate never goes in the summary after a dash.
                 "It is never in the summary after each dash",
                 "Auto theme can use the same existing, fresh approximate location",

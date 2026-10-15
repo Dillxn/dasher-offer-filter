@@ -93,10 +93,11 @@ final class AutopilotText {
     static final String LOG_ON_BY_DEFAULT = "on by default; bar " + Autopilot.BAR_OFF + "% until it plans";
     /**
      * Once (0.6.19, {@link AutopilotStore#undoToggleRestartOnce}): the accepted floor, which turning Autopilot on or
-     * off restarted before 0.6.19, counts the hand accepts of the last 7 days again.
+     * off restarted before 0.6.19, counts the hand accepts again (those of the last 7 days then; from 0.6.21 each for
+     * the 24 offers after it).
      */
-    static final String LOG_FLOOR_PAST_TOGGLES = "accepted floor: your accepts of the last " + Autopilot.FLOOR_DAYS
-            + " days count again (turning Autopilot on or off no longer restarts it)";
+    static final String LOG_FLOOR_PAST_TOGGLES = "accepted floor: your accepts count again, each for the "
+            + Autopilot.FLOOR_OFFERS + " offers after it (turning Autopilot on or off no longer restarts it)";
     static final String LOG_DEFERRED = "commit deferred: offer or decline in flight";
     static final String DISCARD_RULES = "plan discarded: rules changed";
     static final String DISCARD_OLD = "plan discarded: older than " + Autopilot.PLAN_MAX_AGE_MS / 60_000 + " min";
@@ -596,21 +597,23 @@ final class AutopilotText {
 
     /**
      * While an offer the user accepted by hand holds the bar (0.6.11, {@link Autopilot.Plan#floorBinds}; across dashes
-     * from 0.6.18): "The bar stays at 63% or more: you accepted an offer that scored 63% of your minimums in the last 7
-     * days. …"; while the bar is still below it ({@link #risingTo}, 0.6.19), when it rises: "The bar rises to 63% as
-     * soon as no offer is up, and stays at 63% or more: …" (0.6.20; 0.6.19 said once Dasher is on screen). Null
-     * otherwise.
+     * from 0.6.18; for the 24 offers after it from 0.6.21, counted down): "The bar stays at 63% or more for your next
+     * 15 offers: you accepted an offer that scored 63% of your minimums. Changing your goal or minimums lets it go
+     * sooner."; while the bar is still below it ({@link #risingTo}, 0.6.19), when it rises: "The bar rises to 63% as
+     * soon as no offer is up, and stays at 63% or more for your next 15 offers: …" (0.6.20; 0.6.19 said once Dasher is
+     * on screen). Null otherwise.
      */
     static String detailsFloor(Status s) {
         Autopilot.Plan plan = s.plan;
         if (!s.on || plan == null || !plan.floorBinds()) return null;
+        int left = plan.floorOffersLeft;
+        String next = " for your next " + (left == 1 ? "offer" : left + " offers");
         String holds = risingTo(s) >= 0
                 ? "The bar rises to " + plan.floor + "% as soon as no offer is up, and stays at " + plan.floor
-                        + "% or more"
-                : "The bar stays at " + plan.floor + "% or more";
-        return holds + ": you accepted an offer that scored " + plan.floor + "% of your minimums in the last "
-                + Autopilot.FLOOR_DAYS + " days. When that accept is " + Autopilot.FLOOR_DAYS + " days old, or you "
-                + "change your goal or minimums, Autopilot sets it again.";
+                        + "% or more" + next
+                : "The bar stays at " + plan.floor + "% or more" + next;
+        return holds + ": you accepted an offer that scored " + plan.floor + "% of your minimums. Changing your goal "
+                + "or minimums lets it go sooner.";
     }
 
     /**

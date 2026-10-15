@@ -497,7 +497,7 @@ public class BundledNotesTest {
         assertEquals(lines.toString(), 3, lines.size());
         String notice = String.join(" ", lines);
         for (String fact : new String[] {"Turning Autopilot off and on no longer lets go of your best accept",
-                "for its " + Autopilot.FLOOR_DAYS + " days", "even after " + DecisionLog.MAX_ENTRIES + " newer offers",
+                "for its 7 days", "even after " + DecisionLog.MAX_ENTRIES + " newer offers",
                 "keeps the figures of offers you accept yourself", "on this phone only", "With pay first",
                 "counts your accepts of the last 7 days again", "the bar rises to your best one",
                 "as soon as no offer is up"}) {

@@ -28,10 +28,12 @@ import static org.junit.Assert.assertTrue;
  * The accepted floor through Autopilot's runtime (0.6.11, the owner: "if an accepted offer's score beats the autopilot
  * ask, the ask needs to jump to the new higher score"): the owner pinned at 50% accepts his $14.45 offer (7.2 mi,
  * 27 min, 63% of his minimums) by hand, and the next commit lifts the bar to 63% at once, with its own words; it holds
- * there for 7 days, across dashes (0.6.18; the owner chose "Earnings first", 14 October 2026: until then a new dash let
- * it go), even once 200 newer offers have pushed its line out of the history (0.6.19). The accept turning 7 days old
- * and the user's own changes (a knob, the goal, turning Autopilot on with another goal) let it go, each straight back
- * at the next commit; turning Autopilot off and on (0.6.19), a lesson and Adopt keep it. Automatic, add-on and
+ * there across dashes (0.6.18; the owner chose "Earnings first", 14 October 2026: until then a new dash let it go) for
+ * the 24 offers after it, however long they take (0.6.21, the owner: "24h may b too aggressive. We may have to do it
+ * by like two dozen orders or something"; the last 7 days from 0.6.18). The 24th offer after the accept and the
+ * user's own changes (a knob, the goal, turning Autopilot on with another goal) let it go, each straight back at the
+ * next commit; its figures stay kept for 7 days after 200 newer offers have pushed its line out of the history
+ * (0.6.19, for which bars it held up); turning Autopilot off and on (0.6.19), a lesson and Adopt keep it. Automatic, add-on and
  * observed accepts, an accept before the user's last change, Autopilot off and the notice not accepted change nothing;
  * Clear history forgets it. The update to 0.6.19 brings back, once and with pay first, an accept that turning
  * Autopilot on let go. Bars the floor holds up never grow the minimums. Plans run on the calling thread; Autopilot's
@@ -276,22 +278,40 @@ public class AutopilotFloorRuntimeTest {
         assertEquals(Autopilot.Reason.ACCEPTED.name(), AutopilotStore.lastChange(app).why);
     }
 
-    @Test public void itAgesOutSevenDaysAfterTheAccept() {
+    /**
+     * 0.6.21: days with no offers keep it; it lets go at the 24th offer after the accept, straight back to the plan's
+     * own target, and the plan counts down the offers it has left.
+     */
+    @Test public void itLetsGoAtThe24thOfferAfterTheAcceptHoweverLongTheyTake() {
         pinned();
         held();
         nextDash();
-        // Six days on, still held.
-        wall += 6 * 24 * HOUR;
-        elapsed += 6 * 24 * HOUR;
+        // Eight days on with no offer: still held, for all 24.
+        wall += 8 * 24 * HOUR;
+        elapsed += 8 * 24 * HOUR;
         assertTrue(AutopilotStore.recordReading(app, 10, "", wall - MIN));
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
-        assertEquals(63, AutopilotRuntime.latest().floor);
+        Autopilot.Plan plan = AutopilotRuntime.latest();
+        assertEquals(63, plan.floor);
+        assertEquals(Autopilot.FLOOR_OFFERS, plan.floorOffersLeft);
         assertEquals(AutopilotRuntime.Commit.HELD, AutopilotRuntime.commitIfDue(app));
         assertEquals(63, bar());
-        // Past 7 days from the accept: no floor, straight back to the plan's own target.
-        wall += 24 * HOUR + MIN;
-        elapsed += 24 * HOUR + MIN;
-        assertTrue(AutopilotStore.recordReading(app, 10, "", wall - MIN));
+        // 23 offers after the accept, all declined: one left.
+        FilterSettings decided = FilterStore.load(app);
+        long after = System.currentTimeMillis() + 1_000L;
+        for (int i = 0; i < Autopilot.FLOOR_OFFERS - 1; i++) {
+            line(new OfferSnapshot(600 + i, 7.2, 27, 2), after + i * 1_000L, decided);
+        }
+        elapsed += 2 * MIN;
+        AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
+        plan = AutopilotRuntime.latest();
+        assertEquals(63, plan.floor);
+        assertEquals(1, plan.floorOffersLeft);
+        assertEquals(AutopilotRuntime.Commit.HELD, AutopilotRuntime.commitIfDue(app));
+        assertEquals(63, bar());
+        // The 24th: no floor, straight back to the plan's own target.
+        line(new OfferSnapshot(700, 7.2, 27, 2), after + Autopilot.FLOOR_OFFERS * 1_000L, decided);
+        elapsed += 2 * MIN;
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
         releasedWith("your minimums are high for these offers");
     }
@@ -377,15 +397,17 @@ public class AutopilotFloorRuntimeTest {
     }
 
     /**
-     * 0.6.19: 200 newer offers push his line out of the history, and his accept still holds the bar (its figures are
-     * kept for the floor); it lets go 7 days after the accept, and is forgotten then.
+     * 0.6.19 kept his accept's figures, so it held the bar for its 7 days once 200 newer offers had pushed its line out
+     * of the history. From 0.6.21 those 200 are far more than its 24, so it lets go; its figures are still kept for the
+     * 7 days (Growth asks which bars it held up) and forgotten then.
      */
-    @Test public void anAcceptPastTheLatest200OffersStillHoldsItForItsSevenDays() {
+    @Test public void twoHundredNewerOffersLetItGoAndItsFiguresGoAfterSevenDays() {
         pinned();
         held();
         FilterSettings decided = FilterStore.load(app);
+        long after = System.currentTimeMillis() + 1_000L;
         for (int i = 0; i < DecisionLog.MAX_ENTRIES; i++) {
-            line(new OfferSnapshot(600 + i, 7.2, 27, 2), wall + (1 + i) * 1_000L, decided);
+            line(new OfferSnapshot(600 + i, 7.2, 27, 2), after + i * 1_000L, decided);
         }
         for (DecisionLog.Entry entry : DecisionLog.recent(app, DecisionLog.MAX_ENTRIES)) {
             assertFalse("his line left the history", entry.facts.fingerprint().equals(HIS.fingerprint()));
@@ -394,18 +416,13 @@ public class AutopilotFloorRuntimeTest {
         elapsed += 10 * MIN;
         assertTrue(AutopilotStore.recordReading(app, 10, "", wall - MIN));
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
-        Autopilot.Plan plan = AutopilotRuntime.latest();
-        assertEquals(63, plan.floor);
-        assertEquals(63, plan.target);
-        assertEquals(AutopilotRuntime.Commit.HELD, AutopilotRuntime.commitIfDue(app));
-        assertEquals(63, bar());
-        assertNotNull(keptAccepts());
-        // Past 7 days from the accept: straight back to the plan's own target, and forgotten.
+        releasedWith("your minimums are high for these offers");
+        assertNotNull("kept for its 7 days", keptAccepts());
+        // Past 7 days from the accept: forgotten.
         wall += 7 * 24 * HOUR;
         elapsed += 7 * 24 * HOUR;
         assertTrue(AutopilotStore.recordReading(app, 10, "", wall - MIN));
         AutopilotRuntime.requestPlan(app, AutopilotRuntime.Trigger.TICK);
-        releasedWith("your minimums are high for these offers");
         assertNull(keptAccepts());
     }
 
@@ -509,7 +526,8 @@ public class AutopilotFloorRuntimeTest {
 
     /**
      * The owner's case on updating: 0.6.18 had restarted the floor when he turned Autopilot back on, after his accept.
-     * With pay first, the update's first plan counts the accepts of the last 7 days again, once, with its log line.
+     * With pay first, the update's first plan counts the accepts again (from 0.6.21 each for the 24 offers after it),
+     * once, with its log line.
      */
     @Test public void theUpdateBringsBackAnAcceptThatTurningItOnLetGo() {
         pinned();

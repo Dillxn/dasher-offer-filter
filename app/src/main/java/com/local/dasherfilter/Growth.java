@@ -44,10 +44,12 @@ final class Growth {
     static final int MOST_PERCENT = 10;
     private static final long DAY_MS = 24L * 60 * 60_000;
     /**
-     * An accept could have held the bar of a line decided at most this long after it: the accepted floor's 7 days
-     * (0.6.18, {@link Autopilot#FLOOR_WINDOW_MS}; a day while the floor lasted a dash), so bars it held up never count.
+     * An accept could have held the bar of a line decided at most this long after it, whatever came between: the
+     * accepted floor's 7 days from 0.6.18 to 0.6.20 (a day while it lasted a dash). From 0.6.21 it holds for the
+     * {@value Autopilot#FLOOR_OFFERS} offers after it however long they take, so a line fewer offers after one counts
+     * as held too ({@link #held}): bars an accept held up under any version never count.
      */
-    static final long HELD_HORIZON_MS = Autopilot.FLOOR_WINDOW_MS;
+    static final long HELD_HORIZON_MS = 7 * DAY_MS;
 
     /** The minimums and the bar before and after one growth of {@link #percent} points (money in stored units). */
     static final class Grown {
@@ -115,8 +117,9 @@ final class Growth {
 
     /**
      * As {@link #evidence(FilterSettings, List, long, TimeZone)}, where a line whose bar some hand accept could have
-     * held (0.6.11: the accept came before the line, at most {@link #HELD_HORIZON_MS} before, and scored at least the
-     * line's bar under these rules) counts as 100, below {@value #LEAST_BAR}: bars an accept held up never grow the
+     * held (0.6.11: the accept came before the line, at most {@link #HELD_HORIZON_MS} before or fewer than
+     * {@value Autopilot#FLOOR_OFFERS} counted lines before (0.6.21), and scored at least the line's bar under these
+     * rules) counts as 100, below {@value #LEAST_BAR}: bars an accept held up never grow the
      * minimums. The lines are all scored under exactly these rules ({@link #samePolicy}), so an accept's score is what
      * it set the floor to then. A line Autopilot's own value rule set above every accept's score still counts.
      *
@@ -135,7 +138,7 @@ final class Growth {
         int lowest = Integer.MAX_VALUE;
         Set<Long> days = new HashSet<>();
         for (Autopilot.OfferRecord record : lines) {
-            lowest = Math.min(lowest, held(record, accepts) ? FilterSettings.BAR_AT_MINIMUMS : record.bar);
+            lowest = Math.min(lowest, held(record, accepts, counted) ? FilterSettings.BAR_AT_MINIMUMS : record.bar);
             days.add(day(record.at, zone));
         }
         if (lowest < LEAST_BAR || days.size() < LEAST_DAYS) return null;
@@ -146,11 +149,17 @@ final class Growth {
         return grown == null ? null : new Evidence(lines.size(), days.size(), lowest, since, grown);
     }
 
-    /** Whether some hand accept could have held {@code line}'s bar: before it, within the horizon, scoring as much. */
-    private static boolean held(Autopilot.OfferRecord line, List<Autopilot.HandAccept> accepts) {
+    /**
+     * Whether some hand accept could have held {@code line}'s bar: before it, within the horizon or fewer than
+     * {@value Autopilot#FLOOR_OFFERS} of {@code counted} before it, scoring as much.
+     */
+    private static boolean held(Autopilot.OfferRecord line, List<Autopilot.HandAccept> accepts,
+                                List<Autopilot.OfferRecord> counted) {
         if (accepts == null) return false;
         for (Autopilot.HandAccept accept : accepts) {
-            if (accept.at < line.at && line.at - accept.at <= HELD_HORIZON_MS && accept.score >= line.bar) return true;
+            if (accept.at >= line.at || accept.score < line.bar) continue;
+            if (line.at - accept.at <= HELD_HORIZON_MS
+                    || Autopilot.offersBetween(counted, accept.at, line.at) < Autopilot.FLOOR_OFFERS) return true;
         }
         return false;
     }

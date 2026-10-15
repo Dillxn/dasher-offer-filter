@@ -40,15 +40,16 @@ public final class LegalTextsTest {
      * The beta texts' effective identities, also read by ConsentGateTest. Only a text changed in substance gets
      * a new identity in its header; then tools/legal_texts.py regenerates the app's matching copy.
      */
-    static final String TERMS_EFFECTIVE = "14 October 2026";
+    static final String TERMS_EFFECTIVE = "15 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.19";
+    static final String TERMS_VERSION = "0.6.21";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
-     * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left).
+     * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
+     * 0.6.21 both (an accept holds the bar for the 24 offers after it; the split-screen divider).
      */
     static final String PRIVACY_EFFECTIVE = "15 October 2026";
-    static final String PRIVACY_VERSION = "0.6.20";
+    static final String PRIVACY_VERSION = "0.6.21";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -121,13 +122,19 @@ public final class LegalTextsTest {
                         + "decline this offer?\"), seen in the developer's own reports; any other question, or one "
                         + "saying declines are limited or that another decline would end your dash, is left to you and "
                         + "auto-decline pauses until you resume it.",
-                // 0.6.18: the best hand accept of the last 7 days holds the bar across dashes.
-                "keeps it at least at the best such score of the last 7 days, across dashes",
-                // 0.6.19: turning Autopilot off and on keeps that hold, which lasts past the 200-line history.
-                "An accept stops holding the bar 7 days after it, even after newer offers have pushed it out of the "
-                        + "decision history (from 0.6.19); a change of your goal (turning Autopilot on with another "
-                        + "goal included), minimums, max stops, mode or learning ends that hold; turning Autopilot off "
-                        + "and on again (from 0.6.19; before, turning it on ended it) and Adopt keep it.",
+                // 0.6.18: a hand accept holds the bar across dashes; 0.6.21: for the 24 offers after it (the owner:
+                // "24h may b too aggressive. We may have to do it by like two dozen orders or something").
+                "keeps it at least at that score for the next 24 offers, across dashes however long they take (from "
+                        + "0.6.21; from 0.6.18, the best such score of the last 7 days; before, for the rest of that "
+                        + "dash)",
+                // 0.6.19: turning Autopilot off and on keeps that hold.
+                "An accept stops holding the bar once 24 offers have come after it (from 0.6.21; from 0.6.19, 7 days "
+                        + "after it, even after newer offers had pushed it out of the decision history); a change of "
+                        + "your goal (turning Autopilot on with another goal included), minimums, max stops, mode or "
+                        + "learning ends that hold; turning Autopilot off and on again (from 0.6.19; before, turning it "
+                        + "on ended it) and Adopt keep it.",
+                "An offer you accept yourself can also hold Autopilot's bar above what the goal allows, for the next "
+                        + "24 offers (from 0.6.21; for up to 7 days before).",
                 "using your recent offers, how often they come and the acceptance rate Dasher shows when you decline",
                 // OfferRule.evaluate: a bar above 100% declines what meets the minimums but not the bar.
                 "Above 100% it declines offers that meet your minimums.",
@@ -269,7 +276,7 @@ public final class LegalTextsTest {
                 // 0.6.19: the hand accepts kept for the accepted floor (AutopilotStore.keepAccepts).
                 "The offers you accept yourself while Autopilot is on (from 0.6.19): for each, its pay in cents, "
                         + "miles, minutes, stops and item count, and when you accepted it",
-                "At most " + AutopilotStore.KEPT_ACCEPTS_MAX + ", each for " + Autopilot.FLOOR_DAYS + " days and "
+                "At most " + AutopilotStore.KEPT_ACCEPTS_MAX + ", each for 7 days and "
                         + "only since you last changed your goal or rules; that change removes them. They never leave "
                         + "the phone, not even in a report.",
                 "when you last changed your goal or rules (an accepted offer holds its bar only after that; before "
@@ -279,7 +286,11 @@ public final class LegalTextsTest {
                 "Autopilot's settings: whether it is on, your goal (pay first, the default from 0.6.18, or an "
                         + "acceptance rate of 70% or 50%) and whether you picked it yourself in its goal question, its "
                         + "current bar",
-                "the scores of offers you accepted yourself in the last 7 days, across dashes",
+                "the scores of offers you accepted yourself, each for the 24 offers after it, across dashes, from "
+                        + "0.6.21; in the last 7 days from 0.6.18",
+                "so an accept still counts after newer offers have pushed it out of the decision history: it holds "
+                        + "the bar until 24 offers have come after it (from 0.6.21; before, for 7 days), and bars it "
+                        + "held up never grow your minimums.",
                 "the bar it was judged at and whether Autopilot set that bar",
                 "whether Dasher said declining it does not lower your acceptance rate",
                 "used for the wait estimate and by Autopilot to estimate how often offers arrive",

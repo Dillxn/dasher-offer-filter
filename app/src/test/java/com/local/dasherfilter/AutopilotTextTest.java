@@ -845,10 +845,10 @@ public final class AutopilotTextTest {
         assertEquals(63, plan.target);
         AutopilotText.Status s = status(owner(70, 63), plan, nine, change(1, 50, 63, Autopilot.Reason.ACCEPTED));
 
-        // 0.6.18: the floor holds across dashes, for 7 days from the accept.
-        String floor = "The bar stays at 63% or more: you accepted an offer that scored 63% of your minimums in the "
-                + "last 7 days. When that accept is 7 days old, or you change your goal or minimums, Autopilot sets it "
-                + "again.";
+        // 0.6.18: the floor holds across dashes; from 0.6.21 for the 24 offers after the accept, counted down.
+        assertEquals(Autopilot.FLOOR_OFFERS, plan.floorOffersLeft);
+        String floor = "The bar stays at 63% or more for your next 24 offers: you accepted an offer that scored 63% of "
+                + "your minimums. Changing your goal or minimums lets it go sooner.";
         assertEquals(floor, AutopilotText.detailsFloor(s));
         List<String> details = AutopilotText.detailsLines(s);
         assertEquals(AutopilotText.detailsBar(s), details.get(0));
@@ -888,6 +888,40 @@ public final class AutopilotTextTest {
     }
 
     /**
+     * 0.6.21 (the owner: "24h may b too aggressive. We may have to do it by like two dozen orders or something"): the
+     * details count the hold's offers down, to its last one, and say nothing once 24 offers have come after the accept.
+     */
+    @Test
+    public void theHoldsOffersAreCountedDown() {
+        AutopilotStore.Reading nine = dasher(9, 1);
+        OfferSnapshot his = new OfferSnapshot(1512, 6.0, 26, 2);
+        List<Autopilot.OfferRecord> lines = new ArrayList<>();
+        // 23 offers since his accept 30 s ago, a second apart, newest first.
+        for (int i = Autopilot.FLOOR_OFFERS - 1; i >= 1; i--) {
+            lines.add(new Autopilot.OfferRecord(new OfferSnapshot(700 + i, 6.0, 26, 2), NOW - 30_000L + i * 1_000L,
+                    false, false, false, true, false));
+        }
+        lines.add(new Autopilot.OfferRecord(his, NOW - 90_000L, false, false, true, false, false, 50, true,
+                DecisionLog.MODEL, null, false, NOW - 30_000L));
+        lines.addAll(window(20));
+        Autopilot.Plan plan = floorPlan(owner(70, 50), lines, nine, 50, NOW - 60 * MIN);
+        assertEquals(63, plan.floor);
+        assertTrue(plan.floorBinds());
+        assertEquals(1, plan.floorOffersLeft);
+        AutopilotText.Status s = status(owner(70, 63), plan, nine, change(1, 50, 63, Autopilot.Reason.ACCEPTED));
+        assertEquals("The bar stays at 63% or more for your next offer: you accepted an offer that scored 63% of your "
+                + "minimums. Changing your goal or minimums lets it go sooner.", AutopilotText.detailsFloor(s));
+
+        // The 24th: the accept no longer holds the bar.
+        lines.add(0, new Autopilot.OfferRecord(new OfferSnapshot(800, 6.0, 26, 2), NOW - 1_000L, false, false, false,
+                true, false));
+        Autopilot.Plan after = floorPlan(owner(70, 50), lines, nine, 63, NOW - 60 * MIN);
+        assertEquals(-1, after.floor);
+        assertEquals(0, after.floorOffersLeft);
+        assertNull(AutopilotText.detailsFloor(status(owner(70, 63), after, nine, null)));
+    }
+
+    /**
      * Right after an update (the owner, 14 October 2026: "when I opened the app it said 50% which was already low"):
      * the plan's floor binds, but the bar deciding offers is the one the old version left until the commit, at the
      * next safe point. The chip keeps that bar; the status line, its spoken words and the details say where it is
@@ -917,9 +951,9 @@ public final class AutopilotTextTest {
         assertEquals("Autopilot bar 51 percent. Rising to 63 percent, the score of an offer you accepted.",
                 AutopilotText.statusSaid(waiting));
         // 0.6.20: off a dash it moves at once, so the rise waits only for an offer to go.
-        String rises = "The bar rises to 63% as soon as no offer is up, and stays at 63% or more: you accepted an "
-                + "offer that scored 63% of your minimums in the last 7 days. When that accept is 7 days old, or you "
-                + "change your goal or minimums, Autopilot sets it again.";
+        String rises = "The bar rises to 63% as soon as no offer is up, and stays at 63% or more for your next 24 "
+                + "offers: you accepted an offer that scored 63% of your minimums. Changing your goal or minimums lets "
+                + "it go sooner.";
         assertEquals(rises, AutopilotText.detailsFloor(waiting));
         assertEquals("right after the bar", rises, AutopilotText.detailsLines(waiting).get(1));
 
@@ -930,7 +964,7 @@ public final class AutopilotTextTest {
         assertEquals("Pay first", AutopilotText.statusLine(held));
         assertEquals("Autopilot bar 63 percent. Pay first.", AutopilotText.statusSaid(held));
         assertTrue(AutopilotText.detailsFloor(held), AutopilotText.detailsFloor(held).startsWith(
-                "The bar stays at 63% or more: you accepted an offer that scored 63%"));
+                "The bar stays at 63% or more for your next 24 offers: you accepted an offer that scored 63%"));
         // Nothing rises from a bar above the floor, nor while Autopilot is off.
         assertEquals(-1, AutopilotText.risingTo(status(owner(0, 70), plan, null, null)));
         assertEquals(-1, AutopilotText.risingTo(status(owner(0, 51).withAutopilot(false, 0), plan, null, null)));

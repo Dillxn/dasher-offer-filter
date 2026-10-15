@@ -13,9 +13,10 @@ import static org.junit.Assert.assertNull;
 /**
  * Bars an accept held up never grow the minimums (0.6.11, keeping the owner's 12 October rule that the saved minimums
  * never rise by themselves from an accept): a line whose bar a hand accept could have held (the accept came before it,
- * at most 7 days before, the accepted floor's window from 0.6.18 (a day while it lasted a dash), and scored at least its
- * bar) counts as 100 toward growth. A bar Autopilot's own value rule set above every accept's score still counts, and
- * so does an accept from more than 7 days before.
+ * at most 7 days before, the accepted floor's window from 0.6.18 to 0.6.20 (a day while it lasted a dash), or fewer
+ * than 24 counted offers before, its hold from 0.6.21, and scored at least its bar) counts as 100 toward growth. A bar
+ * Autopilot's own value rule set above every accept's score still counts, and so does an accept from more than 7 days
+ * and 24 offers before.
  */
 public final class GrowthFloorTest {
     private static final long HOUR = 60 * 60_000L;
@@ -44,8 +45,21 @@ public final class GrowthFloorTest {
     }
 
     private static Growth.Evidence evidence(Autopilot.HandAccept accept) {
-        return Growth.evidence(RULES, Autopilot.countedLines(lines()), SINCE, UTC,
-                Collections.singletonList(accept));
+        return evidence(accept, 0);
+    }
+
+    /**
+     * As {@link #evidence(Autopilot.HandAccept)}, with {@code between} more offers decided 8 days before the oldest
+     * line, not by Autopilot (so none is among the lines growth reads).
+     */
+    private static Growth.Evidence evidence(Autopilot.HandAccept accept, int between) {
+        List<Autopilot.OfferRecord> lines = lines();
+        for (int i = 0; i < between; i++) {
+            lines.add(new Autopilot.OfferRecord(new OfferSnapshot(900 + i, 5.0, 20, 2),
+                    oldest() - 8 * 24 * HOUR + i * 60_000L, false, false, false, false, false, 100, false,
+                    DecisionLog.MODEL, RULES));
+        }
+        return Growth.evidence(RULES, Autopilot.countedLines(lines), SINCE, UTC, Collections.singletonList(accept));
     }
 
     @Test
@@ -73,14 +87,22 @@ public final class GrowthFloorTest {
     }
 
     @Test
-    public void anAcceptMoreThanSevenDaysBeforeHoldsNothing() {
-        // 0.6.18: the floor carries across dashes for 7 days, so an accept 2 days before still held the bars.
+    public void anAcceptMoreThanSevenDaysAndTwentyFourOffersBeforeHoldsNothing() {
+        // 0.6.18 to 0.6.20: the floor carried across dashes for 7 days, so an accept 2 days before held the bars.
         assertNull(evidence(new Autopilot.HandAccept(oldest() - 48 * HOUR, 140)));
-        assertNotNull(evidence(new Autopilot.HandAccept(oldest() - 7 * 24 * HOUR - HOUR, 140)));
-        // An accept after every line held none of them.
-        assertNotNull(evidence(new Autopilot.HandAccept(NOW, 140)));
         // Exactly 7 days before the oldest line still holds it, and so the lowest is 100.
         assertNull(evidence(new Autopilot.HandAccept(oldest() - 7 * 24 * HOUR, 140)));
+        // An accept after every line held none of them.
+        assertNotNull(evidence(new Autopilot.HandAccept(NOW, 140)));
+        // 0.6.21: it holds the 24 offers after it however long they take, so 9 days before, with 23 offers between,
+        // it still held the oldest line ...
+        Autopilot.HandAccept longAgo = new Autopilot.HandAccept(oldest() - 9 * 24 * HOUR, 140);
+        assertNull(evidence(longAgo));
+        assertNull(evidence(longAgo, Autopilot.FLOOR_OFFERS - 1));
+        // ... and with 24 between, none of the lines: they are Autopilot's own again.
+        Growth.Evidence due = evidence(longAgo, Autopilot.FLOOR_OFFERS);
+        assertNotNull(due);
+        assertEquals(110, due.lowestBar);
     }
 
     @Test
@@ -98,7 +120,6 @@ public final class GrowthFloorTest {
                 Long.MAX_VALUE));
         assertNull("no floor this dash, but yesterday's accept held the bars", plan.growth);
         assertEquals(-1, plan.floor);
-        assertEquals("the accepted floor's 7 days (0.6.18)", 7 * 24 * HOUR, Growth.HELD_HORIZON_MS);
-        assertEquals(Autopilot.FLOOR_WINDOW_MS, Growth.HELD_HORIZON_MS);
+        assertEquals("the accepted floor's 7 days (0.6.18 to 0.6.20)", 7 * 24 * HOUR, Growth.HELD_HORIZON_MS);
     }
 }

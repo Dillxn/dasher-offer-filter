@@ -268,7 +268,8 @@ final class AutopilotStore {
     /**
      * Once (0.6.19): before it, turning Autopilot on or off restarted the accepted floor too, and what restarted it was
      * not kept. With pay first as the goal ({@code payFirst}), a floor that restarted starts over from nothing, so the
-     * hand accepts of the last 7 days still in the history hold the bar again (best judgment: the accept that turning
+     * hand accepts still in the history hold the bar again, each for the 24 offers after it (0.6.21; those of the last
+     * 7 days before) (best judgment: the accept that turning
      * Autopilot back on let go, the owner's 14 October 2026 report, comes back; any other accept is scored under the
      * rules as they are now). A goal that protects the acceptance rate keeps its restart. True when it moved.
      */
@@ -286,9 +287,10 @@ final class AutopilotStore {
     }
 
     /**
-     * Keeps the hand accepts in {@code newestFirst} for the accepted floor (0.6.19), so the best of the last 7 days
-     * holds the bar even after its line leaves the latest 200 decisions, and returns every kept one, newest first, as
-     * a line Autopilot scores only for the floor. Kept: an offer the user accepted by hand at or after {@code since}
+     * Keeps the hand accepts in {@code newestFirst} for the accepted floor (0.6.19), so an accept still counts for 7
+     * days after its line leaves the latest 200 decisions, and returns every kept one, newest first, as a line
+     * Autopilot scores only for the floor. From 0.6.21 the floor lets go of an accept 24 offers after it, so a kept one
+     * rarely holds the bar, but {@link Growth} still asks which bars one held up. Kept: an offer the user accepted by hand at or after {@code since}
      * and the floor's last restart, with its pay read, and not an add-on, a replay, a skipped store's or misread; at
      * most {@link #KEPT_ACCEPTS_MAX}, the newest. Older ones are forgotten here. Written only when that changes.
      */

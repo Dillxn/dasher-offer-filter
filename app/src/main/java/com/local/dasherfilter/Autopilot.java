@@ -35,7 +35,7 @@ import java.util.TimeZone;
  * <p>Autopilot never accepts anything and never decides a single offer. The one thing it takes from what the user
  * accepts (0.6.11, the owner: "if an accepted offer's score beats the autopilot ask, the ask needs to jump to the new
  * higher score"; across dashes from 0.6.18): the bar never stays below the best score, under the current rules, among
- * the offers the user accepted by hand in the last {@value #FLOOR_DAYS} days since their own last change
+ * the offers the user accepted by hand since their own last change, each for the {@value #FLOOR_OFFERS} offers after it
  * ({@link #acceptedFloor}, at most 150%), in every mode. Nothing else is learned: the history only counts offers
  * and outcomes for the acceptance rate, and the market for the value. A plan also says whether the minimums are due to
  * grow ({@link Plan#growth}, {@link Growth}): from Autopilot's own recorded bars only, never a bar an accept held up.
@@ -45,12 +45,14 @@ final class Autopilot {
     static final int BAR_MIN = 50;
     static final int BAR_MAX = 150;
     /**
-     * How long a hand accept holds the bar (0.6.18; the owner chose "Earnings first", 14 October 2026): the accepted
-     * floor is the best score accepted by hand in the last 7 days, rolling, across dashes, so a one-off great offer ages
-     * out and the bar can't stay stuck above the market. The user's own change still restarts it.
+     * How long a hand accept holds the bar (0.6.18; the owner chose "Earnings first", 14 October 2026): for the next
+     * 24 offers after it, across dashes, however long they take, so a one-off great offer lets go once that many
+     * offers have come without the bar coming down for them, and nothing lets go while the user isn't dashing (0.6.21,
+     * the owner: "I feel like 7 days is too strong. should be like 24h", then "24h may b too aggressive. We may have to
+     * do it by like two dozen orders or something"; the last 7 days from 0.6.18 to 0.6.20). Offers are Autopilot's
+     * counted lines ({@link #countedLines}). The user's own change still restarts it.
      */
-    static final int FLOOR_DAYS = 7;
-    static final long FLOOR_WINDOW_MS = FLOOR_DAYS * 24L * 60 * 60_000L;
+    static final int FLOOR_OFFERS = 24;
     /** The bar while Autopilot is off: exactly the minimums. */
     static final int BAR_OFF = FilterSettings.BAR_AT_MINIMUMS;
 
@@ -195,8 +197,8 @@ final class Autopilot {
          */
         LEARNED(true, "your learned minimums rose"),
         /**
-         * The bar rose to, or stays held at, the score of an offer the user accepted by hand (0.6.11; in the last 7 days
-         * from 0.6.18).
+         * The bar rose to, or stays held at, the score of an offer the user accepted by hand (0.6.11; for the 24 offers
+         * after it from 0.6.21, the last 7 days from 0.6.18).
          */
         ACCEPTED(false, "you accepted an offer at this score");
 
@@ -404,9 +406,9 @@ final class Autopilot {
          */
         final int costPerMileCents;
         /**
-         * Hand accepts from then on (wall clock) set the accepted floor ({@link #acceptedFloor}, 0.6.11): from 0.6.18
-         * the later of {@link #FLOOR_WINDOW_MS} ago and the user's last own change, whatever the dash (0.6.11 to 0.6.17:
-         * the dash's start). {@link Long#MAX_VALUE}: no floor.
+         * Hand accepts from then on (wall clock) set the accepted floor ({@link #acceptedFloor}, 0.6.11), each for the
+         * {@value #FLOOR_OFFERS} offers after it: the user's last own change, whatever the dash (0.6.21; 0.6.18 to
+         * 0.6.20, no earlier than 7 days ago; 0.6.11 to 0.6.17, the dash's start). {@link Long#MAX_VALUE}: no floor.
          */
         final long floorSince;
         /**
@@ -669,10 +671,15 @@ final class Autopilot {
         final int ownTarget;
         /**
          * The accepted floor (0.6.11, {@link #acceptedFloor}): the best score of an offer the user accepted by hand
-         * in the last {@value #FLOOR_DAYS} days since their own last change (0.6.18; this dash before), under these
-         * rules; -1 when none, and always -1 while off or with no money minimum.
+         * since their own last change and fewer than {@value #FLOOR_OFFERS} offers ago (0.6.21; the last 7 days from
+         * 0.6.18; this dash before), under these rules; -1 when none, and always -1 while off or with no money minimum.
          */
         final int floor;
+        /**
+         * How many more offers an accept scoring {@link #floor} holds it for (0.6.21, {@link #floorOffersLeft}): 1 to
+         * {@value #FLOOR_OFFERS}; 0 when there is no floor.
+         */
+        final int floorOffersLeft;
         /** The committed bar the plan started from. */
         final int current;
         final int goal;
@@ -745,6 +752,7 @@ final class Autopilot {
             this.mode = mode;
             this.ownTarget = target;
             this.floor = mode == Mode.OFF || mode == Mode.NO_RULES ? -1 : d.floor;
+            this.floorOffersLeft = floor < 0 ? 0 : d.floorOffersLeft;
             this.target = Math.max(target, floor);
             this.current = d.state.current;
             this.goal = d.rules.autopilotGoalPercent;
@@ -848,6 +856,7 @@ final class Autopilot {
         long checkpointAt;
         int checkpointAr;
         int floor = -1;
+        int floorOffersLeft;
 
         Draft(Inputs in, List<OfferRecord> window, int[] thetas, List<MixLine> mix, ArNow ar, Rate rate,
               boolean exemptionsIgnored, Growth.Evidence growth) {
@@ -938,7 +947,8 @@ final class Autopilot {
         List<HandAccept> accepts = handAccepts(rules, in.newestFirst, in.keptAccepts);
         Growth.Evidence growth = Growth.evidence(rules, counted, in.minimumsSince, in.zone, accepts);
         Draft draft = new Draft(in, window, thetas, mix, ar, rate, ignoreExempt, growth);
-        draft.floor = acceptedFloor(accepts, in.floorSince);
+        draft.floor = acceptedFloor(accepts, in.floorSince, counted);
+        draft.floorOffersLeft = floorOffersLeft(accepts, in.floorSince, counted, draft.floor);
 
         if (!rules.autopilot) return draft.gated(Mode.OFF);
         if (!rules.hasMonetaryRule()) return draft.gated(Mode.NO_RULES);
@@ -1057,17 +1067,54 @@ final class Autopilot {
         }
     }
 
-    /**
-     * The accepted floor: the highest score among {@code accepts} made at or after {@code since} (wall clock); -1 when
-     * none reaches {@link #BAR_MIN}. An identical offer passes at it exactly, and anything worse is declined.
-     */
+    /** {@link #acceptedFloor(List, long, List)} with no offer after any accept yet. */
     static int acceptedFloor(List<HandAccept> accepts, long since) {
+        return acceptedFloor(accepts, since, null);
+    }
+
+    /**
+     * The accepted floor: the highest score among {@code accepts} made at or after {@code since} (wall clock) that
+     * still hold the bar, with fewer than {@value #FLOOR_OFFERS} of {@code counted} ({@link #countedLines}) decided
+     * after them (0.6.21); -1 when none reaches {@link #BAR_MIN}. An identical offer passes at it exactly, and anything
+     * worse is declined.
+     */
+    static int acceptedFloor(List<HandAccept> accepts, long since, List<OfferRecord> counted) {
         int floor = -1;
         if (accepts == null) return floor;
         for (HandAccept accept : accepts) {
-            if (accept.at >= since && accept.score >= BAR_MIN) floor = Math.max(floor, accept.score);
+            if (holds(accept, since, counted)) floor = Math.max(floor, accept.score);
         }
         return floor;
+    }
+
+    /**
+     * How many more offers the accepted floor {@code floor} holds for: the most any accept scoring it has left of its
+     * {@value #FLOOR_OFFERS}; 0 when {@code floor} is -1.
+     */
+    static int floorOffersLeft(List<HandAccept> accepts, long since, List<OfferRecord> counted, int floor) {
+        int left = 0;
+        if (accepts == null || floor < BAR_MIN) return left;
+        for (HandAccept accept : accepts) {
+            if (accept.score == floor && holds(accept, since, counted)) {
+                left = Math.max(left, FLOOR_OFFERS - offersBetween(counted, accept.at, Long.MAX_VALUE));
+            }
+        }
+        return left;
+    }
+
+    private static boolean holds(HandAccept accept, long since, List<OfferRecord> counted) {
+        return accept.at >= since && accept.score >= BAR_MIN
+                && offersBetween(counted, accept.at, Long.MAX_VALUE) < FLOOR_OFFERS;
+    }
+
+    /** How many of {@code counted} were decided after {@code from} and before {@code to} (wall clock). */
+    static int offersBetween(List<OfferRecord> counted, long from, long to) {
+        int between = 0;
+        if (counted == null) return between;
+        for (OfferRecord line : counted) {
+            if (line != null && line.at > from && line.at < to) between++;
+        }
+        return between;
     }
 
     /** The first {@code count} of {@code lines} (all of them when fewer), unmodifiable. */

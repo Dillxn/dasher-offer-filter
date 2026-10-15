@@ -70,10 +70,11 @@ final class Consent {
                 + "it."},
         {"On by default.", "Autopilot moves the bar offers must meet between " + FilterStore.BAR_MIN + "% and "
                 + FilterStore.BAR_MAX + "% of your minimums, putting pay first; above 100% it declines offers that "
-                + "meet them. It keeps the bar at or above the score of the best offer you accepted yourself in the "
-                + "last " + Autopilot.FLOOR_DAYS + " days, and can raise your minimums up to " + Growth.MOST_PERCENT
-                + "% at a time, with Undo. Learning raises the minimums offers must meet when you accept an offer "
-                + "that beats your best. Peek can briefly open Dasher to read an offer that came in the background. "
+                + "meet them. After you accept an offer yourself, it keeps the bar at or above that offer's score for "
+                + "your next " + Autopilot.FLOOR_OFFERS + " offers, and can raise your minimums up to "
+                + Growth.MOST_PERCENT + "% at a time, with Undo. Learning raises the minimums offers must meet when you "
+                + "accept an offer that beats your best. Peek can briefly open Dasher to read an offer that came in "
+                + "the background. "
                 + "An anonymous daily count tells the developer how many people use the app. "
                 + "Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the count in "
                 + "Settings."},

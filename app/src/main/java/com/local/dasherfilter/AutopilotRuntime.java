@@ -346,14 +346,15 @@ final class AutopilotRuntime {
             // Once (0.6.19): with pay first, a floor that turning Autopilot on or off may have restarted starts over.
             boolean payFirst = rules.autopilotGoalPercent == FilterSettings.GOAL_PAY_FIRST;
             if (AutopilotStore.undoToggleRestartOnce(app, payFirst)) log(app, AutopilotText.LOG_FLOOR_PAST_TOGGLES);
-            // The accepted floor counts hand accepts of the last 7 days, across dashes (0.6.18; this dash before),
-            // since the user's last change of goal or rules.
-            long floorSince = Math.max(wall - Autopilot.FLOOR_WINDOW_MS, AutopilotStore.floorSince(app));
-            // Those accepts are kept past the latest 200 lines for the 7 days (0.6.19), never after Clear history.
+            // The accepted floor counts hand accepts since the user's last change of goal or rules, each for the 24
+            // offers after it, across dashes (0.6.21; the last 7 days from 0.6.18; this dash before).
+            long floorSince = AutopilotStore.floorSince(app);
+            // Those accepts are kept past the latest 200 lines for 7 days (0.6.19), never after Clear history: Growth
+            // still asks which bars one held up (Growth.HELD_HORIZON_MS).
             List<Autopilot.OfferRecord> kept;
             synchronized (LOCK) {
                 if (generation.get() != planned) return;
-                kept = AutopilotStore.keepAccepts(app, lines, floorSince);
+                kept = AutopilotStore.keepAccepts(app, lines, Math.max(wall - Growth.HELD_HORIZON_MS, floorSince));
             }
             Runnable hook = afterInputsForTests;
             if (hook != null) hook.run();
