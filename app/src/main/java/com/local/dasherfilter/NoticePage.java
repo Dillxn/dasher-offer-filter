@@ -72,8 +72,8 @@ final class NoticePage {
             params.topMargin = ui.dp(14);
             body.addView(line, params);
         }
-        // Pilot diagnostics (0.6.18): asked here, opt-in, unchecked every time the notice shows.
-        Switch diagnostics = ui.toggle(body, Consent.DIAGNOSTICS_ASK, false);
+        // Pilot diagnostics (0.6.18): asked here, opt-in; it shows the choice already made (0.6.20), off on a new install.
+        Switch diagnostics = ui.toggle(body, Consent.DIAGNOSTICS_ASK, Feedback.afterDashOn(context));
         diagnostics.setId(DIAGNOSTICS_ID);
         ((LinearLayout.LayoutParams) diagnostics.getLayoutParams()).topMargin = ui.dp(18);
         TextView agreement = ui.text(Consent.AGREEMENT, 13, ui.inkSecondary, false);
@@ -94,8 +94,10 @@ final class NoticePage {
         LinearLayout.LayoutParams acceptParams = Ui.matchWidth();
         acceptParams.topMargin = ui.dp(10);
         body.addView(ui.button(Consent.ACCEPT, true, () -> {
-            // The notice's own ask (0.6.18): on, accepting turns Settings' switch on; off changes nothing.
-            if (diagnostics.isChecked()) Feedback.setAfterDash(context, true);
+            // The notice's own ask: accepting keeps the switch as it is left, Settings' switch with it (0.6.20; 0.6.18
+            // showed it off every time, so a choice already made looked undone).
+            boolean on = diagnostics.isChecked();
+            if (on != Feedback.afterDashOn(context)) Feedback.setAfterDash(context, on);
             accept.run();
         }), acceptParams);
         page.addView(body, Ui.matchWidth());

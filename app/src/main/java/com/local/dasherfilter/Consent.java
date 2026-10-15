@@ -48,80 +48,42 @@ final class Consent {
 
     static final String TITLE = "Before you start";
 
-    /** The notice: a few short points, each a bold lead and a line or two after it. */
+    /**
+     * The notice: a few short points, each a bold lead and a line or two after it. 0.6.20 cut it from 11 points and
+     * about 1,230 words to 7 and about 400 (the owner, 14 October 2026: "that screen is way too long"): what it does,
+     * what is on by default and what leaves the phone, each once, with the details left to the Terms and Privacy it
+     * links to (ConsentGateTest checks they are there). The acceptance-rate and account warnings are word for word as
+     * before. Words only, the same substance: VERSION stays.
+     */
     static final String[][] POINTS = {
         {"Acceptance rate.", "Automatic declines may dramatically lower your DoorDash acceptance rate. "
                 + "Only continue if you understand and accept that risk."},
-        {"Not a DoorDash app.", AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash."},
-        {"What it does.", "It reads Dasher's screen and notifications on this phone. It taps Decline and its confirmation "
-                + "on offers that fail your chosen rules. It confirms only Dasher's usual question (\"Are you sure "
-                + "you want to decline this offer?\"); any other question it leaves to you and pauses auto-decline. "
-                + "It also declines offers from stores you put on your skip list "
-                + "(from an offer's details), whatever they pay. Your pay minimum is per stop, the pickup included: an offer "
-                + "must pay it for each stop Dasher shows, so $5 a stop asks $10 of a single order and $15 of three "
-                + "stops. Your number wasn't changed, so a single order now asks twice what it did; set it to what you "
-                + "want per stop. Strict mode checks every active minimum; optional area mode "
-                + "allows stronger pay or rates to compensate for weaker ones. Max stops stays a hard limit; "
-                + "unread required facts stay for review and add-ons stay strict. Permitted by the filter does not "
-                + "mean accepted. Autopilot is on by default, with pay first as its goal, and moves that cutoff up or "
-                + "down by itself (50% to 150% of your minimums), using your recent offers, how often they come and the acceptance rate Dasher shows when "
-                + "you decline, and your own cost per mile if you set one in its details (off by default): raised, "
-                + "it declines offers that meet your minimums; if you choose a goal that protects your acceptance "
-                + "rate instead, it can let offers below your minimums through for you to decide. When you accept an "
-                + "offer yourself that scores above that cutoff, it raises the cutoff to that offer's score and keeps "
-                + "it at least at the best score you accepted in the last 7 days, across dashes, even above what an "
-                + "acceptance goal allows, until you change your goal or minimums. Autopilot also raises your minimums after "
-                + "offers have paid above them for a while, at most 10% at a time, with Undo, which can mean more "
-                + "declines. Its chip on the homepage turns Autopilot off. Auto-accept is off by default; if "
-                + "you separately enable it in Settings, it can accept standalone offers that meet your minimums and commit "
-                + "you to a delivery. If Dasher shows an error and gets stuck during a decline, it may go Back and retry, at "
-                + "most twice. Your touch stops it. If Dasher shows Finding offers without an offer it announced, it "
-                + "may tap Dasher's ⚙ button once to bring the offer up, never within 2 seconds of your touch. In split screen during a delivery it moves the divider, using the "
-                + "divider's own controls, to give the navigating app more room, and puts it back afterward; move it "
-                + "yourself and it stops for that dash. It can briefly turn offer sound down. During a dash it keeps your "
-                + "unlocked screen from timing out; it never wakes or unlocks it."},
-        {"Peek is on by default.", "While your phone is unlocked and quiet, it can briefly open Dasher to read a fresh "
-                + "background offer (also just after you unlock, for one that came while it was locked), then return to "
-                + "your previous app. Turn Peek off in Settings."},
-        {"Learning is on by default.", "When you accept an offer yourself and it beats your best pay per stop, pay per "
-                + "mile (trips of 2 miles or more) or pay per hour (10 minutes or more), the learned minimums rise to match "
-                + "it at once. Offers must meet them as well as your own minimums, which can mean more declines. Your "
-                + "own minimums stay as you set them; the homepage says what rose, with Adopt to make them yours. "
-                + "The bests stay on this phone. Automatic accepts, declines, add-ons and unclear acceptances "
-                + "do not teach it; any known implausible figure rejects the lesson. The Learn button on the homepage "
-                + "turns it off; off keeps the bests without learning. Reset clears the bests and Clear history clears them "
-                + "too; your minimums stay. Area mode starts off. Autopilot growth is separate."},
-        {"Your Dasher account.", "DoorDash's terms ban automated tools that read or collect data from its apps, "
+        {"Your Dasher account.", AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash. "
+                + "DoorDash's terms ban automated tools that read or collect data from its apps, "
                 + "and this is one. DoorDash could limit or deactivate your account."},
+        {"What it does.", "It reads Dasher's screen and notifications on this phone and declines offers that fail "
+                + "your rules, or come from stores on your skip list, by tapping Decline and Dasher's usual question "
+                + "(\"Are you sure you want to decline this offer?\"). Any other question it leaves to you and pauses. "
+                + "It may also go Back after a Dasher error, tap Dasher's ⚙ once to bring up a missing offer, move "
+                + "the split-screen divider during a delivery, briefly turn offer sound down and keep your unlocked "
+                + "screen on during a dash. Auto-accept is off unless you turn it on in Settings. Your touch stops it."},
+        {"On by default.", "Autopilot moves the bar offers must meet between " + FilterStore.BAR_MIN + "% and "
+                + FilterStore.BAR_MAX + "% of your minimums, putting pay first; above 100% it declines offers that "
+                + "meet them. It keeps the bar at or above the score of the best offer you accepted yourself in the "
+                + "last " + Autopilot.FLOOR_DAYS + " days, and can raise your minimums up to " + Growth.MOST_PERCENT
+                + "% at a time, with Undo. Learning raises the minimums offers must meet when you accept an offer "
+                + "that beats your best. Peek can briefly open Dasher to read an offer that came in the background. "
+                + "An anonymous daily count tells the developer how many people use the app. "
+                + "Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the count in "
+                + "Settings."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},
-        {"Your data.", "Diagnostic logs use a rolling 24-hour window, pruned during app use. The latest 200 offer decisions "
-                + "have no age-based expiry. The wait estimate and Autopilot use up to 200 numeric offer and observed-wait "
-                + "records in a rolling 24-hour window, which are not shared, and the app keeps the latest acceptance rate "
-                + "Dasher showed, with the offer it was shown for (used up to 7 days, then deleted when the app next looks), "
-                + "even with Autopilot off; the rate leaves only in reports you share or send yourself, never in the "
-                + "summary after a dash. Autopilot also keeps the figures of offers you accept yourself (at most 100, "
-                + "for 7 days), so the best one keeps holding its cutoff; they never leave this phone. "
-                + "Auto theme uses an existing allowed approximate location, or a local-clock fallback. "
-                + "Recognized payment, account and earnings screens are discarded. Feedback and offer reports are accountless and leave "
-                + "only when you tap Send; masked diagnostics go only when you attach them, or after each dash if you turn that on in "
-                + "Settings or with the switch at the end of this notice (off by default). What you type is sent as written, not masked. No feedback or diagnostics leave before "
-                + "you accept this notice. Unsent submissions wait on this phone up to 7 days. The feedback service keeps them 90 days, "
-                + "and the developer may review them with AI tools (Anthropic's Claude or OpenAI's ChatGPT/Codex); clearing this phone "
-                + "does not erase sent copies. Network providers still receive normal connection metadata, and text masking can miss "
-                + "details. Privacy explains updates, feedback, the daily count, place lookups and map links."},
-        {"A daily count is on by default.", "Once a day it sends the feedback service one anonymous count, so the "
-                + "developer can see how many people use the app: only its version, whether this install was counted "
-                + "before and a random code made new each day, so a retry counts once. Nothing about your offers, "
-                + "phone or account goes with it. The service keeps daily totals for 400 days; it keeps the code up "
-                + "to 2 days, and a one-way value made from your network's address only for that day, so each counts "
-                + "once. Turn it off with Send an anonymous daily count in Settings."},
-        {"Optional offer timing study.", "Settings offers a checked draft choice to include new numeric offer-timing "
-                + "observations in diagnostics you choose to share. Nothing starts until you separately confirm it with Save choice. "
-                + "It compares estimates recorded before outcomes with observed waits, offer quality and actions; "
-                + "gaps stay unknown. No customer text, location, account/device ID, acceptance rate, Autopilot plan "
-                + "or minimum amounts. Unchecking and saving discards local study data and study sections in "
-                + "unsent reports. Automatic after-dash sharing stays your separate choice."},
+        {"Your data.", "Your offers, rules and history stay on this phone. Feedback and reports leave only when you "
+                + "tap Send, and masked diagnostics only when you attach them or turn on the switch below. What you "
+                + "type is sent as written, and masking can miss details. The feedback service keeps what you send "
+                + "90 days, and the developer may review it with AI tools (Anthropic's Claude or OpenAI's "
+                + "ChatGPT/Codex). The Terms and Privacy say the rest, including what updates, the daily count, "
+                + "place lookups and map links send."},
     };
     static final String ACCEPT = "I understand and accept";
     static final String AGREEMENT = "By tapping " + ACCEPT + ", you acknowledge this acceptance-rate risk, "
@@ -129,10 +91,11 @@ final class Consent {
     static final String NOT_NOW = "Not now";
     /**
      * The notice's last control (0.6.18; the owner chose "The install page and the notice ask pilot Dashers to turn
-     * diagnostics on, and it stays opt-in", 14 October 2026): one switch, unchecked every time the notice shows.
-     * Accepting the notice with it on turns Settings' "Share anonymous diagnostics after each dash" on
-     * ({@link Feedback#setAfterDash}); with it off nothing changes (an already-on switch stays on). The same summaries,
-     * masking and limits as that switch.
+     * diagnostics on, and it stays opt-in", 14 October 2026): one switch showing Settings' "Share anonymous diagnostics
+     * after each dash" as it is, off on a new install (0.6.20; 0.6.18 showed it unchecked every time, and the owner
+     * asked, 14 October 2026: "share diagnostics was turned off by default again on the splash screen even though I had
+     * it turned on last time"). Accepting the notice leaves Settings' switch as this one is left
+     * ({@link Feedback#setAfterDash} only when that changes it). The same summaries, masking and limits as that switch.
      */
     static final String DIAGNOSTICS_ASK = "Share anonymous diagnostics after each dash (helps fix it for your phone)";
 

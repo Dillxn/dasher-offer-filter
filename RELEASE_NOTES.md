@@ -1,3 +1,13 @@
+## 0.6.20 — The bar moves at once off a dash, and a short notice
+
+Version 0.6.20 (code 112) answers the owner's three messages of 14 October 2026 on 0.6.19: "why is it auto 52 when offer was 67?" (two minutes after updating, with Dasher's home screen beside the app), and "share diagnostics was turned off by default again on the splash screen even though I had it turned on last time. also that screen is way too long".
+
+- **Off a dash, the bar moves at once.** When no dash is under way (nothing of one seen for half an hour, or Dasher said it ended, and no route under way), Autopilot's bar moves as soon as it has a plan, without waiting for a read of Dasher's screen or for reads to settle: no offer can be up then, nor one decided at the old bar. So right after an update, accepting the notice puts the bar at your best accept at once instead of within a minute of Dasher showing. During a dash nothing changed: it moves only at a quiet moment with no offer up, checked once a minute. The details now say "The bar rises to 63% as soon as no offer is up".
+- **The notice's switch shows your choice.** The diagnostics switch on the notice shows whether "Share anonymous diagnostics after each dash" is on, instead of starting off every time, and accepting leaves it as you left it (off on a new install; diagnostics stay opt-in). Your setting was never turned off before: off there changed nothing.
+- **A short notice.** The notice is 7 short points, about 400 words, down from 11 points and about 1,230: the acceptance-rate warning and the DoorDash-terms warning word for word, what it does, what is on by default and how each turns off, your own risk, not while driving, and what leaves the phone. What it cut is still in the Terms and Privacy it links to (a test checks): the details of the rules (pay per stop, strict and area mode), Autopilot, learning and Peek; how long each record is kept; the daily count's details; and the optional timing study, which Settings asks for on its own. The words got shorter, not the substance, so the notice stays 27 and nobody is asked again; a new install sees the short one. Privacy is for 0.6.20 (the switch's line); the Terms are unchanged.
+
+No phone has run this build.
+
 ## 0.6.19 — Your best accept keeps holding Autopilot's bar
 
 Version 0.6.19 (code 111) answers the owner's report of 14 October 2026 on 0.6.18, "it dropped the auto score below my recent high again on 6.18": he had turned Autopilot off and back on, and turning it on let go of his best accept, so the bar fell to 52%.

@@ -461,11 +461,30 @@ public class BundledNotesTest {
      * 0.6.19 (the owner, 14 October 2026: "it dropped the auto score below my recent high again on 6.18"): the card is
      * notice 27's lines.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.19", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(27, Consent.VERSION);
+    @Test public void release0619SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.19");
         assertEquals("the card says what notice 27 says", notice(27), lines);
+    }
+
+    /**
+     * 0.6.20 (the owner, 14 October 2026: "why is it auto 52 when offer was 67?", "share diagnostics was turned off by
+     * default again on the splash screen even though I had it turned on last time. also that screen is way too long"):
+     * the bar moves at once off a dash, and the notice is short with its switch showing the choice made. Notice 27
+     * stays: its words got shorter, not its substance.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.20", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(27, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.20");
+        assertEquals(lines.toString(), 2, lines.size());
+        String card = String.join(" ", lines);
+        for (String fact : new String[] {"Off a dash, Autopilot's bar now moves at once instead of waiting for Dasher",
+                "after an update it no longer sits below your best accept", "The notice is a short summary now",
+                "the details left to Terms and Privacy",
+                "its diagnostics switch shows your choice"}) {
+            assertTrue(fact, card.contains(fact));
+        }
+        for (String line : lines) assertFalse(line, line.contains("Offer Filter"));
     }
 
     /**
@@ -481,7 +500,7 @@ public class BundledNotesTest {
                 "for its " + Autopilot.FLOOR_DAYS + " days", "even after " + DecisionLog.MAX_ENTRIES + " newer offers",
                 "keeps the figures of offers you accept yourself", "on this phone only", "With pay first",
                 "counts your accepts of the last 7 days again", "the bar rises to your best one",
-                "once Dasher is on screen with no offer up"}) {
+                "as soon as no offer is up"}) {
             assertTrue(fact, notice.contains(fact));
         }
         for (String line : lines) {

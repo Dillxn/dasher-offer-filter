@@ -111,6 +111,8 @@ public final class AutopilotCommitAdapterTest {
         // Autopilot on, its bar where an earlier commit left it.
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, FilterSettings.BAR_AT_MINIMUMS, 82));
+        // A dash under way: off one, the bar moves without these safe points (0.6.20, its own test below).
+        Dashing.seen(app);
     }
 
     @After public void tearDown() {
@@ -234,6 +236,37 @@ public final class AutopilotCommitAdapterTest {
         // The user goes back to Dasher, waiting for offers.
         show(waiting());
         assertCommitsAtTheFirstTickFrom(now());
+    }
+
+    /**
+     * Off a dash (0.6.20: nothing of one seen for half an hour, or it ended), no offer is up, nor was one decided at the
+     * old bar: screen reading connects with another app in front, as after an update, and the bar moves at once, with
+     * nothing of Dasher's read. The owner, 14 October 2026, two minutes after updating: "why is it auto 52 when offer
+     * was 67?" During a dash (every other test here) commits wait for the safe points as before.
+     */
+    @Test public void offADashTheBarMovesAtOnceWithNothingOfDashersRead() {
+        // The dash went quiet half an hour ago.
+        ShadowSystemClock.advanceBy(Duration.ofMillis(Dashing.WINDOW_MS + 1_000));
+        assertFalse(Dashing.on(app));
+        connect(app(MAPS));
+        wantCommit();
+        assertEquals(0, service.contentReads);
+        assertEquals("committed at once", 100, bar());
+        assertEquals(1, commits());
+        assertTrue(autopilotLog().toString(), firstCommit().startsWith(COMMIT_TO_100));
+        assertEquals(0, logged(AutopilotText.LOG_DEFERRED));
+    }
+
+    /** As above for a dash Dasher said ended, a moment ago. */
+    @Test public void afterADashEndedTheBarMovesAtOnceToo() {
+        Dashing.ended(app);
+        assertFalse(Dashing.on(app));
+        connect(app(MAPS));
+        wantCommit();
+        assertEquals(0, service.contentReads);
+        assertEquals(100, bar());
+        assertEquals(1, commits());
+        assertEquals(0, logged(AutopilotText.LOG_DEFERRED));
     }
 
     /**

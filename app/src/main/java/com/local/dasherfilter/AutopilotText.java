@@ -372,8 +372,9 @@ final class AutopilotText {
 
     /**
      * The bar an offer accepted by hand is lifting it to while the bar deciding offers is still below it (0.6.19): the
-     * plan's floor binds, and its commit waits for the next safe point (Dasher's own screen read, no offer up), as
-     * right after an update, when the chip still shows the bar the old version left; -1 otherwise.
+     * plan's floor binds, and during a dash its commit waits for the next safe point (no offer up, nor one moments
+     * ago); off a dash it moves at once (0.6.20), so this shows only for that moment, or while screen reading is off;
+     * -1 otherwise.
      */
     static int risingTo(Status s) {
         Autopilot.Plan plan = s.plan;
@@ -596,15 +597,16 @@ final class AutopilotText {
     /**
      * While an offer the user accepted by hand holds the bar (0.6.11, {@link Autopilot.Plan#floorBinds}; across dashes
      * from 0.6.18): "The bar stays at 63% or more: you accepted an offer that scored 63% of your minimums in the last 7
-     * days. …"; while the bar is still below it ({@link #risingTo}, 0.6.19), when it rises: "The bar rises to 63% once
-     * Dasher is on screen with no offer up, and stays at 63% or more: …". Null otherwise.
+     * days. …"; while the bar is still below it ({@link #risingTo}, 0.6.19), when it rises: "The bar rises to 63% as
+     * soon as no offer is up, and stays at 63% or more: …" (0.6.20; 0.6.19 said once Dasher is on screen). Null
+     * otherwise.
      */
     static String detailsFloor(Status s) {
         Autopilot.Plan plan = s.plan;
         if (!s.on || plan == null || !plan.floorBinds()) return null;
         String holds = risingTo(s) >= 0
-                ? "The bar rises to " + plan.floor + "% once Dasher is on screen with no offer up, and stays at "
-                        + plan.floor + "% or more"
+                ? "The bar rises to " + plan.floor + "% as soon as no offer is up, and stays at " + plan.floor
+                        + "% or more"
                 : "The bar stays at " + plan.floor + "% or more";
         return holds + ": you accepted an offer that scored " + plan.floor + "% of your minimums in the last "
                 + Autopilot.FLOOR_DAYS + " days. When that accept is " + Autopilot.FLOOR_DAYS + " days old, or you "

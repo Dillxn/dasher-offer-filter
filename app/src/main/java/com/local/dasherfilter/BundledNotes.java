@@ -54,7 +54,7 @@ final class BundledNotes {
             "It holds even after 200 newer offers: the app keeps the figures of offers you accept yourself for 7 days, "
                     + "on this phone only.",
             "With pay first, this update also counts your accepts of the last 7 days again: the bar rises to your best "
-                    + "one once Dasher is on screen with no offer up."};
+                    + "one as soon as no offer is up."};
 
     /**
      * Notice 26's lines, also 0.6.18's card: pay first by default, the best accept of 7 days holds the bar, and a
@@ -313,6 +313,11 @@ final class BundledNotes {
         release("0.6.17", TERMS_PLAIN[0], TERMS_PLAIN[1]);
         release("0.6.18", EARNINGS_FIRST);
         release("0.6.19", FLOOR_HOLDS);
+        release("0.6.20",
+                "Off a dash, Autopilot's bar now moves at once instead of waiting for Dasher, so after an update it no "
+                        + "longer sits below your best accept.",
+                "The notice is a short summary now, the details left to Terms and Privacy, and its diagnostics switch "
+                        + "shows your choice.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

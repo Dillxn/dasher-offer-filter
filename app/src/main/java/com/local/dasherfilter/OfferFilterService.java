@@ -1457,13 +1457,20 @@ public final class OfferFilterService extends AccessibilityService {
      * record of one; no automatic acceptance waiting, watched or requested in the last {@link AutoAccept#SUPPRESS_MS};
      * no peek; no offer's notification tracked; no late completion watched. Scanner thread. A user's own change of the
      * bar (turning Autopilot off) never waits for this: it hands an offer under way back ({@link #minimumScaleChanged}).
+     *
+     * <p>Off a dash ({@link Dashing#on}: nothing of one seen for half an hour, or it ended, and no route under way; 0.6.20)
+     * no offer is up, nor was one decided at the old bar: the bar moves without waiting for a read of Dasher's screen or
+     * for reads to settle, so right after an update's notice it shows where Autopilot put it at once (the owner, 14
+     * October 2026: "why is it auto 52 when offer was 67?").
      */
     private boolean safeForBarChange(long now) {
-        return !stopped && !scannerFaulted && Consent.accepted(this) && dasherScreenKnown
+        if (stopped || scannerFaulted || !Consent.accepted(this)) return false;
+        boolean offDash = !Dashing.on(this);
+        return (dasherScreenKnown || offDash)
                 && !busy(now) && !hot(now) && now - offerSeenAt >= BAR_CHANGE_QUIET_MS
                 && !declineUnderWay(now) && !episode.active(now) && !declineState.hasPendingConfirmation(now)
                 && heldConfirmation == null && !declineError.pending()
-                && !recheckPending && queued.get() == QUEUED_NONE
+                && ((!recheckPending && queued.get() == QUEUED_NONE) || offDash)
                 && (takeover == Takeover.NONE || now - takeover.at >= TAKEOVER_MS)
                 && RestartSuppression.load(this) == null
                 && autoAccept.candidate() == null && !autoAcceptWatched

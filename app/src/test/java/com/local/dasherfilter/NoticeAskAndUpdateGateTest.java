@@ -22,10 +22,10 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
 
 /**
- * Two 0.6.18 changes the notice carries, through the real homepage. The notice ends with one unchecked switch asking
- * for diagnostics after each dash (notes/0.6.18/diagnostics-ask.md; it stays opt-in): accepted with it on, Settings'
- * switch is on; accepted with it off, nothing changes. And no update check is scheduled or run before the current notice is
- * accepted (pilot safety Q8); accepting it runs the first.
+ * Two 0.6.18 changes the notice carries, through the real homepage. The notice ends with one switch asking for
+ * diagnostics after each dash (notes/0.6.18/diagnostics-ask.md; it stays opt-in), off on a new install and showing the
+ * choice already made after that (0.6.20): accepting leaves Settings' switch as it is left. And no update check is
+ * scheduled or run before the current notice is accepted (pilot safety Q8); accepting it runs the first.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
@@ -78,7 +78,7 @@ public class NoticeAskAndUpdateGateTest extends AndroidAdapterTestBase {
             View content = activity.get().findViewById(android.R.id.content);
             Switch ask = ask(content);
             assertTrue(ask.isShown());
-            assertFalse("unchecked: it stays opt-in", ask.isChecked());
+            assertFalse("unchecked on a new install: it stays opt-in", ask.isChecked());
             ask.setChecked(true);
             assertFalse("nothing changes before the notice is accepted", Feedback.afterDashOn(app));
             shownButton(content, Consent.ACCEPT).performClick();
@@ -88,25 +88,43 @@ public class NoticeAskAndUpdateGateTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test public void acceptingWithItOffChangesNothing() {
+    /**
+     * 0.6.20: the switch shows the choice already made, and accepting leaves Settings' switch as the notice's is left.
+     * The owner, 14 October 2026: "share diagnostics was turned off by default again on the splash screen even though I
+     * had it turned on last time".
+     */
+    @Test public void theSwitchShowsTheChoiceAlreadyMadeAndAcceptingKeepsItAsLeft() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertFalse(ask(content).isChecked());
+            assertFalse("off on a new install", ask(content).isChecked());
             shownButton(content, Consent.ACCEPT).performClick();
             idle();
             assertTrue(Consent.accepted(app));
             assertFalse("still off", Feedback.afterDashOn(app));
         }
-        // A switch already on stays on: the notice's off never turns it off.
+        // Turned on before, the next notice shows it on, and accepting keeps it on.
         Feedback.setAfterDash(app, true);
         app.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, Consent.VERSION - 1).commit();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
-            assertFalse("unchecked every time the notice shows", ask(content).isChecked());
+            assertTrue("the choice already made", ask(content).isChecked());
             shownButton(content, Consent.ACCEPT).performClick();
             idle();
             assertTrue(Feedback.afterDashOn(app));
+        }
+        // Turned off on the notice, accepting turns Settings' switch off.
+        app.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE).edit()
+                .putInt(Consent.ACCEPTED_VERSION, Consent.VERSION - 1).commit();
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            Switch ask = ask(content);
+            assertTrue(ask.isChecked());
+            ask.setChecked(false);
+            assertTrue("nothing changes before the notice is accepted", Feedback.afterDashOn(app));
+            shownButton(content, Consent.ACCEPT).performClick();
+            idle();
+            assertFalse("off, as left", Feedback.afterDashOn(app));
         }
     }
 

@@ -916,9 +916,10 @@ public final class AutopilotTextTest {
         assertEquals(AutopilotText.statusLine(waiting), AutopilotText.shownLine(waiting));
         assertEquals("Autopilot bar 51 percent. Rising to 63 percent, the score of an offer you accepted.",
                 AutopilotText.statusSaid(waiting));
-        String rises = "The bar rises to 63% once Dasher is on screen with no offer up, and stays at 63% or more: you "
-                + "accepted an offer that scored 63% of your minimums in the last 7 days. When that accept is 7 days "
-                + "old, or you change your goal or minimums, Autopilot sets it again.";
+        // 0.6.20: off a dash it moves at once, so the rise waits only for an offer to go.
+        String rises = "The bar rises to 63% as soon as no offer is up, and stays at 63% or more: you accepted an offer "
+                + "that scored 63% of your minimums in the last 7 days. When that accept is 7 days old, or you change "
+                + "your goal or minimums, Autopilot sets it again.";
         assertEquals(rises, AutopilotText.detailsFloor(waiting));
         assertEquals("right after the bar", rises, AutopilotText.detailsLines(waiting).get(1));
 
@@ -944,7 +945,7 @@ public final class AutopilotTextTest {
         assertFalse(AutopilotText.showsRise(metered));
         assertEquals("LOWEST BAR  9% / 70%", AutopilotText.shownLine(metered));
         assertTrue(AutopilotText.detailsFloor(metered),
-                AutopilotText.detailsFloor(metered).startsWith("The bar rises to 63% once Dasher is on screen"));
+                AutopilotText.detailsFloor(metered).startsWith("The bar rises to 63% as soon as no offer is up"));
     }
 
     private static Autopilot.Plan floorPlan(FilterSettings rules, List<Autopilot.OfferRecord> lines,

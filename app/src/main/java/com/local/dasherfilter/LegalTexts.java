@@ -247,7 +247,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 14 October 2026 · for {app} 0.6.19
+            Beta privacy policy, effective 15 October 2026 · for {app} 0.6.20
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -666,19 +666,19 @@ final class LegalTexts {
             minutes ago Dasher showed it. The dialog says what is sent; tapping Send is your choice to send it.
             - **Share anonymous diagnostics after each dash**, only if you turn it on in Settings or with the \
             switch at the end of the notice, "Share anonymous diagnostics after each dash (helps fix it for your \
-            phone)" (from 0.6.18; unchecked each time the notice shows, and accepting with it off changes nothing); \
-            it starts off, and no update turns it on. After each dash ends (Dasher shows the dash ended, you end it \
-            in Dasher with its End dash, or nothing of the dash was seen for 30 minutes), it sends one masked \
-            summary of at most 30,000 characters: the app and Android version and phone maker; how long the dash \
-            lasted (to the nearest 5 minutes) and how it ended; your switches and which rules are set, and whether \
-            screen reading, background offers and alerts were ready; Autopilot's bar and why it changed (never your \
-            acceptance rate); counts of offers by result, action and outcome; unreadable offers; declines still \
-            showing, by stage; decline-error recoveries; automatic accepts not sent, and why; the types of \
-            screen-read and notification errors with the place in the app's code where they happened; how Dasher's \
-            window was laid out; what Peek did, by fixed category; that dash's decisions, with times counted from \
-            the dash's start; masked log lines only around those problems; and any recent stop summary. Never \
-            coordinates, place names, or an install or device identifier. At most one a dash and three a day. \
-            Turning it off discards summaries not yet sent.
+            phone)" (from 0.6.18; from 0.6.20 it shows your current choice, and accepting the notice leaves the \
+            option as that switch is left); it starts off, and no update turns it on. After each dash ends (Dasher \
+            shows the dash ended, you end it in Dasher with its End dash, or nothing of the dash was seen for 30 \
+            minutes), it sends one masked summary of at most 30,000 characters: the app and Android version and \
+            phone maker; how long the dash lasted (to the nearest 5 minutes) and how it ended; your switches and \
+            which rules are set, and whether screen reading, background offers and alerts were ready; Autopilot's \
+            bar and why it changed (never your acceptance rate); counts of offers by result, action and outcome; \
+            unreadable offers; declines still showing, by stage; decline-error recoveries; automatic accepts not \
+            sent, and why; the types of screen-read and notification errors with the place in the app's code where \
+            they happened; how Dasher's window was laid out; what Peek did, by fixed category; that dash's \
+            decisions, with times counted from the dash's start; masked log lines only around those problems; and \
+            any recent stop summary. Never coordinates, place names, or an install or device identifier. At most \
+            one a dash and three a day. Turning it off discards summaries not yet sent.
             - After a crash or a stop for not responding: with diagnostics after each dash on, the stop's summary \
             goes with the next one. Otherwise the homepage shows "{app} stopped unexpectedly last time" with Send \
             report, which opens the feedback dialog with Bug chosen and diagnostics attached, for that report only; \

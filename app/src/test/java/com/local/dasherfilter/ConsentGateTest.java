@@ -123,146 +123,138 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
 
     // ---- The homepage is only the notice ----
 
-    @Test
-    public void dataNoticeDistinguishesLongerLivedCopiesAndNamesReportRecipients() {
-        String data = null;
-        for (String[] point : Consent.POINTS) if ("Your data.".equals(point[0])) data = point[1];
-        assertNotNull(data);
-        for (String fact : new String[] {"rolling 24-hour window", "latest 200 offer decisions",
-                "no age-based expiry", "Feedback and offer reports are accountless and leave only when you tap Send",
-                "masked diagnostics go only when you attach them",
-                // 0.6.18: or with the notice's own switch, unchecked.
-                "or after each dash if you turn that on in Settings or with the switch at the end of this notice (off "
-                        + "by default)",
-                "Unsent submissions wait on this phone up to 7 days", "The feedback service keeps them 90 days",
-                "Anthropic's Claude", "OpenAI's ChatGPT/Codex", "text masking can miss details",
-                "Network providers still receive normal connection metadata",
-                "What you type is sent as written, not masked",
-                "No feedback or diagnostics leave before you accept this notice",
-                "clearing this phone does not erase sent copies",
-                // Autopilot and Dasher's acceptance rate (finalSpec.privacyConsent; WP5: kept even with it off, with
-                // the offer's numeric fingerprint; AutopilotStore deletes an old reading only when it next reads it).
-                "The wait estimate and Autopilot use up to 200 numeric offer and observed-wait records in a rolling "
-                        + "24-hour window, which are not shared",
-                "the app keeps the latest acceptance rate Dasher showed, with the offer it was shown for (used up to 7 "
-                        + "days, then deleted when the app next looks), even with Autopilot off",
-                "the rate leaves only in reports you share or send yourself, never in the summary after a dash",
-                // 0.6.19: the hand accepts kept for the accepted floor.
-                "Autopilot also keeps the figures of offers you accept yourself (at most "
-                        + AutopilotStore.KEPT_ACCEPTS_MAX + ", for " + Autopilot.FLOOR_DAYS + " days), so the best one "
-                        + "keeps holding its cutoff; they never leave this phone"}) {
-            assertTrue(fact, data.contains(fact));
-        }
-        assertEquals(7L * 24 * 60 * 60_000, AutopilotStore.AR_MAX_AGE_MS);
-        assertFalse("more than one number is kept", data.contains("one number"));
-        assertFalse("no account of any kind", data.contains("GitHub"));
-        assertFalse(data.contains("Offer and dash text stays masked on this phone for up to 24 hours"));
-        assertFalse(data.contains("cleared by this update"));
-        assertFalse("0.5.0 words for the wait records", data.contains("A local wait estimate uses"));
-    }
-
-    @Test
-    public void theNoticeSaysWhatAutopilotPeekAndTheScreenHoldDoInFewPlainPoints() {
-        String[] leads = new String[Consent.POINTS.length];
-        for (int i = 0; i < leads.length; i++) leads[i] = Consent.POINTS[i][0];
-        assertEquals("existing safety points plus the separate optional study disclosure", java.util.Arrays.asList("Acceptance rate.",
-                "Not a DoorDash app.", "What it does.", "Peek is on by default.", "Learning is on by default.", "Your Dasher account.",
-                "At your own risk.", "Not while driving.", "Your data.", "A daily count is on by default.",
-                "Optional offer timing study."), java.util.Arrays.asList(leads));
-        assertEquals("the floor kept through Autopilot off and on, and its accepts kept 7 days, renew the notice "
-                + "(after pay first by default, 26)", 27, Consent.VERSION);
-        String does = Consent.POINTS[2][1];
-        for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone.",
-                "It taps Decline and its confirmation on offers that fail your chosen rules.",
-                // 0.6.18 (notice 26): only Dasher's usual question is confirmed; any other pauses.
-                "It confirms only Dasher's usual question (\"Are you sure you want to decline this offer?\"); any "
-                        + "other question it leaves to you and pauses auto-decline.",
-                // 0.6.10 (notice 21): the skip list declines whatever an offer pays; the cost per mile is the driver's
-                // own, off by default.
-                "It also declines offers from stores you put on your skip list (from an offer's details), whatever "
-                        + "they pay.",
-                "your own cost per mile if you set one in its details (off by default)",
-                // Autopilot's bar goes both ways (FilterStore.BAR_MIN to BAR_MAX): raised, it declines offers that
-                // meet the minimums, which the acceptance-rate warning covers too.
-                // 0.6.2 (notice 19): on by default, and its chip turns it off. 0.6.18 (notice 26): pay first is its
-                // default goal; letting offers below the minimums through is for a goal that protects the rate.
-                "Autopilot is on by default, with pay first as its goal, and moves that cutoff up or down by itself ("
-                        + FilterStore.BAR_MIN + "% to " + FilterStore.BAR_MAX + "% of your minimums), using your recent "
-                        + "offers, how often they come and the acceptance rate Dasher shows when you decline",
-                "raised, it declines offers that meet your minimums",
-                "if you choose a goal that protects your acceptance rate instead, it can let offers below your "
-                        + "minimums through for you to decide",
-                // 0.5.1 (notice 15): the minimums grow, at most 10% at a time, with Undo; more declines.
-                "Autopilot also raises your minimums after offers have paid above them for a while, at most "
-                        + Growth.MOST_PERCENT + "% at a time, with Undo, which can mean more declines.",
-                "Its chip on the homepage turns Autopilot off.",
-                "Auto-accept is off by default; if you separately enable it in Settings, it can accept standalone "
-                        + "offers that meet your minimums and commit you to a delivery.",
-                "it may go Back and retry, at most twice", "Your touch stops it.",
-                // 0.6.11 (notice 22): an offer the user accepts holds the bar, past the goal (0.6.18, notice 26: the
-                // best of the last 7 days, across dashes, until the user's own change); the divider moves by its own
-                // controls during a delivery, and stops once the user moves it.
-                "When you accept an offer yourself that scores above that cutoff, it raises the cutoff to that offer's "
-                        + "score and keeps it at least at the best score you accepted in the last 7 days, across dashes, "
-                        + "even above what an acceptance goal allows, until you change your goal or minimums.",
-                "In split screen during a delivery it moves the divider, using the divider's own controls, to give the "
-                        + "navigating app more room, and puts it back afterward; move it yourself and it stops for that "
-                        + "dash.",
-                // 0.6.14 (notice 24): the pay minimum is per stop, the pickup included; the number unchanged.
-                "Your pay minimum is per stop, the pickup included: an offer must pay it for each stop Dasher shows, "
-                        + "so $5 a stop asks $10 of a single order and $15 of three stops. Your number wasn't changed, "
-                        + "so a single order now asks twice what it did; set it to what you want per stop.",
-                "It can briefly turn offer sound down.",
-                "During a dash it keeps your unlocked screen from timing out; it never wakes or unlocks it."}) {
-            assertTrue(fact, does.contains(fact));
-        }
-        String peek = Consent.POINTS[3][1];
-        assertTrue(peek.contains("While your phone is unlocked and quiet, it can briefly open Dasher to read a fresh "
-                + "background offer (also just after you unlock, for one that came while it was locked), then return "
-                + "to your previous app."));
-        assertTrue(peek.contains("Turn Peek off in Settings."));
-        // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
-        assertTrue(Consent.POINTS[5][1].contains("DoorDash's terms ban automated tools that read or collect data "
-                + "from its apps, and this is one."));
-        assertTrue(Consent.POINTS[5][1].contains("DoorDash could limit or deactivate your account."));
-        assertFalse(Consent.POINTS[5][1].contains("may break"));
-        assertTrue(Consent.POINTS[6][1].contains("no warranty"));
-        assertTrue(Consent.POINTS[7][1].contains("Don't handle your phone while driving."));
-        String learning = Consent.POINTS[4][1];
-        for (String fact : new String[] {"When you accept an offer yourself", "beats your best pay per stop",
-                "the learned minimums rise to match it",
-                "as well as your own minimums", "more declines", "Your own minimums stay as you set them",
-                "with Adopt to make them yours", "Automatic accepts, declines, add-ons", "The Learn button on the homepage",
-                "off keeps the bests without learning", "Reset clears the bests", "your minimums stay"}) {
-            assertTrue(fact, learning.contains(fact));
-        }
-        assertTrue(does.contains("Permitted by the filter does not mean accepted"));
+    /** The notice's point with this lead. */
+    private static String point(String lead) {
+        for (String[] point : Consent.POINTS) if (lead.equals(point[0])) return point[1];
+        throw new AssertionError("no point " + lead);
     }
 
     /**
-     * 0.6.3 (notice 20): the anonymous daily count (DailyCount) is on by default, so the notice says so in one point of
-     * its own, true to what the request carries (DailyCount.body: the version, the first flag, the day's random code),
-     * to what the service keeps of it (the counts migration: daily totals 400 days, the code at most 2 days, the
-     * day-keyed network value for its day) and naming the Settings switch by its own words.
+     * 0.6.20: the notice says what leaves the phone, how and who keeps it, once and in a few lines; Privacy, which it
+     * names, says the rest (everythingTheShortNoticeLeavesOutIsInTheTermsOrPrivacy).
      */
     @Test
-    public void theNoticeSaysWhatTheDailyCountSendsAndHowToTurnItOff() {
-        String count = null;
-        for (String[] point : Consent.POINTS) if ("A daily count is on by default.".equals(point[0])) count = point[1];
-        assertNotNull(count);
-        for (String fact : new String[] {"Once a day it sends the feedback service one anonymous count",
-                "so the developer can see how many people use the app",
-                "only its version, whether this install was counted before and a random code made new each day, so a "
-                        + "retry counts once",
-                "Nothing about your offers, phone or account goes with it.",
-                "The service keeps daily totals for 400 days; it keeps the code up to 2 days, and a one-way value made "
-                        + "from your network's address only for that day, so each counts once.",
-                "Turn it off with " + DailyCount.SWITCH + " in Settings."}) {
-            assertTrue(fact, count.contains(fact));
+    public void theNoticeSaysWhatLeavesThePhoneAndWhoKeepsIt() {
+        String data = point("Your data.");
+        for (String fact : new String[] {"Your offers, rules and history stay on this phone.",
+                "Feedback and reports leave only when you tap Send",
+                // 0.6.18: or with the notice's own switch (0.6.20: showing the choice already made).
+                "masked diagnostics only when you attach them or turn on the switch below",
+                "What you type is sent as written, and masking can miss details.",
+                "The feedback service keeps what you send 90 days",
+                "the developer may review it with AI tools (Anthropic's Claude or OpenAI's ChatGPT/Codex)",
+                "The Terms and Privacy say the rest, including what updates, the daily count, place lookups and map "
+                        + "links send."}) {
+            assertTrue(fact, data.contains(fact));
         }
-        String data = null;
-        for (String[] point : Consent.POINTS) if ("Your data.".equals(point[0])) data = point[1];
-        assertTrue(data.contains("Privacy explains updates, feedback, the daily count, place lookups and map links."));
+        assertFalse("no account of any kind", data.contains("GitHub"));
+    }
+
+    /**
+     * The notice in a few plain points (0.6.20 cut it from 11 points and about 1,230 words; the owner, 14 October 2026:
+     * "that screen is way too long"): the acceptance-rate risk first and the account risk next, word for word as
+     * before; what it does; what is on by default, and how each turns off; then the risk, the road and the data.
+     */
+    @Test
+    public void theNoticeSaysWhatItDoesAndWhatIsOnByDefaultInFewPlainPoints() {
+        String[] leads = new String[Consent.POINTS.length];
+        for (int i = 0; i < leads.length; i++) leads[i] = Consent.POINTS[i][0];
+        assertEquals(java.util.Arrays.asList("Acceptance rate.", "Your Dasher account.", "What it does.",
+                "On by default.", "At your own risk.", "Not while driving.", "Your data."),
+                java.util.Arrays.asList(leads));
+        int words = 0;
+        for (String[] point : Consent.POINTS) words += (point[0] + " " + point[1]).split("\\s+").length;
+        assertTrue(words + " words", words <= 420);
+        assertEquals("the shorter notice says the same in fewer words: no new version (27 is 0.6.19's)", 27,
+                Consent.VERSION);
+        // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
+        String account = point("Your Dasher account.");
+        assertEquals(AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash. DoorDash's terms ban "
+                + "automated tools that read or collect data from its apps, and this is one. DoorDash could limit or "
+                + "deactivate your account.", account);
+        String does = point("What it does.");
+        for (String fact : new String[] {"It reads Dasher's screen and notifications on this phone",
+                "declines offers that fail your rules, or come from stores on your skip list",
+                // 0.6.18 (notice 26): only Dasher's usual question is confirmed; any other pauses.
+                "by tapping Decline and Dasher's usual question (\"Are you sure you want to decline this offer?\"). "
+                        + "Any other question it leaves to you and pauses.",
+                "go Back after a Dasher error", "tap Dasher's ⚙ once to bring up a missing offer",
+                "move the split-screen divider during a delivery", "briefly turn offer sound down",
+                "keep your unlocked screen on during a dash",
+                "Auto-accept is off unless you turn it on in Settings.", "Your touch stops it."}) {
+            assertTrue(fact, does.contains(fact));
+        }
+        String defaults = point("On by default.");
+        for (String fact : new String[] {
+                // Autopilot's bar goes both ways (FilterStore.BAR_MIN to BAR_MAX); raised, it declines offers that
+                // meet the minimums. 0.6.18: pay first; the best accept of 7 days holds the bar.
+                "Autopilot moves the bar offers must meet between " + FilterStore.BAR_MIN + "% and "
+                        + FilterStore.BAR_MAX + "% of your minimums, putting pay first; above 100% it declines offers "
+                        + "that meet them.",
+                "It keeps the bar at or above the score of the best offer you accepted yourself in the last "
+                        + Autopilot.FLOOR_DAYS + " days",
+                // 0.5.1 (notice 15): the minimums grow, at most 10% at a time, with Undo.
+                "can raise your minimums up to " + Growth.MOST_PERCENT + "% at a time, with Undo.",
+                "Learning raises the minimums offers must meet when you accept an offer that beats your best.",
+                "Peek can briefly open Dasher to read an offer that came in the background.",
+                // 0.6.3 (notice 20): the anonymous daily count.
+                "An anonymous daily count tells the developer how many people use the app.",
+                "Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the count in Settings."}) {
+            assertTrue(fact, defaults.contains(fact));
+        }
+        assertTrue(point("At your own risk.").contains("no warranty"));
+        assertTrue(point("Not while driving.").contains("Don't handle your phone while driving."));
+    }
+
+    /**
+     * What 0.6.20 took off the notice is still said where it links (the Terms and Privacy, in the app and on the site),
+     * in their own words: the rules, Autopilot, learning, Peek and the other actions in the Terms; what is kept, how
+     * long and who sees it, the daily count and the timing study in Privacy.
+     */
+    @Test
+    public void everythingTheShortNoticeLeavesOutIsInTheTermsOrPrivacy() {
+        String terms = LegalTexts.Doc.TERMS.text();
+        for (String fact : new String[] {"It reads the Dasher app's screen and notifications on your phone",
+                "so $5 a stop asks $10 of a single order and $15 of three stops",
+                "Strict mode is the default and checks every active minimum",
+                "An offer permitted by the filter is not an accepted delivery",
+                "From 0.6.18 it confirms only a decline question worded as Dasher's usual one",
+                "It also declines a standalone offer from a store you put on your skip list",
+                "Autopilot can weigh your own cost per mile, off unless you set it in its details",
+                "Autopilot also raises your minimums once its bar has stayed at 103% or more",
+                "Turn this off with Let my minimums grow in Autopilot's details", "Auto-accept starts off.",
+                "it can press Back and retry the same offer, at most twice",
+                "In split screen during a delivery, it moves the divider, using the divider's own controls",
+                "Peek is on by default after you accept the current notice", "Peek may tap Dasher's ⚙ button once",
+                "You can turn Peek off in Settings.", "it keeps your unlocked screen from timing out",
+                "it can turn media and alarm sound down for a moment",
+                "Acceptance learning is separate from area mode and Autopilot, and is on by default",
+                "Learn button on the homepage turns it off and on",
+                "Feedback and offer reports are accountless and are sent only when you tap Send",
+                "turn it off with " + DailyCount.SWITCH + " in Settings"}) {
+            assertTrue(fact, terms.contains(fact));
+        }
+        String privacy = LegalTexts.Doc.PRIVACY.text();
+        for (String fact : new String[] {"with a 24-hour retention window",
+                "Up to 200 numeric wait-estimate records in a rolling 24-hour window", "The latest 200 decisions",
+                "This history has no age-based expiry",
+                // 0.6.19: the hand accepts kept for the accepted floor.
+                "At most " + AutopilotStore.KEPT_ACCEPTS_MAX + ", each for " + Autopilot.FLOOR_DAYS + " days",
+                // Dasher's acceptance rate never goes in the summary after a dash.
+                "It is never in the summary after each dash",
+                "Auto theme can use the same existing, fresh approximate location",
+                "recognized payment, account and earnings screens are discarded",
+                "What you type in feedback, and notes you type with Report this offer, are not masked",
+                "Nothing is sent unless the current notice is accepted", "each at most 7 days",
+                "Submissions are kept on the feedback service for 90 days",
+                "Anthropic's Claude or OpenAI's ChatGPT/Codex", "necessarily receive ordinary connection metadata",
+                "Masking is pattern-based and can miss unfamiliar wording",
+                // 0.6.3: the daily count, what it carries and how long it is kept.
+                "Once a UTC day at most", "a random code made new for each UTC day", "400 days",
+                // The optional timing study, which Settings asks for on its own.
+                "nothing is enabled or collected until Save choice is tapped"}) {
+            assertTrue(fact, privacy.contains(fact));
+        }
     }
 
     @Test
