@@ -138,6 +138,9 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
         FilterStore.save(app, original);
         AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
         assertTrue(FilterStore.commitAutopilotBar(app, 100, 97));
+        // A dash under way, so the reader's connection plans without moving the bar yet (off a dash it moves at once,
+        // 0.6.20).
+        Dashing.seen(app);
         // Set up (screen reading and background offers on), so no setup line takes the status line's room.
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         ServiceController<OfferNotificationService> listener =
