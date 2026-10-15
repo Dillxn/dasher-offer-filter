@@ -14,12 +14,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
- * Moves Android's split-screen divider during a delivery, as {@link SplitDivider} decides, with the divider's own
- * accessibility actions (stock Android gives its handle custom actions such as "Top 30%" for screen readers): one
- * {@code performAction} on the divider's node, never a gesture, a drag or {@code dispatchGesture}, and never anything
- * of Dasher's. It reads Android's list of windows, the divider window's few nodes (only when acting, and for the probe),
- * and, once per window and only when a move is due, the root alone of a half not yet known by its ID (as a look asks
- * once whose a window is); never the root of a window known as Dasher's. Scanner thread, except {@link #kick}.
+ * Moves Android's split-screen divider for a map in one half, as {@link SplitDivider} decides (0.6.21; for a delivery
+ * from 0.6.11), with the divider's own accessibility actions (stock Android gives its handle custom actions such as
+ * "Top 30%" for screen readers, Samsung "70% top, 30% bottom"): one {@code performAction} on the divider's node, never a
+ * gesture, a drag or {@code dispatchGesture}, and never anything of Dasher's or the map's. It reads Android's list of
+ * windows, the divider window's few nodes (once per split for its labels, again only when acting, and for the probe),
+ * and, once per window, the root alone of a half not yet known by its ID (as a look asks once whose a window is); never
+ * the root of a window known as Dasher's. Scanner thread, except {@link #kick}.
  *
  * <p>The probe: on entering split screen, once the split has stood {@link SplitDivider#SETTLE_MS} and at most every
  * {@link SplitDivider#PROBE_EVERY_MS}, never while an offer or decline is up, the divider's action labels go in the log
@@ -47,8 +48,6 @@ final class SplitDividerMover {
 
         /** An offer or its question is up, or was in the last 3 s, or a decline is under way: no probe now. */
         boolean busy(long now);
-
-        boolean onDelivery();
 
         /** The dash under way, by its start; 0 for none. */
         long dashKey();
@@ -81,6 +80,8 @@ final class SplitDividerMover {
     private boolean probed;
     private long probedAt = Long.MIN_VALUE / 2;
     private boolean labelsNoted;
+    /** The divider's actions as first read in this split (their labels and shares; no node kept), or null. */
+    private Actions labels;
 
     SplitDividerMover(Host host) {
         this.host = host;
@@ -134,6 +135,7 @@ final class SplitDividerMover {
                 splitSince = 0;
                 probed = false;
                 labelsNoted = false;
+                labels = null;
                 packages.clear();
                 log(plan.splitEnded());
             }
@@ -141,7 +143,6 @@ final class SplitDividerMover {
         }
         if (splitSince == 0) splitSince = now;
         plan.dash(host.dashKey());
-        plan.delivery(host.onDelivery());
         if (!probed && now - splitSince >= SplitDivider.SETTLE_MS && now - probedAt >= SplitDivider.PROBE_EVERY_MS
                 && !host.busy(now)) {
             probe(divider);
@@ -150,80 +151,103 @@ final class SplitDividerMover {
         }
         Halves halves = Halves.of(windows, divider);
         if (halves != null) {
-            if (plan.watching()) {
-                Pane panes = panes(halves);
-                int shrunkShare = panes == null ? -1 : panes.shareOf(plan.shrunkPane(), halves.firstShare);
-                log(plan.verify(halves.firstShare, shrunkShare, now));
-                log(plan.watchUser(shrunkShare));
-            }
-            act(halves, divider, now);
+            log(plan.verify(halves.firstShare, now));
+            Pane panes = panes(halves);
+            log(plan.look(panes == null ? null : panes.first, panes == null ? null : panes.second, halves.firstShare,
+                    now));
+            if (panes != null) act(halves, panes, divider, now);
         }
         again(now + TICK_MS);
     }
 
-    /** A move, when one is due, the caps allow it and the moment is safe. */
-    private void act(Halves halves, AccessibilityWindowInfo divider, long now) {
-        SplitDivider.Want want = plan.want();
+    /** A move, when one is due, the divider offers one, the cap allows it and the moment is safe. */
+    private void act(Halves halves, Pane panes, AccessibilityWindowInfo divider, long now) {
+        SplitDivider.Want want = plan.want(now);
         if (want == SplitDivider.Want.NONE) return;
+        if (labels == null) labels = actions(divider);
+        if (labels == null || labels.targets.isEmpty()) {
+            if (!labelsNoted) {
+                labelsNoted = true;
+                log("divider: no action names a share ("
+                        + (labels == null || labels.labels.isEmpty() ? "none" : String.join(" | ", labels.labels))
+                        + "); left as it is");
+            }
+            labels = null;
+            return;
+        }
+        SplitDivider.Target target;
+        String line;
+        if (want == SplitDivider.Want.SHRINK) {
+            SplitDivider.Pane small = SplitDivider.shrinks(panes.first, panes.second);
+            boolean mapFirst = panes.first == SplitDivider.Pane.MAP;
+            target = SplitDivider.forMap(labels.targets, mapFirst);
+            if (target == null) {
+                if (!labelsNoted) {
+                    labelsNoted = true;
+                    log("divider: no action gives the map's half " + SplitDivider.MAP_SHARE + "% ("
+                            + String.join(" | ", labels.labels) + "); left as it is");
+                }
+                return;
+            }
+            int halfNow = mapFirst ? 100 - halves.firstShare : halves.firstShare;
+            int halfThen = mapFirst ? 100 - target.share : target.share;
+            if (!SplitDivider.roomFor(halfNow, halfThen)) {
+                if (plan.sayAlready()) {
+                    log("divider: " + small.possessive + " half is " + halfNow + "% beside the map already; left as "
+                            + "it is");
+                }
+                return;
+            }
+            line = "divider: " + small.possessive + " half to " + halfThen + "% for the map";
+        } else {
+            target = SplitDivider.forRestore(labels.targets, plan.firstBefore());
+            if (target == null) return;
+            if (Math.abs(target.share - halves.firstShare) <= SplitDivider.MOVED_WITHIN) {
+                plan.restored();
+                return;
+            }
+            line = "divider: top or left half back to " + target.share + "% after the map left";
+        }
         if (SplitDivider.blocked(host.moment(now)) != null) return;
         String cap = plan.capped();
         if (cap != null) {
             log(cap);
             return;
         }
-        Pane panes = panes(halves);
-        if (panes == null) return;
-        SplitDivider.Pane shrink = want == SplitDivider.Want.SHRINK ? SplitDivider.shrinks(panes.first, panes.second)
-                : plan.shrunkPane();
-        if (shrink == null || panes.shareOf(shrink, halves.firstShare) < 0) return;
-        boolean firstHalf = panes.first == shrink;
-        Actions actions = actions(divider);
-        if (actions == null || actions.targets.isEmpty()) {
-            if (!labelsNoted) {
-                labelsNoted = true;
-                log("divider: no action names a share ("
-                        + (actions == null || actions.labels.isEmpty() ? "none" : String.join(" | ", actions.labels))
-                        + "); left as it is");
-            }
-            return;
-        }
-        SplitDivider.Target target = want == SplitDivider.Want.SHRINK
-                ? SplitDivider.forShrink(actions.targets, firstHalf)
-                : SplitDivider.forRestore(actions.targets, plan.firstBefore());
-        if (target == null) {
-            if (!labelsNoted) {
-                labelsNoted = true;
-                log("divider: no action makes " + shrink.possessive + " half small enough ("
-                        + String.join(" | ", actions.labels) + "); left as it is");
-            }
-            return;
-        }
-        int halfNow = firstHalf ? halves.firstShare : 100 - halves.firstShare;
-        int halfThen = firstHalf ? target.share : 100 - target.share;
-        if (want == SplitDivider.Want.SHRINK && !plan.roomFor(halfNow, halfThen)) {
-            log("divider: " + shrink.possessive + " half is " + halfNow + "% already; left as it is");
+        // The node is read again for the action itself: one kept from an earlier look may be stale.
+        Actions fresh = actions(divider);
+        SplitDivider.Target action = fresh == null || fresh.node == null ? null : sameShare(fresh.targets, target);
+        if (action == null) {
+            labels = fresh != null && !fresh.targets.isEmpty() ? fresh : null;
             return;
         }
         boolean done;
         try {
-            done = actions.node.performAction(target.id);
+            done = fresh.node.performAction(action.id);
         } catch (RuntimeException refused) {
             done = false;
         }
         if (!done) {
-            log(plan.stop("divider refused its action (\"" + target.label + "\")"));
+            log(plan.stop("divider refused its action (\"" + action.label + "\")"));
             return;
         }
-        plan.moved(want, shrink, halves.firstShare, target.share, now);
-        log("divider: " + shrink.possessive + " half " + (want == SplitDivider.Want.SHRINK ? "to " + halfThen
-                + "% for the delivery" : "back to " + halfThen + "% after the delivery") + " (\"" + target.label
-                + "\")");
+        plan.moved(want, halves.firstShare, action.share, now);
+        log(line + " (\"" + action.label + "\")");
         again(now + SplitDivider.VERIFY_MS);
+    }
+
+    /** The action among {@code targets} giving {@code wanted}'s share, or null. */
+    private static SplitDivider.Target sameShare(List<SplitDivider.Target> targets, SplitDivider.Target wanted) {
+        for (SplitDivider.Target target : targets) {
+            if (target.share == wanted.share) return target;
+        }
+        return null;
     }
 
     /** The probe's line: the divider's action labels, or none with its node's class. */
     private void probe(AccessibilityWindowInfo divider) {
         Actions actions = actions(divider);
+        if (actions != null && !actions.targets.isEmpty()) labels = actions;
         if (actions == null || actions.labels.isEmpty()) {
             log("divider actions: none (" + (actions == null ? "no node" : actions.className) + ")");
         } else {
@@ -328,8 +352,8 @@ final class SplitDividerMover {
 
         /**
          * Two application windows with a divider between them, as Android lists them, or null: a keyboard, an active
-         * system window, picture-in-picture, a third app's window (a dialog), a half covered, or bounds not known.
-         * From Android's list alone.
+         * system window, a third app's window (a dialog), a half covered, or bounds not known. A picture-in-picture
+         * window floats over the halves and is neither (0.6.21: before, it hid the split). From Android's list alone.
          */
         static Halves of(List<AccessibilityWindowInfo> windows, AccessibilityWindowInfo divider) {
             Rect bounds = new Rect();
@@ -346,8 +370,8 @@ final class SplitDividerMover {
                         || (type == AccessibilityWindowInfo.TYPE_SYSTEM && window.isActive())) {
                     return null;
                 }
-                if (type != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
-                if (bounds.isEmpty() || window.isInPictureInPictureMode()) return null;
+                if (type != AccessibilityWindowInfo.TYPE_APPLICATION || window.isInPictureInPictureMode()) continue;
+                if (bounds.isEmpty()) return null;
                 if (a == null) a = window;
                 else if (b == null) b = window;
                 else return null;
@@ -376,14 +400,6 @@ final class SplitDividerMover {
             this.first = first;
             this.second = second;
         }
-
-        /** That half's share, or -1 when it is in neither half. */
-        int shareOf(SplitDivider.Pane pane, int firstShare) {
-            if (pane == null) return -1;
-            if (pane == first && pane != second) return firstShare;
-            if (pane == second && pane != first) return 100 - firstShare;
-            return -1;
-        }
     }
 
     /** Whose each half is, or null when one cannot be told. */
@@ -395,7 +411,8 @@ final class SplitDividerMover {
 
     /**
      * Whose a half is: Dasher's or Offer Filter's by its ID, else by its root alone, asked once per window and split
-     * (a window Android gave no ID is never asked: it could be Dasher's).
+     * (a window Android gave no ID is never asked: it could be Dasher's). Each look asks, so a map taking a half is
+     * seen within a look.
      */
     private SplitDivider.Pane pane(AccessibilityWindowInfo window) {
         SplitWindows.Owner known = host.knownOwner(window);

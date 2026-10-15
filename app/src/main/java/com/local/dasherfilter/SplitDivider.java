@@ -5,23 +5,23 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Split screen during a delivery: the half that isn't navigating is made small with the divider's own accessibility
- * actions, and gets its size back when the delivery ends (the owner, 13 October 2026: "when either app is in a maps mode
- * for nav the other when in split needs to resize to like 20%"). This class is pure: what the divider's labels say,
- * which one to take, whether the moment is safe, and what this dash has done so far. {@link SplitDividerMover} reads
- * Android's list of windows and performs the one action. Nothing here touches Dasher, and no gesture is ever made.
+ * Split screen beside a map: whenever a navigation app ({@link Peek#NAVIGATION}) is in one half and Dasher or Offer
+ * Filter in the other, the map's half is made about 70% with the divider's own accessibility actions, and the divider
+ * goes back where it was once no half is a map's (0.6.21, the owner: "whenever one half has nav open make it 70% height
+ * / whenever one half has nav open the other shouldn't"; 0.6.11 to 0.6.20 shrank the half beside Dasher's delivery
+ * screens instead). This class is pure: what the divider's labels say, which one to take, whether the moment is safe,
+ * and what this split and this dash have done so far. {@link SplitDividerMover} reads Android's list of windows and
+ * performs the one action. Nothing here touches Dasher or the map, and no gesture is ever made.
  *
- * <p>The rule: Dasher beside Offer Filter, Offer Filter's half shrinks (Dasher navigates); Offer Filter beside a
- * navigation app ({@link Peek#NAVIGATION}), Offer Filter's half shrinks; Dasher beside a navigation app, Dasher's half
- * shrinks. Once per delivery per split, to the smallest stop of at least {@link #LEAST_SHARE}%, and back at the wait for
- * offers or the dash's end, unless the user moved the divider: then it is left alone for the rest of the dash.
+ * <p>Dasher beside Offer Filter is left as it is, and nothing moves while Dasher's own navigation is on screen (it may
+ * not survive a resize). The user's own move of the divider leaves it alone for the rest of the dash.
  */
 final class SplitDivider {
-    /** The shrunk half's least share: the owner's "like 20%". Stock Android's smallest usable stop is 30%. */
-    static final int LEAST_SHARE = 20;
-    /** A half already within this many points of its target is left alone (the user made it small already). */
+    /** The map's half: the owner's "make it 70% height". */
+    static final int MAP_SHARE = 70;
+    /** A half already within this many points of its target is left alone (the user sized it already). */
     static final int ROOM = 8;
-    /** The shrunk half's share moving by more than this, not by Offer Filter, is the user's move. */
+    /** The top or left half's share moving by more than this from where Offer Filter left it is the user's move. */
     static final int USER_MOVED = 3;
     /** A move verified within this many points of its target moved. */
     static final int MOVED_WITHIN = 6;
@@ -37,7 +37,6 @@ final class SplitDivider {
     static final long PROBE_EVERY_MS = 60_000;
     /** At most this many of the divider's nodes are walked for its actions. */
     static final int MAX_NODES = 20;
-    static final int MOVES_PER_DELIVERY = 2;
     static final int MOVES_PER_DASH = 12;
 
     /** Whose a half is, for the rule and the log. */
@@ -87,16 +86,22 @@ final class SplitDivider {
     }
 
     /**
-     * The action that makes the half shrunk small: for the top or left half the smallest share of at least
-     * {@link #LEAST_SHARE}; for the bottom or right half the largest of at most 100 less that. Null when none.
+     * The action that gives the map's half the share nearest {@link #MAP_SHARE}, the larger of two equally near, and
+     * never less than half the screen. Null when none.
+     *
+     * @param mapFirst the map is the top or left half
      */
-    static Target forShrink(List<Target> targets, boolean firstHalf) {
+    static Target forMap(List<Target> targets, boolean mapFirst) {
         Target best = null;
+        int bestShare = -1;
         for (Target target : targets) {
-            if (firstHalf) {
-                if (target.share >= LEAST_SHARE && (best == null || target.share < best.share)) best = target;
-            } else if (target.share <= 100 - LEAST_SHARE && (best == null || target.share > best.share)) {
+            int map = mapFirst ? target.share : 100 - target.share;
+            if (map < 50) continue;
+            int distance = Math.abs(map - MAP_SHARE);
+            int bestDistance = Math.abs(bestShare - MAP_SHARE);
+            if (best == null || distance < bestDistance || (distance == bestDistance && map > bestShare)) {
                 best = target;
+                bestShare = map;
             }
         }
         return best;
@@ -114,20 +119,13 @@ final class SplitDivider {
     }
 
     /**
-     * Which half shrinks for this pair, or null when this pair is not one the rule names (Dasher beside an app that
-     * is not a map, two other apps, a half not identified).
+     * Which half is made small for this pair: the one beside a map, when it is Dasher's or Offer Filter's; null for
+     * any other pair (Dasher beside Offer Filter, a map beside another app or another map, a half not identified).
      */
     static Pane shrinks(Pane first, Pane second) {
-        if (first == null || second == null) return null;
-        if (has(first, second, Pane.OURS) && (has(first, second, Pane.DASHER) || has(first, second, Pane.MAP))) {
-            return Pane.OURS;
-        }
-        if (has(first, second, Pane.DASHER) && has(first, second, Pane.MAP)) return Pane.DASHER;
+        if (first == Pane.MAP && (second == Pane.DASHER || second == Pane.OURS)) return second;
+        if (second == Pane.MAP && (first == Pane.DASHER || first == Pane.OURS)) return first;
         return null;
-    }
-
-    private static boolean has(Pane first, Pane second, Pane pane) {
-        return first == pane || second == pane;
     }
 
     // ---- The safe moment ----
@@ -167,21 +165,7 @@ final class SplitDivider {
         return null;
     }
 
-    // ---- What this dash has done (scanner thread) ----
-
-    /** A half Offer Filter shrank, in the split it shrank it in. */
-    private static final class Shrunk {
-        final Pane pane;
-        /** The top or left half's share before the move. */
-        final int firstBefore;
-        /** The shrunk half's share measured once the move was verified; -1 until then. */
-        int after = -1;
-
-        Shrunk(Pane pane, int firstBefore) {
-            this.pane = pane;
-            this.firstBefore = firstBefore;
-        }
-    }
+    // ---- What this split and this dash have done (scanner thread) ----
 
     /** A move to check {@link #VERIFY_MS} after it. */
     private static final class Verify {
@@ -197,19 +181,26 @@ final class SplitDivider {
     }
 
     private long dashKey;
-    private boolean delivering;
-    private int deliveryMoves;
     private int dashMoves;
     /** Set: no more moves this dash. */
     private String stoppedFor;
-    /** A shrink was made (or found needless) this delivery in this split. */
-    private boolean doneThisDelivery;
-    private Shrunk shrunk;
-    private boolean restoreDue;
-    private Verify verify;
     private boolean capNoted;
+    private Verify verify;
+    /** The top or left half's share before Offer Filter first moved the divider in this split; -1 when it hasn't. */
+    private int firstBefore = -1;
+    /** The top or left half's share where Offer Filter's last move for a map left it, once verified; -1 otherwise. */
+    private int placed = -1;
+    /** Offer Filter moved the divider in this split. */
+    private boolean movedThisSplit;
+    /** The pair last said to be sized already in this split, so it is said once. */
+    private String saidAlready;
+    /** Whose the halves were at the last look (null: not identified), since when, and the top or left share then. */
+    private Pane pairFirst;
+    private Pane pairSecond;
+    private long pairSince;
+    private int lastShare = -1;
 
-    /** A dash under way, by its start (0: none). A new dash starts over; the end of one keeps a restore due. */
+    /** A dash under way, by its start (0: none). A new dash starts over. */
     void dash(long key) {
         if (key == 0 || key == dashKey) return;
         dashKey = key;
@@ -218,137 +209,149 @@ final class SplitDivider {
         capNoted = false;
     }
 
-    /** Whether a delivery is under way: its start allows one shrink, its end asks for the restore. */
-    void delivery(boolean on) {
-        if (on && !delivering) {
-            deliveryMoves = 0;
-            doneThisDelivery = false;
-            restoreDue = false;
-            capNoted = false;
-        } else if (!on && delivering && shrunk != null) {
-            restoreDue = true;
-        }
-        delivering = on;
-    }
-
     /**
-     * The split ended: what was shrunk in it is forgotten, and a split entered again during the delivery may shrink
-     * again. Returns a log line when a move was still to be checked (the move then stops for the dash), else null.
+     * The split ended: what Offer Filter did in it is forgotten. Returns a log line when a move was still to be
+     * checked (the move then stops for the dash), else null.
      */
     String splitEnded() {
         Verify pending = verify;
         verify = null;
-        shrunk = null;
-        restoreDue = false;
-        doneThisDelivery = false;
+        firstBefore = -1;
+        placed = -1;
+        movedThisSplit = false;
+        saidAlready = null;
+        pairFirst = null;
+        pairSecond = null;
+        lastShare = -1;
         if (pending == null) return null;
         return stop("split ended after the divider moved");
     }
 
     /**
-     * {@link #VERIFY_MS} after a move: whether the halves came within {@link #MOVED_WITHIN} points of its target. A
-     * shrink's half share is taken then, for the user's move. Returns a log line when it didn't move, else null.
+     * {@link #VERIFY_MS} after a move: whether the top or left half came within {@link #MOVED_WITHIN} points of its
+     * target. Returns a log line when it didn't move, else null.
      *
      * @param firstShare the top or left half's share now
-     * @param shrunkShare the shrunk half's share now (-1: that half is gone)
      */
-    String verify(int firstShare, int shrunkShare, long now) {
+    String verify(int firstShare, long now) {
         Verify pending = verify;
         if (pending == null || now < pending.due) return null;
         verify = null;
-        if (Math.abs(firstShare - pending.firstWanted) > MOVED_WITHIN || (shrunk != null && shrunkShare < 0)) {
-            shrunk = null;
-            restoreDue = false;
+        if (Math.abs(firstShare - pending.firstWanted) > MOVED_WITHIN) {
             return stop("divider didn't move (top or left half " + firstShare + "%, wanted " + pending.firstWanted
                     + "%)");
         }
-        if (pending.restore) shrunk = null;
-        else if (shrunk != null) shrunk.after = shrunkShare;
+        if (pending.restore) restored();
+        else placed = firstShare;
         return null;
     }
 
     /**
-     * The user's touch wins: once a shrink is verified, the shrunk half's share moving by more than
-     * {@link #USER_MOVED} points (or the half gone from the pair) is the user's move, and nothing moves again this dash.
+     * Each look at the two halves: whose they are (null when not identified) and the top or left half's share. A pair
+     * newly seen settles for {@link #SETTLE_MS} before anything moves for it. The user's touch wins: while a map stands
+     * beside Dasher or Offer Filter, or the divider is still to be put back, the share moving by more than
+     * {@link #USER_MOVED} points between two looks at the same settled pair, with no move of Offer Filter's to check,
+     * is the user's move, and nothing moves again this dash (another app taking a half moves nothing, so it never is).
      * Returns the log line, else null.
      */
-    String watchUser(int shrunkShare) {
-        if (shrunk == null || shrunk.after < 0 || verify != null || stoppedFor != null) return null;
-        if (shrunkShare >= 0 && Math.abs(shrunkShare - shrunk.after) <= USER_MOVED) return null;
-        shrunk = null;
-        restoreDue = false;
+    String look(Pane first, Pane second, int firstShare, long now) {
+        if (first == null || second == null) {
+            pairFirst = null;
+            pairSecond = null;
+            lastShare = -1;
+            return null;
+        }
+        if (first != pairFirst || second != pairSecond) {
+            pairFirst = first;
+            pairSecond = second;
+            pairSince = now;
+            lastShare = firstShare;
+            return null;
+        }
+        if (stoppedFor != null || verify != null) {
+            lastShare = -1;
+            return null;
+        }
+        boolean watched = shrinks(first, second) != null || placed >= 0;
+        int before = lastShare;
+        lastShare = firstShare;
+        if (!watched || before < 0 || now - pairSince < SETTLE_MS || Math.abs(firstShare - before) <= USER_MOVED) {
+            return null;
+        }
         return stop("you moved the divider");
     }
 
-    /** The half shrunk and waiting for its restore, or null. */
-    Pane shrunkPane() {
-        return shrunk == null ? null : shrunk.pane;
-    }
-
-    /** Whether a move is still to be checked, or a shrunk half is watched: the shares are needed. */
-    boolean watching() {
-        return verify != null || shrunk != null;
-    }
-
-    /** What to do now, before the moment's guards: a restore due, a shrink this delivery, or nothing. */
-    Want want() {
-        if (stoppedFor != null || verify != null) return Want.NONE;
-        if (restoreDue && shrunk != null && shrunk.after >= 0) return Want.RESTORE;
-        if (delivering && !doneThisDelivery && shrunk == null) return Want.SHRINK;
+    /**
+     * What to do for the pair of the last look, before the moment's guards: make the half beside a map small, put the
+     * divider back once no half is a map's (after a move for one), or nothing. Nothing while a move is still to be
+     * checked, after a stop, while either half is not identified or before the pair has settled.
+     */
+    Want want(long now) {
+        if (stoppedFor != null || verify != null || pairFirst == null || pairSecond == null) return Want.NONE;
+        if (now - pairSince < SETTLE_MS) return Want.NONE;
+        if (shrinks(pairFirst, pairSecond) != null) return Want.SHRINK;
+        if (placed >= 0 && pairFirst != Pane.MAP && pairSecond != Pane.MAP) return Want.RESTORE;
         return Want.NONE;
     }
 
     /**
-     * Null when the caps allow a move; otherwise the log line saying which cap stops it, the first time, and "" after.
+     * Null when the dash's cap allows a move; otherwise the log line saying so, the first time, and "" after.
      */
     String capped() {
-        if (deliveryMoves < MOVES_PER_DELIVERY && dashMoves < MOVES_PER_DASH) return null;
+        if (dashMoves < MOVES_PER_DASH) return null;
         if (capNoted) return "";
         capNoted = true;
-        return dashMoves >= MOVES_PER_DASH ? "divider: " + MOVES_PER_DASH + " moves this dash already; left as it is"
-                : "divider: " + MOVES_PER_DELIVERY + " moves this delivery already; left as it is";
+        return "divider: " + MOVES_PER_DASH + " moves this dash already; left as it is";
+    }
+
+    /** Whether the half to make small is more than {@link #ROOM} points larger than its target. */
+    static boolean roomFor(int halfShare, int halfTarget) {
+        return halfShare - halfTarget > ROOM;
     }
 
     /**
-     * Whether the half to shrink is more than {@link #ROOM} points larger than its target; when not, it is left
-     * alone for this delivery in this split.
+     * Whether to say the last look's pair is sized already: once per pair in a split, and only while Offer Filter has
+     * not moved the divider in it (the user sized it).
      */
-    boolean roomFor(int halfShare, int halfTarget) {
-        if (halfShare - halfTarget > ROOM) return true;
-        doneThisDelivery = true;
-        return false;
+    boolean sayAlready() {
+        String pair = pairFirst + "/" + pairSecond;
+        if (movedThisSplit || pair.equals(saidAlready)) return false;
+        saidAlready = pair;
+        return true;
     }
 
-    /** The top or left half's share before the shrink, for the restore. */
+    /** The top or left half's share before Offer Filter first moved the divider in this split, for the restore. */
     int firstBefore() {
-        return shrunk == null ? -1 : shrunk.firstBefore;
+        return firstBefore;
+    }
+
+    /** The divider is back where it was (or already there): nothing to restore. */
+    void restored() {
+        firstBefore = -1;
+        placed = -1;
     }
 
     /**
      * Offer Filter moved the divider: counted, checked {@link #VERIFY_MS} from now.
      *
-     * @param pane the half shrunk (a shrink), else ignored
      * @param firstShareBefore the top or left half's share before the move
      * @param firstWanted the top or left half's share the action gives
      */
-    void moved(Want kind, Pane pane, int firstShareBefore, int firstWanted, long now) {
+    void moved(Want kind, int firstShareBefore, int firstWanted, long now) {
         dashMoves++;
-        deliveryMoves++;
+        movedThisSplit = true;
         verify = new Verify(kind == Want.RESTORE, firstWanted, now + VERIFY_MS);
-        if (kind == Want.SHRINK) {
-            shrunk = new Shrunk(pane, firstShareBefore);
-            doneThisDelivery = true;
-        } else {
-            restoreDue = false;
-        }
+        if (kind == Want.SHRINK && firstBefore < 0) firstBefore = firstShareBefore;
+        placed = -1;
+        lastShare = -1;
     }
 
     /** No more moves this dash; the log line. */
     String stop(String why) {
         stoppedFor = why;
         verify = null;
-        shrunk = null;
-        restoreDue = false;
+        firstBefore = -1;
+        placed = -1;
         return why + ": left alone for the rest of this dash";
     }
 

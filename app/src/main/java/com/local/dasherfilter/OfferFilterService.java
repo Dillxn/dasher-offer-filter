@@ -1479,11 +1479,11 @@ public final class OfferFilterService extends AccessibilityService {
                 && now >= lateCompletionUntil;
     }
 
-    // ---- The split divider during a delivery ({@link SplitDividerMover}; scanner thread) ----
+    // ---- The split divider beside a map ({@link SplitDividerMover}; scanner thread) ----
 
     /** The last read of Dasher showed its own turn-by-turn navigation: the divider is never moved then. */
     private volatile boolean dasherNavigationRead;
-    /** Moves the split divider for a delivery, with the divider's own actions; null before {@link #onCreate}. */
+    /** Moves the split divider for a map in a half, with the divider's own actions; null before {@link #onCreate}. */
     private SplitDividerMover splitDivider;
 
     /** Any thread: the windows may have changed, so the split divider's mover looks soon. */
@@ -1521,8 +1521,6 @@ public final class OfferFilterService extends AccessibilityService {
             @Override public SplitDivider.Moment moment(long now) { return splitDividerMoment(now); }
 
             @Override public boolean busy(long now) { return hot(now) || declineUnderWay(now); }
-
-            @Override public boolean onDelivery() { return dasherOnDelivery(service); }
 
             @Override public long dashKey() { return Dashing.currentStart(service); }
 

@@ -29,11 +29,13 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The split divider moved for a delivery through the real screen reader, Android simulated: a fake divider window
- * ({@code TYPE_SPLIT_SCREEN_DIVIDER}) whose node has stock Android's custom actions, its halves' bounds following each
- * action performed. Offer Filter's half (or Dasher's, beside a map) shrinks at the pickup screen, never during Dasher's
- * own navigation, and gets its size back at the wait for offers; one {@code performAction} on the divider's node, no
- * gesture, never Dasher's root; a divider that doesn't move, or the user's own move, stops it for the dash.
+ * The split divider moved for a map through the real screen reader, Android simulated: a fake divider window
+ * ({@code TYPE_SPLIT_SCREEN_DIVIDER}) whose node has the divider's custom actions, its halves' bounds following each
+ * action performed. A map in the top half gets 70% once the split settles, Dasher's half 30%, and the divider goes back
+ * once Offer Filter takes the map's half (0.6.21, the owner: "whenever one half has nav open make it 70% height");
+ * Dasher beside Offer Filter is left alone, delivery or not; nothing moves during Dasher's own navigation; one
+ * {@code performAction} on the divider's node, no gesture, never Dasher's root; a divider that doesn't move, or the
+ * user's own move, stops it for the dash.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {35, 36})
@@ -42,27 +44,33 @@ public class SplitDividerAdapterTest extends AndroidAdapterTestBase {
     private static final String DASHER = "com.doordash.driverapp";
     private static final String MAPS = "com.google.android.apps.maps";
     private static final int SCREEN_HEIGHT = 2040;
-    private static final int TOP_WINDOW = 921;
     private static final int DASHER_WINDOW = 922;
     private static final int DIVIDER_WINDOW = 923;
+    private static final int PIP_WINDOW = 924;
     /** Stock Android up to 16 QPR1, portrait, with the IDs SystemUI's resources might give them. */
-    private static final List<String> LABELS = Arrays.asList("Top full screen", "Top 70%", "Top 50%", "Top 30%",
+    private static final List<String> QPR1 = Arrays.asList("Top full screen", "Top 70%", "Top 50%", "Top 30%",
             "Bottom full screen", "Swap top app with bottom");
+    /** The owner's Samsung on Android 16 (his 0.6.11 report, 13 October 2026). */
+    private static final List<String> SAMSUNG = Arrays.asList("Make top app full screen", "70% top, 30% bottom",
+            "50% top, 50% bottom", "30% top, 70% bottom", "Make bottom app full screen",
+            "Swap top app with bottom app, keep current split");
     private static final int FIRST_ACTION = 0x7f0b0100;
     private static final int TOP_70 = FIRST_ACTION + 1;
     private static final int TOP_50 = FIRST_ACTION + 2;
-    private static final int TOP_30 = FIRST_ACTION + 3;
 
     private ServiceController<OfferFilterService> controller;
     private OfferFilterService service;
-    /** The app in the top half: this app's package, or a map's. */
-    private String topPackage;
     private AccessibilityNodeInfo dasherScreen;
+    /** The top half's window: a new one each time another app takes the half, as Android gives it. */
+    private int topWindow = 921;
     /** The divider's centre, in percent of the screen's height. */
     private int dividerAt = 50;
     /** Whether the divider follows its actions (a phone where it moves). */
     private boolean follows = true;
     private boolean withActions = true;
+    private List<String> labels = QPR1;
+    /** A map's window floating in picture-in-picture over the halves. */
+    private boolean pip;
     private AccessibilityNodeInfo handle;
     private final List<Integer> performed = new ArrayList<>();
     private final List<Integer> rootsAsked = new ArrayList<>();
@@ -115,16 +123,16 @@ public class SplitDividerAdapterTest extends AndroidAdapterTestBase {
         handle = node("com.android.systemui", null);
         handle.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK);
         if (withActions) {
-            for (int i = 0; i < LABELS.size(); i++) {
-                handle.addAction(new AccessibilityNodeInfo.AccessibilityAction(FIRST_ACTION + i, LABELS.get(i)));
+            for (int i = 0; i < labels.size(); i++) {
+                handle.addAction(new AccessibilityNodeInfo.AccessibilityAction(FIRST_ACTION + i, labels.get(i)));
             }
         }
         Shadows.shadowOf(handle).setOnPerformActionListener((action, args) -> {
             performed.add(action);
-            if (follows) {
-                if (action == TOP_30) dividerAt = 30;
-                else if (action == TOP_50) dividerAt = 50;
-                else if (action == TOP_70) dividerAt = 70;
+            int share = action >= FIRST_ACTION && action < FIRST_ACTION + labels.size()
+                    ? SplitDivider.share(labels.get(action - FIRST_ACTION)) : -1;
+            if (follows && share > 0) {
+                dividerAt = share;
                 layOut();
             }
             return true;
@@ -151,21 +159,28 @@ public class SplitDividerAdapterTest extends AndroidAdapterTestBase {
     private AccessibilityNodeInfo topRoot;
     private AccessibilityNodeInfo dividerNode;
 
-    /** The windows as the divider now stands: the top app active above, Dasher below. */
+    /** The windows as the divider now stands: the top app active above, Dasher below (and a map in PiP). */
     private void layOut() {
         int centre = SCREEN_HEIGHT * dividerAt / 100;
-        Shadows.shadowOf(service).setWindows(Arrays.asList(
-                window(TOP_WINDOW, AccessibilityWindowInfo.TYPE_APPLICATION, topRoot, true,
+        List<AccessibilityWindowInfo> windows = new ArrayList<>(Arrays.asList(
+                window(topWindow, AccessibilityWindowInfo.TYPE_APPLICATION, topRoot, true,
                         new Rect(0, 0, 1080, centre - 20)),
                 window(DIVIDER_WINDOW, AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER, dividerNode, false,
                         new Rect(0, centre - 20, 1080, centre + 20)),
                 window(DASHER_WINDOW, AccessibilityWindowInfo.TYPE_APPLICATION, dasherScreen, false,
                         new Rect(0, centre + 20, 1080, SCREEN_HEIGHT))));
+        if (pip) {
+            AccessibilityWindowInfo floating = window(PIP_WINDOW, AccessibilityWindowInfo.TYPE_APPLICATION,
+                    screen(MAPS), false, new Rect(700, 1500, 1040, 1900));
+            ((ShadowAccessibilityWindowInfo) Shadow.extract(floating)).setPictureInPicture(true);
+            windows.add(0, floating);
+        }
+        Shadows.shadowOf(service).setWindows(windows);
         Shadows.shadowOf(service).setRootInActiveWindow(topRoot);
     }
 
-    /** Auto-decline on with a rule, a dash on, the screen reader connected, the screen split. */
-    private void start(String top) {
+    /** Auto-decline on with a rule, a dash on, the screen reader connected, the screen split, Dasher showing these. */
+    private void start(String top, String... dasher) {
         FilterStore.save(app, FilterSettings.of(true, 400, 0, 0, 0));
         DiagnosticLog.clear(app);
         Dashing.seen(app);
@@ -174,11 +189,17 @@ public class SplitDividerAdapterTest extends AndroidAdapterTestBase {
         service = controller.get();
         service.onServiceConnected();
         idle();
-        topPackage = top;
         topRoot = screen(top);
         dividerNode = dividerRoot();
-        dasherShows("Finding offers");
+        dasherShows(dasher.length == 0 ? new String[] {"Finding offers"} : dasher);
         pass(4_000);
+    }
+
+    /** Another app takes the top half, in a new window. */
+    private void topBecomes(String top) {
+        topWindow += 10;
+        topRoot = screen(top);
+        layOut();
     }
 
     /** Dasher's half shows {@code texts}, and Dasher says its window changed. */
@@ -194,13 +215,7 @@ public class SplitDividerAdapterTest extends AndroidAdapterTestBase {
         idle();
     }
 
-    private void pickup() {
-        dasherShows("Pick up by 7:30 PM", "Taco Bell", "Directions");
-    }
-
-    private void navigation() {
-        dasherShows("25 mph", "Turn left onto Main St", "0.3 mi");
-    }
+    private static final String[] NAVIGATION = {"25 mph", "Turn left onto Main St", "0.3 mi"};
 
     private void assertNeverDashersRootNorAGesture() {
         assertFalse("Dasher's root is never asked for: " + rootsAsked, rootsAsked.contains(DASHER_WINDOW));
@@ -208,99 +223,108 @@ public class SplitDividerAdapterTest extends AndroidAdapterTestBase {
     }
 
     @Test
-    public void offerFiltersHalfShrinksAtThePickupAndComesBackAtTheWaitForOffers() {
-        start(app.getPackageName());
-        assertTrue("nothing before a delivery", performed.isEmpty());
-        pickup();
-        pass(SplitDividerMover.KICK_GAP_MS);
-        assertEquals("once, at the pickup screen", Arrays.asList(TOP_30), performed);
-        assertEquals(30, dividerAt);
+    public void aMapInTheTopHalfGetsSeventyPercentAndTheDividerGoesBackWhenOfferFilterTakesItsPlace() {
+        start(MAPS);
+        assertEquals("once, as soon as the split settled", Arrays.asList(TOP_70), performed);
+        assertEquals(70, dividerAt);
         pass(10_000);
-        assertEquals("once per delivery", Arrays.asList(TOP_30), performed);
+        assertEquals("once while the map stays", Arrays.asList(TOP_70), performed);
         String log = DiagnosticLog.read(app);
-        contains(log, "[split] divider: Offer Filter's half to 30% for the delivery (\"Top 30%\")");
+        contains(log, "[split] divider: Dasher's half to 30% for the map (\"Top 70%\")");
         assertFalse(log, log.contains("didn't move"));
-        dasherShows("Finding offers");
-        pass(1_000);
-        assertEquals("back at the wait for offers", Arrays.asList(TOP_30, TOP_50), performed);
+        assertFalse("the map is never named", log.contains(MAPS));
+        topBecomes(app.getPackageName());
+        pass(3_000);
+        assertEquals("back once the map left", Arrays.asList(TOP_70, TOP_50), performed);
         assertEquals(50, dividerAt);
         pass(5_000);
-        assertEquals(Arrays.asList(TOP_30, TOP_50), performed);
+        assertEquals(Arrays.asList(TOP_70, TOP_50), performed);
         log = DiagnosticLog.read(app);
-        contains(log, "[split] divider: Offer Filter's half back to 50% after the delivery (\"Top 50%\")");
-        assertFalse(log, log.contains("didn't move"));
-        assertEquals("only the divider's own action, on its handle", Arrays.asList(TOP_30, TOP_50),
+        contains(log, "[split] divider: top or left half back to 50% after the map left (\"Top 50%\")");
+        assertFalse(log, log.contains("you moved the divider"));
+        assertEquals("only the divider's own action, on its handle", Arrays.asList(TOP_70, TOP_50),
                 Shadows.shadowOf(handle).getPerformedActions());
+        // The map again: again.
+        topBecomes(MAPS);
+        pass(3_000);
+        assertEquals(Arrays.asList(TOP_70, TOP_50, TOP_70), performed);
         assertNeverDashersRootNorAGesture();
     }
 
     @Test
-    public void nothingMovesDuringDashersNavigationThenThePickupMovesIt() {
+    public void onTheOwnersSamsungTheMapGetsSeventyTopThirtyBottom() {
+        labels = SAMSUNG;
+        start(MAPS);
+        assertEquals(Arrays.asList(FIRST_ACTION + 1), performed);
+        assertEquals(70, dividerAt);
+        contains(DiagnosticLog.read(app), "[split] divider: Dasher's half to 30% for the map (\"70% top, 30% bottom\")");
+        assertNeverDashersRootNorAGesture();
+    }
+
+    @Test
+    public void dasherBesideOfferFilterIsLeftAloneDeliveryOrNot() {
         start(app.getPackageName());
-        navigation();
         pass(10_000);
-        navigation();
+        dasherShows("Pick up by 7:30 PM", "Taco Bell", "Directions");
+        pass(10_000);
+        dasherShows("Finding offers");
+        pass(5_000);
+        assertTrue("0.6.21: no move beside Offer Filter", performed.isEmpty());
+        assertNeverDashersRootNorAGesture();
+    }
+
+    @Test
+    public void nothingMovesDuringDashersNavigationThenItDoes() {
+        start(MAPS, NAVIGATION);
+        pass(10_000);
+        dasherShows(NAVIGATION);
         pass(10_000);
         assertTrue("never during Dasher's own navigation", performed.isEmpty());
-        pickup();
-        pass(1_000);
-        assertEquals(Arrays.asList(TOP_30), performed);
-        // Navigation again: the wait for offers after it restores, never the navigation itself.
-        navigation();
-        pass(5_000);
-        assertEquals(Arrays.asList(TOP_30), performed);
+        dasherShows("Finding offers");
+        pass(3_000);
+        assertEquals(Arrays.asList(TOP_70), performed);
         assertNeverDashersRootNorAGesture();
     }
 
     @Test
-    public void besideAMapDashersHalfShrinks() {
+    public void aMapInPictureInPictureNoLongerHidesTheSplit() {
+        pip = true;
         start(MAPS);
-        pickup();
-        pass(1_000);
-        assertEquals("the bottom half small: the largest share up to 80% for the top", Arrays.asList(TOP_70),
-                performed);
-        contains(DiagnosticLog.read(app), "[split] divider: Dasher's half to 30% for the delivery (\"Top 70%\")");
-        assertFalse("the map is never named", DiagnosticLog.read(app).contains(MAPS));
-        dasherShows("Finding offers");
-        pass(1_000);
-        assertEquals(Arrays.asList(TOP_70, TOP_50), performed);
-        assertNeverDashersRootNorAGesture();
+        assertEquals(Arrays.asList(TOP_70), performed);
+        assertFalse("the floating map's root is never needed: " + rootsAsked, rootsAsked.contains(PIP_WINDOW));
     }
 
     @Test
     public void aDividerThatDoesNotMoveStopsItForTheDash() {
-        start(app.getPackageName());
         follows = false;
-        pickup();
-        pass(SplitDivider.VERIFY_MS + 500);
-        contains(DiagnosticLog.read(app), "[split] divider didn't move (top or left half 50%, wanted 30%): left alone "
+        start(MAPS);
+        contains(DiagnosticLog.read(app), "[split] divider didn't move (top or left half 50%, wanted 70%): left alone "
                 + "for the rest of this dash");
-        dasherShows("Finding offers");
+        topBecomes(app.getPackageName());
         pass(5_000);
-        pickup();
+        topBecomes(MAPS);
         pass(5_000);
-        assertEquals("one move, no more this dash", Arrays.asList(TOP_30), performed);
+        assertEquals("one move, no more this dash", Arrays.asList(TOP_70), performed);
         assertNeverDashersRootNorAGesture();
     }
 
     @Test
     public void theUsersOwnMoveLeavesItAloneForTheDash() {
-        start(app.getPackageName());
-        pickup();
-        pass(SplitDivider.VERIFY_MS + 500);
-        // The user drags the divider to 40%.
-        dividerAt = 40;
+        start(MAPS);
+        assertEquals(Arrays.asList(TOP_70), performed);
+        // The user drags the divider to 60%.
+        dividerAt = 60;
         layOut();
         pass(1_500);
         contains(DiagnosticLog.read(app), "[split] you moved the divider: left alone for the rest of this dash");
-        dasherShows("Finding offers");
+        topBecomes(app.getPackageName());
         pass(5_000);
-        assertEquals("no restore over the user's move", Arrays.asList(TOP_30), performed);
-        assertEquals(40, dividerAt);
+        assertEquals("no restore over the user's move", Arrays.asList(TOP_70), performed);
+        assertEquals(60, dividerAt);
     }
 
     @Test
-    public void theProbeLogsTheDividersActionsOnceEvenWithNoDelivery() {
+    public void theProbeLogsTheDividersActionsOnceEvenWithNoMap() {
         start(app.getPackageName());
         pass(70_000);
         String log = DiagnosticLog.read(app);
@@ -312,11 +336,9 @@ public class SplitDividerAdapterTest extends AndroidAdapterTestBase {
     @Test
     public void theProbeSaysNoneWithTheNodesClass() {
         withActions = false;
-        start(app.getPackageName());
+        start(MAPS);
         pass(2_000);
         contains(DiagnosticLog.read(app), "[split] divider actions: none (android.view.View)");
-        pickup();
-        pass(5_000);
         assertTrue(performed.isEmpty());
         contains(DiagnosticLog.read(app), "[split] divider: no action names a share (none); left as it is");
     }
