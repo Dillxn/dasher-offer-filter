@@ -25,8 +25,11 @@ import java.util.Locale;
  * The offer areas drawn as a strip under the homepage's radar and skyline, north up, with no map tiles: each square
  * where offers came in is gilded deeper the better its pay per mile. Squares with too few offers to rank are dashed
  * outlines. A dot marks where the phone is now; a scale bar and a small "N ↑" give distance and direction. The view
- * always holds both you and the best square. The land fades out toward every edge instead of stopping at a hard line,
- * so a square the edge cuts through dissolves into the scene's ground; the scale stays crisp above it. The selected
+ * always holds both you and the best square. The land (its grid and squares) runs to every edge of the view, under the
+ * key's "N ↑" and ⓘ too, and fades out toward every edge, with no frame round it, so a square the edge cuts through
+ * dissolves into the scene's ground (0.6.21, the owner: "remove its container's outline and just let the map fade out
+ * at the edges"); the scale, the key and the name stay crisp above it. The best square and the dot are still placed
+ * clear of the key's row and the ⓘ's column. The selected
  * square (the best until another is picked) is outlined and named beside it with its pay per mile ("Hunt Rd ·
  * $2.40/mi"), on whichever side has room and never cut (0.6.8, the owner's mockup: no rank coins, no trail; 0.6.6, the
  * line under the map, its title and its compass rose gone: say each thing once). Tap a square to select it. With nothing to show yet, it says why, in
@@ -131,15 +134,15 @@ final class AreaMapView extends View {
 
     @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
-        float landWidth = mapWidth(width, height);
-        float across = sideFade(landWidth);
+        // The land fills the whole view (0.6.21), so it fades at the view's own edges.
+        float across = sideFade(width);
         float down = topFade(height);
         int clear = 0x00000000;
         int opaque = 0xFF000000;
         fadeTop = new LinearGradient(0, 0, 0, down, clear, opaque, Shader.TileMode.CLAMP);
         fadeBottom = new LinearGradient(0, height - down, 0, height, opaque, clear, Shader.TileMode.CLAMP);
         fadeLeft = new LinearGradient(0, 0, across, 0, clear, opaque, Shader.TileMode.CLAMP);
-        fadeRight = new LinearGradient(landWidth - across, 0, landWidth, 0, opaque, clear, Shader.TileMode.CLAMP);
+        fadeRight = new LinearGradient(width - across, 0, width, 0, opaque, clear, Shader.TileMode.CLAMP);
     }
 
     /** The left and right ramps: {@link #FADE_DP}, never more than a quarter of a narrow map. */
@@ -418,9 +421,8 @@ final class AreaMapView extends View {
         rect.set(0, 0, width, height);
         if (cells.isEmpty()) {
             int fields = canvas.saveLayer(0, 0, width, height, null);
-            canvas.clipRect(0, keyHeight(), landWidth, height);
-            drawEmptyFields(canvas, landWidth, height);
-            fadeEdges(canvas, landWidth, height);
+            drawEmptyFields(canvas, width, height);
+            fadeEdges(canvas, width, height);
             canvas.restoreToCount(fields);
             android.text.StaticLayout words = emptyLayout(landWidth, height);
             if (words != null) {
@@ -434,10 +436,9 @@ final class AreaMapView extends View {
             return;
         }
         project(width, height);
-        // The land is drawn into its own layer, faded at the edges, then laid on the ground.
+        // The land is drawn into its own layer, to every edge, faded at the edges, then laid on the ground.
         int land = canvas.saveLayer(0, 0, width, height, null);
-        canvas.clipRect(0, keyHeight(), landWidth, height);
-        drawGrid(canvas, landWidth, height);
+        drawGrid(canvas, width, height);
 
         double best = ranked.isEmpty() ? 0 : ranked.get(0).centsPerMile();
         double worst = ranked.isEmpty() ? 0 : ranked.get(ranked.size() - 1).centsPerMile();
@@ -467,11 +468,10 @@ final class AreaMapView extends View {
         // picked) carries its name and pay per mile beside it, over the faded edges, never cut.
         namesShown = 0;
         if (here != null) drawHere(canvas);
-        fadeEdges(canvas, landWidth, height);
+        fadeEdges(canvas, width, height);
         canvas.restoreToCount(land);
         AreaMap.Cell named = named();
         if (named != null) drawName(canvas, named);
-        drawFrame(canvas, width, height);
         drawScale(canvas, height);
         drawKey(canvas, width);
         if (here != null) Motion.next(this);
@@ -626,16 +626,6 @@ final class AreaMapView extends View {
     /** Where the selected square's name stands, in this view's pixels, as last drawn; empty for none (for tests). */
     RectF namePill() {
         return namesShown > 0 ? new RectF(namePills[0]) : new RectF();
-    }
-
-    /** A soft frame round the strip, as the mockup draws it. */
-    private void drawFrame(Canvas canvas, float width, float height) {
-        float inset = ui.dp(3);
-        rect.set(inset, inset, width - inset, height - inset);
-        line.setPathEffect(null);
-        line.setStrokeWidth(Math.max(1, ui.dp(1)));
-        line.setColor(ui.dark ? 0x33FFFFFF : 0x2A3A2A18);
-        canvas.drawRoundRect(rect, ui.dp(16), ui.dp(16), line);
     }
 
     /**
@@ -810,14 +800,15 @@ final class AreaMapView extends View {
             }
             return true;
         }
+        // The land runs to every edge (0.6.21): a square drawn anywhere but under the ⓘ (taken above) can be tapped.
         if (event.getAction() == MotionEvent.ACTION_UP && !cells.isEmpty()
-                && event.getX() >= 0 && event.getX() < landWidth() && event.getY() >= keyHeight()) {
+                && event.getX() >= 0 && event.getX() < getWidth() && event.getY() >= 0) {
             project(getWidth(), getHeight());
             AreaMap.Cell nearest = null;
             double nearestDistance = ui.dp(28);
             for (AreaMap.Cell cell : cells) {
                 cellBounds(cell, rect);
-                if (rect.right <= 0 || rect.left >= landWidth() || rect.bottom <= keyHeight()
+                if (rect.right <= 0 || rect.left >= getWidth() || rect.bottom <= 0
                         || rect.top >= getHeight()) continue;
                 double distance = Math.hypot(x(cell.longitude()) - event.getX(), y(cell.latitude()) - event.getY());
                 double half = AreaMap.CELL_DEGREES * scale / 2;

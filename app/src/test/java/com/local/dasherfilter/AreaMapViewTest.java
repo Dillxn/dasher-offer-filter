@@ -97,6 +97,30 @@ public class AreaMapViewTest {
     }
 
     @Test
+    public void theGridRunsUnderTheKeyAndTheInfoColumnWithNoFrameRoundIt() {
+        AreaMapView map = new AreaMapView(app, ui);
+        List<AreaMap.Cell> cells = Arrays.asList(square(1888, -6121, 1500, 5.0), square(1886, -6124, 1000, 5.0));
+        map.show(cells, new double[] {1886.5 * AreaMap.CELL_DEGREES, -6123.5 * AreaMap.CELL_DEGREES});
+        Bitmap bitmap = draw(map, 360, 200);
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        int one = ui.dp(1);
+
+        // 0.6.21 (the owner: "why does the grid ... not extend to the top and right of its container?"): the land runs
+        // into the right-hand column the ⓘ keeps, under the ⓘ ...
+        int infoColumn = maxAlpha(bitmap, width - ui.dp(40), ui.dp(60), width - ui.dp(30), height - ui.dp(40));
+        assertTrue("the grid runs into the ⓘ's column: " + infoColumn, infoColumn > 20);
+        // ... and into the key's row at the top, fading toward the edge.
+        int keyRow = maxAlpha(bitmap, ui.dp(40), ui.dp(14), width / 2, ui.dp(19));
+        assertTrue("the grid runs into the key's row: " + keyRow, keyRow > 5);
+        // No frame round it ("remove its container's outline"): only the faded land is left 3 dp in from its edges.
+        int topFrame = maxAlpha(bitmap, ui.dp(40), ui.dp(3) - one, width / 2, ui.dp(3) + 2 * one);
+        int leftFrame = maxAlpha(bitmap, ui.dp(3) - one, ui.dp(60), ui.dp(3) + 2 * one, height - ui.dp(60));
+        assertTrue("no frame along the top: " + topFrame, topFrame < 20);
+        assertTrue("no frame down the left: " + leftFrame, leftFrame < 20);
+    }
+
+    @Test
     public void placeNamesThatWouldOverlapAreNotDrawnOverEachOther() {
         AreaMapView map = new AreaMapView(app, ui);
         AreaMap.Cell best = square(1888, -6121, 1500, 5.0);
