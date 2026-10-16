@@ -1996,6 +1996,8 @@ public final class OfferFilterService extends AccessibilityService {
         DailyCount.trigger(this);
         DiagnosticLog.log(this, "accessibility", "connected; opens Dasher by itself only to peek at a background offer"
                 + " (Peek " + (FilterStore.peek(this) ? "on" : "off") + ")");
+        // Turned on from setup's page a moment ago: Offer Filter comes back to the front for the next step.
+        SetupFlow.connected(this, RestrictedSettingsGuide.Access.ACCESSIBILITY);
         // Autopilot moves the bar only through this screen reader, at a safe point between offers: its commits are
         // asked of it, a plan is asked for now, and its tick runs from now on (Autopilot itself does nothing before the
         // notice is accepted or while it is off). Nothing of Dasher's screen is known to this connection yet: no commit

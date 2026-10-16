@@ -1028,6 +1028,8 @@ public class SplitJourneyTest extends AndroidAdapterTestBase {
     @Test
     public void comingBackToThePageBesideDasherLooksAtTheWindowsAtOnce() {
         dasherInstalled();
+        // The map shows once location is allowed (0.6.26).
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_COARSE_LOCATION);
         // Connected while Dasher was not on screen: nothing watches the windows.
         ServiceController<OfferFilterService> service = connectedService();
         OfferFilterService.sawDasherBeside(0);

@@ -536,14 +536,29 @@ public class BundledNotesTest {
 
     /**
      * 0.6.25 (the owner, 16 October 2026, with Samsung's "App was denied access" over Accessibility: "we need to
-     * streamline this process and make it user friendly"): one line. Nothing the notice says changed, so it stays 28.
+     * streamline this process and make it user friendly"): one line. Nothing the notice says changed, so it stayed 28.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.25", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(28, Consent.VERSION);
+    @Test public void release0625SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.25");
         assertEquals(Collections.singletonList("Setup now opens each of Android's screens for you in turn and says "
                 + "what to tap there, Allow restricted settings included."), lines);
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
+    }
+
+    /**
+     * 0.6.26 (the owner, 16 October 2026: "shouldn't have this limbo screen. if the app is unable to work for
+     * permissions or whathaveyou then we shepherd the user directly to resolution. all ui on screen needs to be
+     * justified by what is currently functional"): one line. Nothing the notice says changed, so it stays 28.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.26", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(28, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.26");
+        assertEquals(Collections.singletonList("Setup now goes one step at a time on a page of its own, and the home "
+                + "screen shows each part only once it works."), lines);
         for (String line : lines) {
             assertTrue(line, line.length() <= 160);
             assertFalse(line, line.contains("Offer Filter"));

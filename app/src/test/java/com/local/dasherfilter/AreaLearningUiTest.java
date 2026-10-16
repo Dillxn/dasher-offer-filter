@@ -334,6 +334,8 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
     private void shortWindow(float font) {
         RuntimeEnvironment.setFontScale(font);
         FilterStore.save(app, RULES);
+        // A held update and Peek paused: two lines under the header, where setup's two steps stood before 0.6.26.
+        raiseLines(2);
         if (font > 1f) {
             learn();
             // Adopt on the homepage's note makes the new high's learned minimums the user's own, with Undo in Learned

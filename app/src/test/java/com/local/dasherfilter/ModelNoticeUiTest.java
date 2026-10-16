@@ -227,14 +227,16 @@ public class ModelNoticeUiTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * In a window too short for the constellation (a third of a split screen, the setup's lines under the header) the
-     * notice waits, kept in the store: nothing it names is on screen, and a dialog that only a button closes would stand
-     * over the strip a driver glances at. The strip's own controls work as ever. The divider dragged back lays the same
-     * screen out again with the constellation wholly there, and the notice comes on it.
+     * In a window too short for the constellation (a third of a split screen, two lines that need the user under the
+     * header) the notice waits, kept in the store: nothing it names is on screen, and a dialog that only a button closes
+     * would stand over the strip a driver glances at. The strip's own controls work as ever. The divider dragged back
+     * lays the same screen out again with the constellation wholly there, and the notice comes on it.
      */
     @Test @Config(qualifiers = "w411dp-h260dp-420dpi")
     public void inAWindowTooShortForTheConstellationTheNoticeWaitsForIt() {
         ownerShape(0);
+        // A held update and Peek paused: two lines under the header, where setup's two steps stood before 0.6.26.
+        raiseLines(2);
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
         Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
         try (ActivityController<MainActivity> activity = built.setup()) {

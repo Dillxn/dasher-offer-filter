@@ -14,7 +14,8 @@ import android.widget.TextView;
  * for something that stopped, or an arrow for an update; none for the steps folded away), a few words, and the word
  * for what a tap does ("Fix", "Install now", "Show"). Screen readers hear "words. action." Hidden until shown; words
  * are set only when they change. At the largest font sizes on a narrow phone the words keep to two lines
- * ({@link Words}).
+ * ({@link Words}). From 0.6.26 only a held update's line uses it ({@link UpdateReadyRow}): setup has its own page
+ * ({@link SetupPage}), so the step and folded marks wait unused.
  */
 final class SetupRow {
     enum Mark {

@@ -285,13 +285,15 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
      * Half of a split screen beside Dasher (0.5.1 showed only the constellation there, no map): the radar and the map
      * side by side under the strip and the header, the radar's three spokes with their knobs and icons, the max stops
      * pin and badge and the Autopilot button all inside its own box, and the strip's words kept clear of the scene's
-     * stars. A line asking for a fix stands under the header, above the radar and the map, which give it their room:
-     * it never crosses a knob or an icon (0.5.1's line crossed the constellation's lower part).
+     * stars. A line that needs the user (a held update's) stands under the header, above the radar and the map, which
+     * give it their room: it never crosses a knob or an icon (0.5.1's line crossed the constellation's lower part).
      */
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
     public void besideDasherTheRadarAndTheMapShareTheHalfAndALineToFixStandsAboveThem() throws Exception {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
+        // The map shows once location is allowed (0.6.26).
+        Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION);
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
@@ -307,7 +309,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             AreaMapView map = find(content, AreaMapView.class);
             ScenePage scene = find(content, ScenePage.class);
-            assertNull("nothing to fix yet", shownTextContaining(content, SetupChecklist.NOTIFICATIONS));
+            assertNull("no line yet", shownTextContaining(content, UpdateReadyRow.WORDS));
             assertEquals("the radar wholly there", 1f, scene.shown(star), 0f);
             assertEquals("and the map beside it", 1f, scene.shown(map), 0f);
             assertTrue("apart, the radar on the left or above (0.6.8: two tiers beside Dasher)",
@@ -352,12 +354,12 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             assertTrue("the scene knows the verdict is words, so no star lands on it", containsPoint(scene.words(),
                     verdict.centerX() - page.left, verdict.centerY() - page.top));
 
-            // Background offers go off: the line asking for a fix stands under the header, above the radar and the
-            // map, which give it their room; the radar keeps its knobs and every icon, none under the line.
-            listener.destroy();
+            // An update is held: its line stands under the header, above the radar and the map, which give it their
+            // room; the radar keeps its knobs and every icon, none under the line.
+            raiseLines(1);
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
             settleSky(content);
-            TextView problem = shownTextContaining(content, SetupChecklist.NOTIFICATIONS);
+            TextView problem = shownTextContaining(content, UpdateReadyRow.WORDS);
             assertNotNull(problem);
             android.graphics.RectF row = inWindow((View) problem.getParent());
             assertTrue("the line under the header: " + row + " / " + inWindow(pageHeader(content)),
@@ -385,16 +387,16 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * A fresh page beside Dasher with two setup steps to do (0.5.1 crossed the constellation with them and put the
-     * start on the ground): the start is the strip's status line at the top, the two steps stand under the header,
-     * and the radar under them keeps every hollow knob, wholly there with the map beside it. The mascot stands in the
-     * strip above them all.
+     * A fresh page beside Dasher with two lines that need the user (0.5.1 crossed the constellation with its setup
+     * steps and put the start on the ground): the start is the strip's status line at the top, the two lines stand
+     * under the header, and the radar under them keeps every hollow knob, wholly there with the map beside it. The
+     * mascot stands in the strip above them all.
      */
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
     public void besideDasherOnAFreshPageTheStartTopsThePageAndTwoStepsStandAboveTheRadar() {
         FilterStore.save(app, FilterSettings.of(false, 0, 0, 0, 0));
-        Shadows.shadowOf(app.getSystemService(android.app.NotificationManager.class)).setNotificationsEnabled(false);
+        raiseLines(2);
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
         OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
@@ -409,23 +411,23 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             android.graphics.RectF header = inWindow(pageHeader(content));
             float linesTop = Float.MAX_VALUE;
             float linesBottom = 0;
-            for (String line : new String[] {SetupChecklist.NOTIFICATIONS, SetupChecklist.ALERTS}) {
+            for (String line : HOMEPAGE_LINES) {
                 TextView shown = shownTextContaining(content, line);
                 assertNotNull(line, shown);
                 android.graphics.RectF row = inWindow((View) shown.getParent());
                 linesTop = Math.min(linesTop, row.top);
                 linesBottom = Math.max(linesBottom, row.bottom);
             }
-            assertTrue("the steps under the header", linesTop >= header.bottom - 1);
+            assertTrue("the lines under the header", linesTop >= header.bottom - 1);
             // With no rule yet, the start is the strip's status line, at the top of the page.
             TextView start = statusLine(content);
             assertEquals(MainActivity.START_LINE, start.getText().toString());
             assertTrue("the start in the band, in the chips' row", inWindow(start).bottom
                     <= inWindow(chipRow(content)).bottom + 1);
             assertEquals("the radar wholly there", 1f, scene.shown(star), 0f);
-            assertTrue("under the steps", inWindow(star).top >= linesBottom - 1);
+            assertTrue("under the lines", inWindow(star).top >= linesBottom - 1);
             for (int axis : MinimumsStarView.SPOKES) {
-                assertNotNull("every hollow knob stays with both steps: " + axis, star.knobAt(axis));
+                assertNotNull("every hollow knob stays with both lines: " + axis, star.knobAt(axis));
             }
             assertTrue("the upper spokes inside the radar's box", star.skyY() - star.skyRadius() >= 0);
             AreaMapView map = find(content, AreaMapView.class);
@@ -445,13 +447,13 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
 
     @Test
     @Config(qualifiers = "w360dp-h800dp-xxhdpi")
-    public void atTwiceTheFontSizeEveryKnobStaysInReachOfTheSetupLinesAndTheStartLine() {
+    public void atTwiceTheFontSizeEveryKnobStaysInReachOfTheLinesAndTheStartLine() {
         everyKnobStaysInReachOfTheLines(false);
     }
 
     /**
-     * Beside Dasher in a half tall enough for the radar at twice the font with its steps to do (in a shorter one the
-     * strip, the header and the steps take the whole half and the radar waits for room: FluidPageTest).
+     * Beside Dasher in a half tall enough for the radar at twice the font with two lines that need the user (in a
+     * shorter one the strip, the header and the lines take the whole half and the radar waits for room: FluidPageTest).
      */
     @Test
     @Config(qualifiers = "w411dp-h640dp-420dpi")
@@ -460,15 +462,16 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * A fresh page at twice the font size with setup still to do (0.5.1 crossed the constellation with the setup lines,
-     * so a set knob could stand under one, and put the start on the ground): the start is the strip's status line at
-     * the top, the setup lines stand under the header and the radar under them, wholly there, so no line covers a
-     * knob, hollow or set, anywhere along its spoke; each hollow knob takes a drag along its spoke, and the per-hour
-     * knob takes one from wherever it stands.
+     * A fresh page at twice the font size with two lines that need the user (0.5.1 crossed the constellation with the
+     * setup lines, so a set knob could stand under one, and put the start on the ground): the start is the strip's
+     * status line at the top, the lines stand under the header and the radar under them, wholly there, so no line
+     * covers a knob, hollow or set, anywhere along its spoke; each hollow knob takes a drag along its spoke, and the
+     * per-hour knob takes one from wherever it stands.
      */
     private void everyKnobStaysInReachOfTheLines(boolean beside) {
         RuntimeEnvironment.setFontScale(2f);
         FilterStore.save(app, FilterSettings.of(false, 0, 0, 0, 0));
+        raiseLines(2);
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         if (beside) {
             service.get().onServiceConnected();
@@ -482,8 +485,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             MinimumsStarView star = find(content, MinimumsStarView.class);
             assertTrue(star.backdrop());
             Ui ui = new Ui(app);
-            View line = lineAt(content, star, null, SETUP_LINES);
-            assertNotNull("a setup line to do", line);
+            View line = lineAt(content, star, null, HOMEPAGE_LINES);
+            assertNotNull("a line that needs the user", line);
             TextView start = statusLine(content);
             assertEquals("the start is the strip's status line", MainActivity.START_LINE, start.getText().toString());
             assertTrue("at the top, in the band's chips' row",
@@ -493,7 +496,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             for (int axis : MinimumsStarView.SPOKES) {
                 float[] knob = star.knobAt(axis);
                 assertNotNull(knob);
-                assertNull("no line covers hollow knob " + axis, lineAt(content, star, knob, SETUP_LINES));
+                assertNull("no line covers hollow knob " + axis, lineAt(content, star, knob, HOMEPAGE_LINES));
             }
             // Each hollow knob in turn, from where it rests, along its spoke: saved.
             for (int axis : MinimumsStarView.SPOKES) {
@@ -506,7 +509,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             }
             assertFalse("auto-decline stays paused", FilterStore.load(app).enabled);
 
-            // A per-hour minimum anywhere from $6 to $240 an hour: its knob is never under a setup line.
+            // A per-hour minimum anywhere from $6 to $240 an hour: its knob is never under a line.
             for (int cents = 10; cents <= 400; cents += 10) {
                 stillBesideDasher(beside);
                 FilterStore.save(app, FilterSettings.of(false, 0, 0, cents, 0));
@@ -515,7 +518,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
                 float[] knob = star.knobAt(AreaScore.MINUTE);
                 assertNotNull("the per-hour knob shows at " + cents + " cents a minute", knob);
                 assertNull("no line over it at " + cents + " cents a minute",
-                        lineAt(content, star, knob, SETUP_LINES));
+                        lineAt(content, star, knob, HOMEPAGE_LINES));
             }
             // From where it stands, at $240 an hour, it takes a drag in along its spoke.
             stillBesideDasher(beside);
@@ -535,9 +538,6 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             OfferFilterService.sawDasherBeside(0);
         }
     }
-
-    private static final String[] SETUP_LINES = {SetupChecklist.ACCESSIBILITY, SetupChecklist.NOTIFICATIONS,
-            SetupChecklist.ALERTS};
 
     /** The screen reader sees Dasher beside again, as it does with each of Dasher's events (else it lapses in 20 s). */
     private static void stillBesideDasher(boolean beside) {
@@ -814,6 +814,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     @Config(qualifiers = "w411dp-h410dp-420dpi")
     public void inAShortSplitWithAnotherAppTheRadarKeepsItsKnobsAndButtonBesideTheMap() {
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
+        // The map shows once location is allowed (0.6.26).
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_COARSE_LOCATION);
         // Set up, as during a dash (0.6.8): two setup lines under the band would leave the top tier only the
         // radar's least circle, too small for the Learn button.
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
@@ -971,8 +973,8 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * Paused beside Dasher with a step to do: the line saying so is the strip's status line at the top of the page, and
-     * the radar's knobs stand under the header and the step, so neither covers the other (0.5.1's "Paused" stood in
+     * Paused beside Dasher with a line that needs the user: the line saying it is paused is the strip's status line at
+     * the top of the page, and the radar's knobs stand under the header and the line, so neither covers the other (0.5.1's "Paused" stood in
      * the sky among the knobs). A tap on the per-hour knob does not resume and a drag from it sets its minimum; a tap
      * on the line still resumes.
      */
@@ -981,6 +983,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
     public void besideDasherThePausedLineTopsThePageAndAKnobTakesItsOwnTouches() {
         FilterStore.save(app, FilterSettings.of(false, 2000, 150, 75, 0));
         DecisionLog.record(app, declinedEntry());
+        raiseLines(1);
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
         OfferFilterService.sawDasherBeside(android.os.SystemClock.uptimeMillis());
@@ -990,7 +993,7 @@ public class AndroidAdapterChartTest extends AndroidAdapterTestBase {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            assertNotNull(shownTextContaining(content, SetupChecklist.NOTIFICATIONS));
+            assertNotNull(shownTextContaining(content, UpdateReadyRow.WORDS));
             TextView paused = statusLine(content);
             assertEquals(MainActivity.PAUSED_LINE, paused.getText().toString());
             assertEquals("the radar wholly there", 1f, find(content, ScenePage.class).shown(star), 0f);

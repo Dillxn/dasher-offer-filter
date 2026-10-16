@@ -20,7 +20,7 @@ public class ConsentedTestApp extends Application {
         getSharedPreferences("offer_filter_diagnostics", Context.MODE_PRIVATE).edit()
                 .putBoolean(DiagnosticLog.CLEANED_UP, true).commit();
         // A phone in use has read Peek's one-time introduction (OnboardingCardsTest starts without it) and allows
-        // updates from the app (the setup checklist's last step; the tests of that step turn it off).
+        // updates from the app (the Update ready line's Allow updates; the tests of that line turn it off).
         getSharedPreferences(PeekIntroCard.PREFS, Context.MODE_PRIVATE).edit()
                 .putBoolean(PeekIntroCard.SEEN, true).commit();
         org.robolectric.Shadows.shadowOf(getPackageManager()).setCanRequestPackageInstalls(true);
@@ -57,6 +57,10 @@ public class ConsentedTestApp extends Application {
         Art.source = Art.RESOURCES;
         Art.flatForTests = false;
         Art.forgetCache();
+        // Setup's page (0.6.26) takes the whole screen while screen reading or notification access is off, as it is in
+        // every test that does not turn them on: tests written before it see the homepage as they did (SetupFlowTest,
+        // and the few tests of setup's page elsewhere, turn it back on).
+        SetupFlow.pageShows = false;
     }
 
     static void accept(Context context) {

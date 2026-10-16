@@ -48,7 +48,8 @@ import static org.junit.Assert.assertTrue;
  * <li>the band along the top (0.6.3) is wholly there and on screen, and goes by the window's width alone: the mascot,
  * the latest offer's tile (its pay never cut; the whole offer where the tile has its room) and the dash's counts in
  * its first row; Autopilot's chip and the scoring mode's, never cut, with the status words after them; the header's
- * buttons beside them or on a row of their own; and the setup step still to do under the band;</li>
+ * buttons beside them or on a row of their own; and no line that needs the user under it (0.6.26: setup has its
+ * own page while a step is due);</li>
  * <li>from a stated height up, the radar (the constellation with its knobs), the skyline and the offer map are all
  * wholly there and on screen at a usable size, side by side in a short window, one above the other in the tallest
  * narrow one;</li>
@@ -101,7 +102,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         RuntimeEnvironment.setFontScale(1f);
     }
 
-    /** Screen reading and background offers both on, as during a dash: no setup step to do. */
+    /** Screen reading and background offers both on: the home screen shows (0.6.26: setup's page while one is off). */
     private void servicesUp() {
         screen = Robolectric.buildService(OfferFilterService.class).create();
         screen.get().onServiceConnected();
@@ -114,68 +115,67 @@ public class FluidPageTest extends AndroidAdapterTestBase {
 
     @Test @Config(qualifiers = "w360dp-h220dp-xhdpi")
     public void aNarrowSplitScreenAtTheNormalFont() throws Exception {
-        sweeps("narrow-split-font1", 360, true, 1f, 380, 280);
+        sweeps("narrow-split-font1", 360, true, 1f, 280);
     }
 
     @Test @Config(qualifiers = "w360dp-h220dp-xhdpi")
     public void aNarrowFullScreenAtTheNormalFont() throws Exception {
-        sweeps("narrow-full-font1", 360, false, 1f, 400, 300);
+        sweeps("narrow-full-font1", 360, false, 1f, 300);
     }
 
     @Test @Config(qualifiers = "w360dp-h220dp-xhdpi")
     public void aNarrowSplitScreenAtTwiceTheFont() throws Exception {
-        sweeps("narrow-split-font2", 360, true, 2f, 480, 300);
+        sweeps("narrow-split-font2", 360, true, 2f, 300);
     }
 
     @Test @Config(qualifiers = "w360dp-h220dp-xhdpi")
     public void aNarrowFullScreenAtTwiceTheFont() throws Exception {
-        sweeps("narrow-full-font2", 360, false, 2f, 480, 300);
+        sweeps("narrow-full-font2", 360, false, 2f, 300);
     }
 
     // ---- A wide window: 840 dp, an unfolded phone or a tablet ----
-    // (0.6.8: the header's buttons in the tile's row make the band 8 dp taller, so setup's stage needs 8 dp more.)
 
     @Test @Config(qualifiers = "w840dp-h220dp-xhdpi")
     public void aWideSplitScreenAtTheNormalFont() throws Exception {
-        sweeps("wide-split-font1", 840, true, 1f, 328, 240);
+        sweeps("wide-split-font1", 840, true, 1f, 240);
     }
 
     @Test @Config(qualifiers = "w840dp-h220dp-xhdpi")
     public void aWideFullScreenAtTheNormalFont() throws Exception {
-        sweeps("wide-full-font1", 840, false, 1f, 328, 240);
+        sweeps("wide-full-font1", 840, false, 1f, 240);
     }
 
     @Test @Config(qualifiers = "w840dp-h220dp-xhdpi")
     public void aWideSplitScreenAtTwiceTheFont() throws Exception {
-        sweeps("wide-split-font2", 840, true, 2f, 328, 240);
+        sweeps("wide-split-font2", 840, true, 2f, 240);
     }
 
     @Test @Config(qualifiers = "w840dp-h220dp-xhdpi")
     public void aWideFullScreenAtTwiceTheFont() throws Exception {
-        sweeps("wide-full-font2", 840, false, 2f, 328, 240);
+        sweeps("wide-full-font2", 840, false, 2f, 240);
     }
 
     /**
-     * The page {@code widthDp} wide, in split screen or not, at {@code fontScale}, swept twice: before setup is done
-     * (a step still to do under the band), the radar, the skyline and the map all wholly there from
-     * {@code setupFromDp}; then during a dash (everything set up, Autopilot on), all wholly there from
-     * {@code dashFromDp}. The steps to do are lines of their own under the band (48 dp each, more where their words
-     * wrap at twice the font in a narrow window), so the stage needs that much more of the window before setup is done.
+     * The page {@code widthDp} wide, in split screen or not, at {@code fontScale}, everything set up, swept twice: off
+     * a dash with Autopilot off, then during a dash with Autopilot on; the radar, the skyline and the map all wholly
+     * there from {@code fromDp} in both. (Before 0.6.26 a first sweep had a setup step still to do under the band,
+     * and the stage needed that much more of the window; setup now has its own page while a step is due.)
      */
-    private void sweeps(String name, int widthDp, boolean split, float fontScale, int setupFromDp, int dashFromDp)
-            throws Exception {
+    private void sweeps(String name, int widthDp, boolean split, float fontScale, int fromDp) throws Exception {
         RuntimeEnvironment.setFontScale(fontScale);
         AutopilotRuntime.executorForTests = Runnable::run;
         // Split screen by night (a dash after dark), the whole screen by day: both skies pictured.
         Appearance.choose(app, split ? Appearance.Mode.NIGHT : Appearance.Mode.DAY);
         dasherInstalled();
+        // The map shows once location is allowed (0.6.26).
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_COARSE_LOCATION);
         FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 0));
         DecisionLog.Entry latest = declinedEntry();
         DecisionLog.record(app, latest);
-        sweep(name + "-setup", widthDp, split, fontScale, latest, true, setupFromDp);
         servicesUp();
+        sweep(name + "-off", widthDp, split, fontScale, latest, true, fromDp);
         AutopilotRuntime.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
-        sweep(name + "-dash", widthDp, split, fontScale, latest, false, dashFromDp);
+        sweep(name + "-dash", widthDp, split, fontScale, latest, false, fromDp);
     }
 
     /** One part of the page where it stands, in the page's pixels, and how much of it is there. */
@@ -191,11 +191,11 @@ public class FluidPageTest extends AndroidAdapterTestBase {
 
     /**
      * The page {@code widthDp} wide, in split screen or not, at {@code fontScale}, resized from {@link #FROM_DP} to
-     * {@link #TO_DP}, {@code latest} the latest offer and a setup step still to do or not: the radar, the skyline and
-     * the map all wholly there from {@code bothFromDp}.
+     * {@link #TO_DP}, {@code latest} the latest offer, Autopilot off or on: the radar, the skyline and the map all
+     * wholly there from {@code bothFromDp}.
      */
     private void sweep(String name, int widthDp, boolean split, float fontScale, DecisionLog.Entry latest,
-                       boolean stepToDo, int bothFromDp) throws Exception {
+                       boolean autopilotOff, int bothFromDp) throws Exception {
         RuntimeEnvironment.setQualifiers("+w" + widthDp + "dp-h" + FROM_DP + "dp");
         RuntimeEnvironment.setFontScale(fontScale);
         ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class);
@@ -292,7 +292,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
                     words.left >= chips.left - 1 && words.right <= chips.right + 1 && words.top >= chips.top - 1
                             && words.bottom <= chips.bottom + 1 && words.left >= box(chip, page).right - 1);
             assertInsideItsHeight(where + ": the status words", status);
-            if (stepToDo) {
+            if (autopilotOff) {
                 // Auto-decline on, Autopilot off: the awake mascot says it all, so no words, no tap.
                 assertEquals(where + ": no status words", "", status.getText().toString());
                 assertFalse(where + ": no tap on no words", status.isClickable());
@@ -306,15 +306,11 @@ public class FluidPageTest extends AndroidAdapterTestBase {
                 assertEquals(where + ": a tap only where they are a whole target",
                         status.getWidth() >= ui.dp(48), status.isClickable());
             }
-            // The setup step still to do, under the band, never gone.
-            TextView step = shownTextContaining(page, "Accessibility");
-            if (stepToDo) {
-                assertNotNull(where + ": the setup step still to do", step);
-                assertWhole(where + ": the setup step", step);
-                assertTrue(where + ": under the band", box(step, page).top >= now.get("header").box.bottom - 1);
-            } else {
-                assertNull(where + ": nothing to set up during a dash", step);
+            // Nothing to set up under the band: setup has its own page while a step is due (0.6.26).
+            for (String line : HOMEPAGE_LINES) {
+                assertNull(where + ": no line that needs the user", shownTextContaining(page, line));
             }
+            assertNull(where + ": no setup step on the home screen", shownTextContaining(page, "Accessibility"));
 
             // The radar, the skyline and the map, all wholly there and on screen at a usable size, from the stated
             // height up.
@@ -337,7 +333,7 @@ public class FluidPageTest extends AndroidAdapterTestBase {
                 sawBesides |= besides;
                 if (heightDp == bothFromDp) assertTrue(where + ": side by side in a short window", besides);
             }
-            if (heightDp == TO_DP && widthDp < 400 && !stepToDo && fontScale <= 1f) {
+            if (heightDp == TO_DP && widthDp < 400 && fontScale <= 1f) {
                 RectF radar = now.get("radar").box;
                 RectF chartBox = now.get("chart").box;
                 RectF mapBox = now.get("map").box;
@@ -429,6 +425,8 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         AutopilotRuntime.executorForTests = Runnable::run;
         Appearance.choose(app, Appearance.Mode.NIGHT);
         dasherInstalled();
+        // The map shows once location is allowed (0.6.26).
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_COARSE_LOCATION);
         FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 3));
         DecisionLog.record(app, declinedEntry());
         servicesUp();
@@ -448,7 +446,9 @@ public class FluidPageTest extends AndroidAdapterTestBase {
         DecisionChartView chart = find(page, DecisionChartView.class);
         AreaMapView map = find(page, AreaMapView.class);
         View caption = page.getChildAt(6);
-        assertNull(where + ": nothing to set up", shownTextContaining(page, SetupChecklist.ACCESSIBILITY));
+        for (String line : HOMEPAGE_LINES) {
+            assertNull(where + ": no line that needs the user", shownTextContaining(page, line));
+        }
         List<View> buttons = headerButtons(pageHeader(content));
         assertEquals(where + ": beside Dasher, Navigate, the sun and Settings", 3, buttons.size());
         assertEquals(where + ": the page fits the window", height, page.getHeight());
@@ -923,16 +923,6 @@ public class FluidPageTest extends AndroidAdapterTestBase {
             top += at.getTop();
         }
         return new RectF(left, top, left + view.getWidth(), top + view.getHeight());
-    }
-
-    /** Every word of {@code text} laid out, inside its own height. */
-    private static void assertWhole(String where, TextView text) {
-        Layout layout = text.getLayout();
-        assertNotNull(where, layout);
-        int lines = text.getLineCount();
-        assertEquals(where + ": every word", text.getText().length(), layout.getLineEnd(lines - 1));
-        assertEquals(where + ": none cut short", 0, layout.getEllipsisCount(lines - 1));
-        assertInsideItsHeight(where, text);
     }
 
     /** {@code text}'s lines laid out inside its own height. */

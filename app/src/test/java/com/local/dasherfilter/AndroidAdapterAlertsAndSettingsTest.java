@@ -723,9 +723,12 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void notificationAccessShortcutNamesThisListenerAsAString() {
+        SetupFlow.pageShows = true;
+        ServiceController<OfferFilterService> screen = Robolectric.buildService(OfferFilterService.class).create();
+        screen.get().onServiceConnected();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            // The homepage's own row for it (Settings no longer repeats it).
-            shownIcon(activity.get().findViewById(android.R.id.content), SetupChecklist.NOTIFICATIONS + ". Fix.")
+            // Setup's step for it, screen reading running (Settings no longer repeats it).
+            shownButton(activity.get().findViewById(android.R.id.content), SetupFlow.OPEN_NOTIFICATION_ACCESS)
                     .performClick();
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
             assertEquals(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS,
@@ -733,6 +736,8 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
             // The settings page reads this extra with getStringExtra.
             assertEquals(new android.content.ComponentName(app, OfferNotificationService.class).flattenToString(),
                     opened.getStringExtra(android.provider.Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME));
+        } finally {
+            screen.destroy();
         }
     }
 

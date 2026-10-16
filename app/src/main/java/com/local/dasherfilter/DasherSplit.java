@@ -466,7 +466,7 @@ final class DasherSplit {
     /**
      * What to do in recent apps, which are open already: split the screen from Offer Filter's card, then pick Dasher's
      * own card for the other half (nothing is started into it). Short enough for a toast's two lines
-     * ({@link SetupChecklist#TOAST_MOST}): Samsung's own words for the choice are long, so its hint names the icon
+     * ({@link SetupFlow#TOAST_MOST}): Samsung's own words for the choice are long, so its hint names the icon
      * alone (One UI draws it above the card).
      */
     static String hintWithDasher(String phone) {

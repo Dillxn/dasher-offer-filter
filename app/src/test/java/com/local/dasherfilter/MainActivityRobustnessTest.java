@@ -173,15 +173,19 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
     }
 
     @Test public void enabledButDisconnectedReaderSaysStoppedAndOpensItsServiceSettings() {
+        SetupFlow.pageShows = true;
         ComponentName component = new ComponentName(app, OfferFilterService.class);
         Settings.Secure.putString(app.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
                 component.flattenToString());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             settle();
             View content = activity.get().findViewById(android.R.id.content);
-            View fix = shownIcon(content, SetupChecklist.ACCESSIBILITY_RESTART + ". Fix.");
-            assertNotNull("being enabled does not imply a running connection", fix);
-            fix.performClick();
+            assertNull("Android binds it again within seconds: no step meanwhile",
+                    shownTextContaining(content, SetupFlow.RESTART_TITLE));
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(SetupFlow.GRACE_MS + 1100));
+            assertNotNull("being enabled does not imply a running connection",
+                    shownTextContaining(content, SetupFlow.RESTART_TITLE));
+            shownButton(content, SetupFlow.OPEN_ACCESSIBILITY).performClick();
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
             assertEquals("android.settings.ACCESSIBILITY_DETAILS_SETTINGS", opened.getAction());
             assertEquals(component.flattenToString(), opened.getStringExtra(Intent.EXTRA_COMPONENT_NAME));
@@ -190,6 +194,7 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
 
     @Test @Config(sdk = 35)
     public void missingOemServiceDetailsFallsBackToThePublicAccessibilityList() {
+        SetupFlow.pageShows = true;
         ComponentName settings = new ComponentName("android.settings", "android.settings.Accessibility");
         org.robolectric.shadows.ShadowPackageManager packages = Shadows.shadowOf(app.getPackageManager());
         packages.addActivityIfNotPresent(settings);
@@ -200,7 +205,7 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
             settle();
             Shadows.shadowOf(app).checkActivities(true);
             View content = activity.get().findViewById(android.R.id.content);
-            shownIcon(content, SetupChecklist.ACCESSIBILITY + ". Fix.").performClick();
+            shownButton(content, SetupFlow.OPEN_ACCESSIBILITY).performClick();
             Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
             assertNotNull(opened);
             assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, opened.getAction());
@@ -209,51 +214,57 @@ public class MainActivityRobustnessTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * Neither the install source nor Android's record says Android blocks the switch (the record unreadable or at its
+     * default on many phones): a try that comes back off keeps the step as it was and opens nothing, and App info,
+     * which would have no Allow restricted settings then, is never offered.
+     */
     @Test @Config(sdk = 35)
-    public void unsuccessfulAccessibilityVisitOffersRestrictedSettingsGuidanceOnlyOnTap() {
-        // Neither the install source nor Android's restriction record says (the record unreadable on many phones).
+    public void aTryThatComesBackOffWithNoSignOfAndroidsBlockKeepsTheStep() {
+        SetupFlow.pageShows = true;
         Shadows.shadowOf(app.getSystemService(android.app.AppOpsManager.class)).setMode(RestrictedSettingsGuide.OP,
                 android.os.Process.myUid(), app.getPackageName(), android.app.AppOpsManager.MODE_DEFAULT);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             settle();
             View content = activity.get().findViewById(android.R.id.content);
-            shownIcon(content, SetupChecklist.ACCESSIBILITY + ". Fix.").performClick();
+            shownButton(content, SetupFlow.OPEN_ACCESSIBILITY).performClick();
             assertEquals("android.settings.ACCESSIBILITY_DETAILS_SETTINGS",
                     Shadows.shadowOf(app).getNextStartedActivity().getAction());
             activity.pause().resume();
             settle();
-            assertNull("returning opens nothing automatically", Shadows.shadowOf(app).getNextStartedActivity());
-            shownIcon(content, SetupChecklist.ACCESSIBILITY + SetupChecklist.GREYED + ". Fix.").performClick();
-            AlertDialog help = ShadowAlertDialog.getLatestAlertDialog();
-            assertNotNull(help);
-            help.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
-            Shadows.shadowOf(Looper.getMainLooper()).idle();
-            Intent info = Shadows.shadowOf(app).getNextStartedActivity();
-            assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, info.getAction());
-            assertEquals("package:" + app.getPackageName(), info.getDataString());
+            assertNull("returning opens nothing by itself", Shadows.shadowOf(app).getNextStartedActivity());
+            assertNotNull(shownTextContaining(content, SetupFlow.READING_TITLE));
+            assertNull("no dead end in App info", shownButton(content, SetupFlow.OPEN_APP_INFO));
+            assertTrue(DiagnosticLog.read(app).contains("screen reading still off, back from Android's page (record "
+                    + "default)"));
         }
     }
 
+    /**
+     * Alerts refused (setup asks Android once): Settings keeps a line for them, whose Fix asks Android again while it
+     * will still ask, and otherwise opens the app's notification settings, where they are turned on.
+     */
     @Test @Config(sdk = 35)
     public void notificationsDeniedWithoutAnotherPromptLeadToAppNotificationSettings() {
         Shadows.shadowOf(app).denyPermissions(Manifest.permission.POST_NOTIFICATIONS);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             settle();
-            View content = activity.get().findViewById(android.R.id.content);
-            // Accessibility, notification access and alerts to do: the steps after the first are folded.
-            unfoldSetup(content);
-            shownIcon(content, SetupChecklist.ALERTS + ". Fix.").performClick();
+            View content = settings(activity);
+            shownIcon(content, MainActivity.ALERTS_OFF + ". Fix.").performClick();
             org.robolectric.shadows.ShadowActivity.PermissionsRequest request =
                     Shadows.shadowOf(activity.get()).getLastRequestedPermission();
             assertEquals(Manifest.permission.POST_NOTIFICATIONS, request.requestedPermissions[0]);
             assertEquals("android.content.pm.action.REQUEST_PERMISSIONS",
                     Shadows.shadowOf(app).getNextStartedActivity().getAction());
+            int toasts = org.robolectric.shadows.ShadowToast.shownToastCount();
             activity.get().onRequestPermissionsResult(request.requestCode, request.requestedPermissions,
                     new int[] {android.content.pm.PackageManager.PERMISSION_DENIED});
-            shownIcon(content, SetupChecklist.ALERTS + ". Fix.").performClick();
+            assertEquals("the line says it: no toast", toasts, org.robolectric.shadows.ShadowToast.shownToastCount());
+            shownIcon(content, MainActivity.ALERTS_OFF + ". Fix.").performClick();
             Intent settings = Shadows.shadowOf(app).getNextStartedActivity();
             assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS, settings.getAction());
             assertEquals(app.getPackageName(), settings.getStringExtra(Settings.EXTRA_APP_PACKAGE));
+            assertEquals(SetupFlow.ALLOW_NOTIFICATIONS, org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
         }
     }
 

@@ -116,6 +116,8 @@ public class CountsHistoryActionsTest extends AndroidAdapterTestBase {
 
     @Test public void emptyOrCanceledCountsNeverPauseOrStartFiltering() {
         FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
+        // One passed offer: the skyline shows from the first offer (0.6.26), with nothing to review.
+        record(2500, OfferRule.Result.KEEP, "meets enabled rules", 1);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);

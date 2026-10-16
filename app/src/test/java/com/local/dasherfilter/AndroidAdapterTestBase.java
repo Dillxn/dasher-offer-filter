@@ -328,29 +328,15 @@ abstract class AndroidAdapterTestBase {
     }
 
     /**
-     * The homepage's setup with every step showing: with three or more to do, the ones after the first fold into one
-     * line, "N more to set up", whose tap shows them all. Nothing happens when nothing is folded.
+     * The homepage's lines that need the user, under the header, for the layout tests (setup has its own page from
+     * 0.6.26, so its steps are no longer among them): a held update's "Update ready", and Peek's "Peek paused: …".
      */
-    static void unfoldSetup(View content) {
-        View folded = folded(content);
-        if (folded == null) return;
-        folded.performClick();
-        Shadows.shadowOf(Looper.getMainLooper()).idle();
-    }
+    static final String[] HOMEPAGE_LINES = {UpdateReadyRow.WORDS, "Peek paused: "};
 
-    private static View folded(View view) {
-        CharSequence said = view.getContentDescription();
-        if (view.isShown() && said != null && said.toString().endsWith(" more to set up. "
-                + SetupChecklist.SHOW + ".")) {
-            return view;
-        }
-        if (view instanceof ViewGroup) {
-            for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
-                View found = folded(((ViewGroup) view).getChildAt(i));
-                if (found != null) return found;
-            }
-        }
-        return null;
+    /** Raises {@code count} (1 or 2) of {@link #HOMEPAGE_LINES}, seen at the page's next refresh. */
+    void raiseLines(int count) {
+        Updater.prefs(app).edit().putString("ready_version", "99.0.0").commit();
+        if (count > 1) Peek.pause(app, "3 offers in a row were gone by the time Dasher showed");
     }
 
     /** A shown view with this description, or null. */

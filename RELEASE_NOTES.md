@@ -1,3 +1,16 @@
+## 0.6.26 — Setup first, one step at a time
+
+Version 0.6.26 (code 118) answers the owner's messages of 16 October 2026 on 0.6.25, sent with screenshots of his Galaxy's home screen before setup and of the Accessibility page the app opened: "shouldn't have this limbo screen. if the app is unable to work for permissions or whathaveyou then we shepherd the user directly to resolution. all ui on screen needs to be justified by what is currently functional", and "it gave me a toast with instructions saying andrioid would block turning on notifications, it didnt, then it drops the user into the settings screen which does block them with toast instructions too long to read."
+
+- **Setup has its own page until the app can work.** While screen reading or notification access is off, the whole screen is one step with one button: Turn on screen reading, then Turn on background offers, and on a new install Allow alerts, Map where offers pay best and Start with typical minimums. Each step says what to tap before its button opens Android's screen, and a toast there only repeats the path ("Installed apps → Offer Filter" on a Galaxy). "Stuck? Send feedback" sits at the foot.
+- **Android's block is mentioned only where it comes.** Screen reading warns of it for an app from the web; notification access never does, since a Galaxy doesn't block it. A try that comes back off shows Allow restricted settings, with Open App info and where the menu item is; back from App info, the switch again. Notification access turning on no longer counts as the block lifted: that is what left 0.6.25 at a blocked switch with no way on.
+- **Nothing opens by itself except the way back.** Android's screens open only from setup's buttons. Once a switch you were sent to turns on, the app comes back to the front where Android allows it.
+- **Start auto-decline** saves the typical minimums and turns auto-decline on in one tap, with no goal question. **Set my own** opens the home screen with the knobs beckoning.
+- **The home screen shows each part only once it works:** the skyline and its counts from the first offer, the map once location is allowed. Alerts turned off later are a row in Settings, and Allow updates is asked only when an update is ready.
+- Nothing in the notice or the Terms changed, so the notice stays 28; Privacy's setup lines name the new page and what it keeps. offerfilter.org/install's setup steps are rewritten to match.
+
+No phone has run this build.
+
 ## 0.6.25 — Setup opens each of Android's screens for you
 
 Version 0.6.25 (code 117) answers the owner's message of 16 October 2026, sent with a screenshot of his Samsung's Accessibility list, Offer Filter greyed out under Android's "App was denied access": "we need to streamline this process and make it user friendly".

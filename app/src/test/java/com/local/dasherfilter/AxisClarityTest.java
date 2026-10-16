@@ -117,12 +117,16 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * Half of a split screen with another app: the constellation, wholly there beside the map, names every spoke as on
-     * a whole screen (0.5.1 put a compact copy in the header there, its names hidden until a tap spread it out).
+     * Half of a split screen with another app: the constellation, wholly there with the map (beside it, or over it in
+     * two tiers where the half is tall enough, 0.6.8), names every spoke as on a whole screen (0.5.1 put a compact copy
+     * in the header there, its names hidden until a tap spread it out). With no setup line under the band (0.6.26),
+     * this half has the room for two tiers.
      */
     @Test @Config(qualifiers = "w411dp-h410dp-420dpi")
-    public void halfOfASplitScreenNamesEverySpokeBesideTheMap() {
+    public void halfOfASplitScreenNamesEverySpokeWithTheMap() {
         FilterStore.save(app, RULES);
+        // The map shows once location is allowed (0.6.26).
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_COARSE_LOCATION);
         OfferFilterService.sawDasherBeside(0);
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
         Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
@@ -134,7 +138,8 @@ public class AxisClarityTest extends AndroidAdapterTestBase {
             assertTrue("as the sky", star.backdrop());
             assertNamedAxes(star);
             AreaMapView map = find(content, AreaMapView.class);
-            assertTrue("beside the map", map.isShown() && star.getRight() <= map.getLeft());
+            assertTrue("beside the map or over it", map.isShown()
+                    && (star.getRight() <= map.getLeft() || star.getBottom() <= map.getTop()));
             assertArrayEquals("opening the legend never changes a minimum", RULES.minimums(),
                     FilterStore.load(app).minimums());
         } finally {

@@ -630,6 +630,8 @@ public final class OfferNotificationService extends NotificationListenerService 
         // Today's anonymous count, if due (never before the notice is accepted), goes off this thread.
         DailyCount.trigger(this);
         DiagnosticLog.log(this, "notification", "listener connected; replay is noninterrupting");
+        // Turned on from setup's page a moment ago: Offer Filter comes back to the front for the next step.
+        SetupFlow.connected(this, RestrictedSettingsGuide.Access.NOTIFICATIONS);
         reconcile();
         Updater.check(this, UpdateCadence.Trigger.CONNECTED, null);
     }

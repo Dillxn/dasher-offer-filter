@@ -24,7 +24,7 @@ final class LocationRationale {
             + "screen, choose Allow all the time.";
     /** Where the switch is once Android will not ask again, or after a refusal. */
     static final String PATH = "In App info: Permissions → Location → Allow all the time.";
-    /** In SetupChecklist.PREFS: Android was asked for background location from here once. */
+    /** In SetupFlow.PREFS: Android was asked for background location from here once. */
     static final String ASKED = "background_location_asked";
 
     private LocationRationale() {}
@@ -59,6 +59,6 @@ final class LocationRationale {
     }
 
     private static SharedPreferences prefs(Context context) {
-        return context.getSharedPreferences(SetupChecklist.PREFS, Context.MODE_PRIVATE);
+        return context.getSharedPreferences(SetupFlow.PREFS, Context.MODE_PRIVATE);
     }
 }

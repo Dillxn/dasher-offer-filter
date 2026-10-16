@@ -260,35 +260,35 @@ public class ConstellationControlsTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * Screen reading and notification access still to set up: their lines stand under the header, above the radar
-     * (0.5.1 stood them at the sky's foot, across the constellation's lower half, and the button moved above the
-     * middle for them), so the button keeps its own place by the circle's upright line below the middle, clear of
-     * them, and takes its own taps there.
+     * Lines to act on stand under the header, above the radar (0.5.1 stood setup's lines at the sky's foot, across the
+     * constellation's lower half, and the button moved above the middle for them; from 0.6.26 setup has its own page,
+     * and the homepage's lines are a held update's and Peek paused), so the button keeps its own place by the circle's
+     * upright line below the middle, clear of them, and takes its own taps there.
      */
     @Test
-    public void withSetupLinesToDoTheButtonKeepsItsPlaceBelowTheMiddleClearOfThem() {
+    public void withLinesToActOnTheButtonKeepsItsPlaceBelowTheMiddleClearOfThem() {
         FilterStore.save(app, FilterSettings.of(true, 700, 150, 30, 3));
+        raiseLines(2);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
             MinimumsStarView star = find(content, MinimumsStarView.class);
-            TextView setup = shownTextContaining(content, "Turn on Offer Filter in Accessibility");
-            assertNotNull("a setup line to do", setup);
+            for (String words : HOMEPAGE_LINES) {
+                assertNotNull("a line to act on: " + words, shownTextContaining(content, words));
+            }
             RectF button = star.learnBox();
             assertNotNull(button);
             assertTrue("on the lower left (0.6.8)", button.centerX() < star.skyX() && button.centerY() > star.skyY());
             int[] starAt = new int[2];
             star.getLocationInWindow(starAt);
-            for (String words : new String[] {"Turn on Offer Filter in Accessibility", "Allow notification access"}) {
-                TextView line = shownTextContaining(content, words);
-                if (line == null) continue;
-                View row = (View) line.getParent();
+            for (String words : HOMEPAGE_LINES) {
+                View row = (View) shownTextContaining(content, words).getParent();
                 int[] rowAt = new int[2];
                 row.getLocationInWindow(rowAt);
                 RectF box = new RectF(rowAt[0] - starAt[0], rowAt[1] - starAt[1],
                         rowAt[0] - starAt[0] + row.getWidth(), rowAt[1] - starAt[1] + row.getHeight());
                 assertTrue("the line above the radar: " + box, box.bottom <= 1);
-                assertFalse("clear of the setup line " + box + " / " + button, RectF.intersects(box, button));
+                assertFalse("clear of the line " + box + " / " + button, RectF.intersects(box, button));
             }
             tapStar(star, button.centerX(), button.centerY());
             assertTrue("the button takes its own taps there", FilterStore.load(app).acceptanceLearning);

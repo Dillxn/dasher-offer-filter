@@ -53,19 +53,20 @@ class MirrorOnboardingTest(unittest.TestCase):
         self.assertIn("Drag a knob", self.page.text)
         self.assertIn("mascot", self.page.text)
 
-    def test_android_steps_are_named_as_the_homepage_names_them_and_optional_by_feature(self):
-        for phrase in ("Allow restricted settings", "Turn on Offer Filter in Accessibility", "on-screen filtering",
-                       "Allow notification access", "background offers and Peek", "Allow alerts",
-                       "notification permission", "passing/review alerts", "Allow updates", "more to set up",
-                       "Optional location"):
+    def test_android_steps_are_named_as_setup_names_them_and_optional_by_feature(self):
+        for phrase in ("Turn on screen reading", "on-screen filtering", "Allow restricted settings",
+                       "Turn on background offers", "background offers and Peek", "Allow alerts",
+                       "notification permission", "passing/review alerts", "Map where offers pay best",
+                       "Optional location", "Start with typical minimums", "Start auto-decline", "Set my own"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, self.page.text)
-        steps = [self.page.text.index(step) for step in ("Allow restricted settings (Android 13",
-                                                          "Turn on Offer Filter in Accessibility",
-                                                          "Allow notification access", "Allow alerts",
-                                                          "Allow updates")]
-        self.assertEqual(sorted(steps), steps, "in the homepage's order")
-        for retired in ("Screen reading is off", "Background offers are off", "Alerts are blocked"):
+        steps = [self.page.text.index(step) for step in ("Turn on screen reading", "Turn on background offers",
+                                                          "Allow alerts", "Map where offers pay best",
+                                                          "Start with typical minimums")]
+        self.assertEqual(sorted(steps), steps, "in setup's order")
+        # 0.6.26: setup has its own page; the homepage's numbered lines, their Fix and their fold are gone.
+        for retired in ("Screen reading is off", "Background offers are off", "Alerts are blocked",
+                        "more to set up", "Turn on Offer Filter in Accessibility", "Allow notification access"):
             with self.subTest(retired=retired):
                 self.assertNotIn(retired, self.page.text)
 

@@ -133,7 +133,8 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
         // Autopilot on: saved minimums, and Autopilot with its goal, live on the homepage alone.
         FilterStore.save(app, FilterSettings.of(true, 1300, 385, 41, 3));
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
-        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_COARSE_LOCATION);
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                android.Manifest.permission.POST_NOTIFICATIONS);
         Shadows.shadowOf(app.getPackageManager()).setCanRequestPackageInstalls(true);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = openSettings(activity);
@@ -149,7 +150,7 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
                     "Turn off reports", "Disconnect GitHub", "Tip with Cash App", "Updates can't install"}) {
                 assertNull(gone, findTextView(content, gone));
             }
-            // The homepage's setup steps may name these; Settings' own page never does.
+            // Setup's page and the homepage may name these; Settings' own page never does.
             View page = settingsPage(content);
             assertNull("the scoring mode is the homepage's chip (0.6.3), not a Settings entry",
                     shownButton(page, "Mode · Strict"));
@@ -162,7 +163,7 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
                     shownButton(page, "Reset"));
             assertFalse(FilterStore.load(app).scoreByArea);
             assertFalse(FilterStore.load(app).acceptanceLearning);
-            for (String homepageOnly : new String[] {"Accessibility", SetupChecklist.UPDATES, "Autopilot",
+            for (String homepageOnly : new String[] {"Accessibility", UpdateReadyRow.ALLOW, "Autopilot",
                     "acceptance rate", AutopilotText.CHOOSER_TITLE, "Bar "}) {
                 assertNull(homepageOnly, findTextView(page, homepageOnly));
             }
@@ -206,6 +207,7 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
     @Test
     public void setupRowsShowOnlyWhileSomethingNeedsAFix() {
         Shadows.shadowOf(app.getPackageManager()).setCanRequestPackageInstalls(false);
+        Shadows.shadowOf(app).denyPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
         AreaMap.setEnabled(app, true);
         NotificationChannel offers = new NotificationChannel("orders", "Orders", NotificationManager.IMPORTANCE_HIGH);
         offers.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI, null);
@@ -216,9 +218,11 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             View dasher = shownIcon(content, "DoorDash's offer alert also sounded. Fix.");
             View location = shownIcon(content, "The offer map needs location. Fix.");
             assertNotNull("Dasher's offer channel rings", dasher);
-            assertNull("installs not allowed: the homepage's setup asks (Allow updates), Settings does not repeat it",
-                    shownIcon(content, "Updates can't install. Fix."));
-            assertNull(findTextView(settingsPage(content), SetupChecklist.UPDATES));
+            assertNull("installs not allowed: the homepage's Update ready line asks once an update waits (Allow "
+                    + "updates), Settings does not repeat it", shownIcon(content, "Updates can't install. Fix."));
+            assertNull(findTextView(settingsPage(content), UpdateReadyRow.ALLOW));
+            assertNotNull("alerts never allowed: Settings' line for them", shownIcon(content,
+                    MainActivity.ALERTS_OFF + ". Fix."));
             assertNotNull("the map is on without location", location);
 
             dasher.performClick();
@@ -234,10 +238,12 @@ public class SettingsConsolidatedTest extends AndroidAdapterTestBase {
             FilterStore.recordDoorDashChannel(app,
                     new NotificationChannel("orders", "Orders", NotificationManager.IMPORTANCE_LOW));
             Shadows.shadowOf(app.getPackageManager()).setCanRequestPackageInstalls(true);
+            Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
             ((Switch) findButton(content, "Offer map")).setChecked(false);
             activity.pause().resume();
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1100));
             assertNull(shownIcon(content, "DoorDash's offer alert also sounded. Fix."));
+            assertNull("alerts allowed: their line goes", shownIcon(content, MainActivity.ALERTS_OFF + ". Fix."));
             assertNull("with the map off, location is not needed", shownIcon(content,
                     "The offer map needs location. Fix."));
         }

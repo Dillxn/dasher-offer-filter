@@ -123,12 +123,13 @@ public class WaitAndAvailabilityUiTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test public void setupProblemsTakePriorityOverTheWaitEstimate() {
+    @Test public void setupsPageTakesPriorityOverTheWaitEstimate() {
+        SetupFlow.pageShows = true;
         FilterStore.save(app, rules());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
-            assertNotNull(shownTextContaining(content, SetupChecklist.ACCESSIBILITY));
-            assertNull("setup instructions keep their space until filtering can observe offers",
+            assertNotNull(shownTextContaining(content, SetupFlow.READING_TITLE));
+            assertNull("setup's page alone until filtering can observe offers",
                     shownTextContaining(content, "Learning your wait"));
         }
     }

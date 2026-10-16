@@ -316,14 +316,15 @@ final class LegalTexts {
             phone. Theme selection never requests a new location fix or precise location.
             - Android's own record of how the app last stopped (Android 11 and later), to notice a crash or a stop \
             for not responding.
-            - Android's own settings for {app} itself, to show the homepage's setup steps and Settings' rows: how \
-            {app} was installed (Android 13 and later: from a downloaded or local file or an app store, and the \
-            name of the installing app); Android's restricted-settings record for {app}, where Android lets the app \
-            read it; whether Accessibility and notification access are on for {app} and connected; whether its \
-            notifications are allowed; whether it may install its own updates; and whether Android limits its \
-            background battery use (the Restricted battery setting, or the restricted standby bucket on Android 11 \
-            and later). Apart from how Android ranks and sets up Dasher's offer notifications (above) and, for \
-            reports, Dasher's version and how its launcher screen starts, it reads no other app's settings.
+            - Android's own settings for {app} itself, to show setup's page, the homepage's update line and \
+            Settings' rows: how {app} was installed (Android 13 and later: from a downloaded or local file or an \
+            app store, and the name of the installing app); Android's restricted-settings record for {app}, where \
+            Android lets the app read it; whether Accessibility and notification access are on for {app} and \
+            connected; whether its notifications are allowed; whether it may install its own updates; and whether \
+            Android limits its background battery use (the Restricted battery setting, or the restricted standby \
+            bucket on Android 11 and later). Apart from how Android ranks and sets up Dasher's offer notifications \
+            (above) and, for reports, Dasher's version and how its launcher screen starts, it reads no other app's \
+            settings.
 
             Before you accept the current first-run notice, it reads none of this and sends no feedback, \
             diagnostics or daily count, with three exceptions that read no words: the channel a new notification of \
@@ -486,11 +487,13 @@ final class LegalTexts {
             still waiting (its version name) and why it waits (a dash, Android's confirmation, or an installation \
             Android blocked); the newest version an "allow updates" notice was shown for; and the downloaded update \
             itself, until it installs, a newer one replaces it or it is no longer needed.
-            - Setup progress on this phone: which setup switches were opened or tried from the homepage; which \
-            switch you were turning on when you left for Android's settings or App info (acted on only within ten \
-            minutes); whether restricted settings were found allowed; and whether Android was already asked for \
-            location all the time. Also the one-time notes already read: Peek's introduction, and the version whose \
-            "What is new" note was shown. Uninstalling removes it.
+            - Setup progress on this phone: which of Android's pages setup opened, and why (to turn a switch on, or \
+            off and on); which switch you were turning on when you left for Android's settings or App info (acted \
+            on only within ten minutes); whether Android blocked a switch tried from setup, and whether restricted \
+            settings were found allowed; whether setup's first steps are done, and whether Android was already \
+            asked for alerts, for location from setup, and for location all the time. Also the one-time notes \
+            already read: Peek's introduction, and the version whose "What is new" note was shown. Uninstalling \
+            removes it.
             - Feedback waiting to send. A submission is saved on the phone before it is sent, so no signal or a \
             restart loses nothing: your words, its category, and any masked diagnostics or offer report you chose \
             to include. At most 5 submissions wait, each at most 7 days; one still unsent after 7 days is discarded \

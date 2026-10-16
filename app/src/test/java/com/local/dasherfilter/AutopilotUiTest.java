@@ -358,10 +358,9 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue(FilterStore.goalAsked(app));
             assertEquals("Autopilot on · goal: acceptance rate 50% or more", ShadowToast.getTextOfLatestToast());
             assertTrue(DiagnosticLog.read(app), DiagnosticLog.read(app).contains("[autopilot] on; goal 50%"));
-            // Screen reading still needs setting up: its step stands under the header, and the strip's status line and
-            // its chip say Autopilot waits.
+            // Screen reading still off (on a phone setup's own page asks for it: SetupFlowTest): the strip's status
+            // line and its chip say Autopilot waits.
             refreshed();
-            assertNotNull(shownTextContaining(content, SetupChecklist.ACCESSIBILITY));
             assertEquals("", statusLine(content).getText().toString());
             assertEquals("Auto waits", find(content, AutopilotChip.class).getText().toString());
             assertTrue(find(content, AutopilotChip.class).isShown());
@@ -456,12 +455,11 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             settleSky(content);
             assertNull("off: the line is the wait's, as before", shownLineStarting(content, "Autopilot "));
 
-            // Without screen reading a setup step needs the user, under the header; the strip's status line still
-            // says what Autopilot is doing (0.5.1 gave the step the room and said it in the chip alone), and so does
-            // its chip, heard in words.
+            // Without screen reading (on a phone setup's own page asks for it: SetupFlowTest) the strip's status line
+            // still says what Autopilot is doing (0.5.1 said it in the chip alone), and so does its chip, heard in
+            // words.
             FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
             refreshed();
-            assertNotNull("setup to do", shownTextContaining(content, SetupChecklist.ACCESSIBILITY));
             assertEquals("", autopilotLine(content));
             assertNull(shownLineStarting(content, "Next match"));
             AutopilotChip waits = find(content, AutopilotChip.class);
@@ -683,7 +681,7 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * A whole screen with a line that needs the user (here notification access): the line stands under the header and
+     * A whole screen with a line that needs the user (here Peek paused): the line stands under the header and
      * takes its room from the stage, and Autopilot's status line stays in the strip with its chip (0.5.1 gave the line
      * the status line's room, the status in the chip alone); the page stays one screen. Once the line goes, the stage
      * has its room back, and the status line and the chip are as they were.
@@ -695,14 +693,15 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
         history(0, 20);
         reading(55, 12);
         FilterStore.setAutopilot(app, true, FilterSettings.GOAL_TOP_TIER);
+        Peek.pause(app, "3 offers in a row were gone by the time Dasher showed");
         ServiceController<OfferNotificationService> listener =
                 Robolectric.buildService(OfferNotificationService.class).create();
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = page(activity);
             settleSky(content);
             refreshed();
-            TextView fix = shownTextContaining(content, SetupChecklist.NOTIFICATIONS);
-            assertNotNull("background offers are off: a line to fix", fix);
+            TextView fix = shownTextContaining(content, "Peek paused: ");
+            assertNotNull("Peek paused itself: a line that needs the user", fix);
             assertTrue("under the header", inWindow((View) fix.getParent()).top
                     >= inWindow(pageHeader(content)).bottom - 1);
             assertEquals("ACCEPTANCE  53% / 70%", autopilotLine(content));
@@ -713,10 +712,11 @@ public class AutopilotUiTest extends AndroidAdapterTestBase {
             assertTrue("one screen", scene.getHeight() <= ((View) scene.getParent()).getHeight());
             float[] withLine = stageAsItStands(content, new Ui(activity.get()));
 
+            Peek.resumeNow(app);
             listener.get().onListenerConnected();
             refreshed();
             layOut(content);
-            assertNull(shownTextContaining(content, SetupChecklist.NOTIFICATIONS));
+            assertNull(shownTextContaining(content, "Peek paused: "));
             assertEquals("ACCEPTANCE  53% / 70%", autopilotLine(content));
             assertTrue("one screen", scene.getHeight() <= ((View) scene.getParent()).getHeight());
             float[] without = stageAsItStands(content, new Ui(activity.get()));

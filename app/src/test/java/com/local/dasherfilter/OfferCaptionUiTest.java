@@ -268,6 +268,8 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
     private void render(boolean split, String name, DecisionLog.StepKind status, String outcome, boolean autopilot)
             throws Exception {
         FilterStore.save(app, RULES);
+        // The map shows once location is allowed (0.6.26).
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_COARSE_LOCATION);
         // Autopilot on below 100%: its chip and status line in the strip at the top, at every size.
         if (autopilot) withAutopilotAt(82);
         DecisionLog.record(app, entry(System.currentTimeMillis(), 1835, status));
@@ -337,13 +339,16 @@ public class OfferCaptionUiTest extends AndroidAdapterTestBase {
             } finally { bitmap.recycle(); }
             AreaMapView map = find(content, AreaMapView.class);
             if (scene.shown(map) >= 1) {
+                assertTrue("location allowed: the map shows", map.isShown());
+                // With no offer on it yet, a tap is the map's own click: it reaches the map, nothing over it.
+                boolean[] reached = {false};
+                map.setOnClickListener(tapped -> reached[0] = true);
                 int[] mapAt = new int[2], rootAt = new int[2];
                 map.getLocationOnScreen(mapAt);
                 content.getLocationOnScreen(rootAt);
                 tap((ViewGroup) content, mapAt[0] - rootAt[0] + map.getWidth() / 2f,
                         mapAt[1] - rootAt[1] + map.getHeight() / 2f);
-                assertNotNull("the map wholly there is a usable target",
-                        Shadows.shadowOf(activity.get()).getLastRequestedPermission());
+                assertTrue("the map wholly there is a usable target", reached[0]);
             }
             // A finger on the tile itself (the mascot beside it, the counts after it and the chips under it keep their
             // own taps).

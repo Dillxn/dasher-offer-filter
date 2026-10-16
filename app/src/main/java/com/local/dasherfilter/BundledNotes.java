@@ -351,6 +351,11 @@ final class BundledNotes {
         // streamline this process and make it user friendly").
         release("0.6.25", "Setup now opens each of Android's screens for you in turn and says what to tap there, Allow "
                 + "restricted settings included.");
+        // 0.6.26 (the owner, 16 October 2026: "shouldn't have this limbo screen. if the app is unable to work for
+        // permissions or whathaveyou then we shepherd the user directly to resolution. all ui on screen needs to be
+        // justified by what is currently functional").
+        release("0.6.26", "Setup now goes one step at a time on a page of its own, and the home screen shows each part "
+                + "only once it works.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

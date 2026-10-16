@@ -137,7 +137,7 @@ final class NoticePage {
 
     /** The mascot, calm, in a soft ring: decoration only. */
     @SuppressLint("ViewConstructor")
-    private static final class Face extends View {
+    static final class Face extends View {
         private final Ui ui;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 

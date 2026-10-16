@@ -18,6 +18,7 @@ import android.text.format.DateUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.widget.Button;
@@ -59,7 +60,7 @@ import java.util.regex.Pattern;
  * rests.
  */
 public final class MainActivity extends Activity implements Updater.Busy {
-    /** The alerts permission's request code (asked by the setup checklist, answered here). */
+    /** The alerts permission's request code (asked by setup, or Settings' line for alerts, answered here). */
     static final int NOTIFICATION_PERMISSION_REQUEST = 13;
     private static final int LOCATION_REQUEST = 14;
     private static final int BACKGROUND_LOCATION_REQUEST = 15;
@@ -87,6 +88,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static final String SKIP_ADD_END = " from now on";
     static final String SKIP_STOP = "Stop skipping ";
     static final String KNOBS_NEED_ROOM = "Drag the divider for more room, then drag a knob.";
+    /** Settings' line while Offer Filter's alerts are off (asked once in setup; its Fix asks again, or opens them). */
+    static final String ALERTS_OFF = "Alerts are off";
     /**
      * The status line while auto-decline is paused with Autopilot off: the same words as Autopilot's line says then,
      * so a pause reads the same either way, and two words where the sleeping mascot shows the rest (screen readers hear
@@ -161,6 +164,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private final Asked<Boolean> locationAlways = new Asked<>(() -> AreaMap.hasBackgroundPermission(this));
     private final Asked<Boolean> batteryRestricted = new Asked<>(() -> BatteryLimits.restricted(this));
     private final Asked<double[]> here = new Asked<>(() -> AreaMap.here(this));
+    /** Whether this app may install its updates ("Install unknown apps"): the homepage's Update ready line asks. */
+    private final Asked<Boolean> installsAllowed = new Asked<>(() -> getPackageManager().canRequestPackageInstalls());
     /** Whether the page is resumed, so leaving split screen knows whether to start the tilt again. */
     private boolean resumed;
     private boolean started;
@@ -220,8 +225,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private FilterHeroView hero;
     private int shownState;
     private String shownHero = "";
-    /** Setup still to do, in order (restricted settings, Accessibility, notification access, alerts, updates). */
-    private SetupChecklist checklist;
+    /**
+     * Setup (0.6.26): while Offer Filter cannot filter, and through the first run's walk, its page is the whole screen,
+     * one step and one button at a time ({@link SetupFlow} decides, {@link SetupPage} shows).
+     */
+    private SetupFlow setupFlow;
+    private SetupPage setupPage;
+    /** Android's question for location came from setup's step: a refusal there is the user's answer, with no toast. */
+    private boolean locationFromSetup;
     /** Peek paused itself for a while (never the Settings switch): why, and Resume. */
     private Readiness peekPaused;
     /**
@@ -289,6 +300,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     // Settings page: only what is set nowhere else, one row each.
     /** Setup that needs a fix and has no row on the homepage; each hidden while all is well. */
     private Readiness doorDashAlerts;
+    /** Alerts turned off: setup asks Android once, and this line is where they are allowed after. */
+    private Readiness alertsOff;
     /** Android's "Restricted" battery setting stops the update and feedback jobs (BETA-16). */
     private Readiness battery;
     private Readiness location;
@@ -348,6 +361,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         root = new FrameLayout(this);
         root.setBackgroundColor(ui.page);
+        setupFlow = new SetupFlow(this, NOTIFICATION_PERMISSION_REQUEST, this::askLocationFromSetup,
+                this::startFromSetup, this::setMyOwnFromSetup);
         scene = new ScenePage(this, ui);
         mainPage = addPage(root, scene);
         LinearLayout settings = ui.column();
@@ -355,6 +370,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         buildMain(scene);
         buildSettings(settings);
         buildSheet(root);
+        // Setup's page over the pages while it has a step, under an update's cover and the notice.
+        setupPage = new SetupPage(this, ui, (step, action) -> {
+            setupFlow.act(step, action);
+            refresh();
+        }, this::stuckInSetup);
+        root.addView(setupPage.view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
         updatingCover = new UpdatingCover(this, ui, root);
         notice = NoticePage.build(this, ui, this::acceptNotice, this::finish, this::read);
         root.addView(notice, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -378,9 +400,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
         refresh();
     }
 
-    /** In Settings, reading a ticket or the map, or the notice: an update waits rather than interrupt. */
+    /** In Settings, reading a ticket or the map, the notice or setup: an update waits rather than interrupt. */
     @Override public boolean midTask() {
-        return noticeShown() || showingSettings || (sheet != null && sheet.getVisibility() == View.VISIBLE);
+        return noticeShown() || setupShown() || showingSettings
+                || (sheet != null && sheet.getVisibility() == View.VISIBLE);
+    }
+
+    private boolean setupShown() {
+        return setupPage != null && setupPage.shown();
     }
 
     private boolean noticeShown() {
@@ -440,8 +467,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
     @Override public void onBackPressed() {
         // While updating, nothing is to be interrupted; the new version opens by itself.
         if (updatingCover.shown()) return;
-        // Back from the notice is Not now: the app closes, and the notice comes again next time.
-        if (noticeShown()) super.onBackPressed();
+        // Back from the notice is Not now: the app closes, and the notice comes again next time. Back from setup
+        // leaves too: there is nothing behind it until it is done.
+        if (noticeShown() || setupShown()) super.onBackPressed();
         else if (sheet.getVisibility() == View.VISIBLE) closeSheet();
         else if (showingSettings) showSettings(false);
         else super.onBackPressed();
@@ -468,9 +496,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
         Updater.foreground(this);
         // Back from Android's settings, perhaps: ask again.
         forgetAnswers();
-        // Back from Android's settings: a switch tried and still off is noted; back from App info, the next one opens
-        // (never behind the notice).
-        checklist.resumed(noticeShown());
+        // Back from Android's settings: what setup sent the user there to do is looked at once (never behind the
+        // notice); its page then shows the next step.
+        setupFlow.resumed(noticeShown());
         followSplit(isInMultiWindowMode());
         handler.removeCallbacks(refresh);
         handler.post(refresh);
@@ -522,7 +550,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         locationAllowed.forget();
         locationAlways.forget();
         batteryRestricted.forget();
-        if (checklist != null) checklist.forget();
+        installsAllowed.forget();
+        if (setupFlow != null) setupFlow.forget();
         here.forget();
     }
 
@@ -599,10 +628,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
         forgetAnswers();
         refresh();
         boolean granted = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
-        if (requestCode == NOTIFICATION_PERMISSION_REQUEST) {
-            toast(granted ? "Alerts allowed." : "Alerts not allowed.");
-        } else if (requestCode == LOCATION_REQUEST && !granted) {
-            toast("Location not allowed, so no areas are kept. You can allow it in Android's app settings.");
+        // Alerts: the page says it (setup walks on; Settings' line goes, or stays). Location asked from setup: the step
+        // walks on, a refusal being the user's answer there (the map stays away until it is allowed in Settings).
+        if (requestCode == LOCATION_REQUEST) {
+            boolean fromSetup = locationFromSetup;
+            locationFromSetup = false;
+            if (!granted && !fromSetup) {
+                toast("Location not allowed, so no areas are kept. You can allow it in Android's app settings.");
+            }
         } else if (requestCode == BACKGROUND_LOCATION_REQUEST) {
             LocationRationale.answered(this, granted);
         }
@@ -639,6 +672,30 @@ public final class MainActivity extends Activity implements Updater.Busy {
             shown.setAlpha(0f);
             shown.animate().alpha(1f).setDuration(160);
         }
+    }
+
+    /**
+     * Setup's page alone while it has a step ({@code step}), or the pages as they were once it has none; screen readers
+     * reach only what is shown.
+     */
+    private void showSetup(SetupFlow.Page step) {
+        boolean was = setupPage.shown();
+        if (step == null) {
+            if (!was) return;
+            setupPage.view.setVisibility(View.GONE);
+            showSettings(showingSettings);
+            return;
+        }
+        setupPage.show(step);
+        if (was) return;
+        setupPage.view.setVisibility(View.VISIBLE);
+        mainPage.setVisibility(View.GONE);
+        if (splitLines != null) splitLines.pageChanged();
+        settingsPage.setVisibility(View.GONE);
+        closeSheet();
+        root.setBackgroundColor(ui.page);
+        View focused = getCurrentFocus();
+        if (focused != null && !focused.isShown()) focused.clearFocus();
     }
 
     /**
@@ -898,7 +955,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         lines.setPadding(ui.dp(16), 0, ui.dp(16), 0);
         problems = ui.column();
         lines.addView(problems, Ui.matchWidth());
-        checklist = new SetupChecklist(this, ui, problems, NOTIFICATION_PERMISSION_REQUEST);
         // A verified update held back while no dash is on: "Update ready · Install now" (the user's own check).
         updateReady = new UpdateReadyRow(this, ui, problems);
         // Peek paused itself for a while (until the next dash, or 15 minutes): why, and the user's own Resume.
@@ -1671,6 +1727,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // (OfferNotificationService.ringsByItself); silenced on any other channel (Silent, its sound and pop-up off, or
         // held back by Do Not Disturb), an offer Offer Filter cannot judge gets Offer Filter's own card, ringing once,
         // instead (OfferNotificationService.alertsByItself): following this Fix never leaves an offer with no alert.
+        alertsOff = new Readiness(setup, ALERTS_OFF, () -> setupFlow.allowAlerts());
         doorDashAlerts = new Readiness(setup, "DoorDash's offer alert also sounded", this::openDoorDashChannel);
         battery = new Readiness(setup, BatteryLimits.PROBLEM, () -> BatteryLimits.open(this, this::open));
         location = new Readiness(setup, "The offer map needs location", this::askForLocation);
@@ -1862,6 +1919,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         refreshScreenAwake();
         if (statusLine == null || noticeShown()) return;
         if (refreshAppearance()) return;
+        // Setup's page alone while a step is due (0.6.26): nothing behind it is refreshed.
+        SetupFlow.Page step = setupFlow.page();
+        showSetup(step);
+        if (step != null) {
+            updatingCover.refresh();
+            return;
+        }
         FilterSettings saved = FilterStore.load(this);
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
         shownState = state;
@@ -1886,15 +1950,18 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (splitLines != null) splitLines.refresh(besideDasherNow(), dasherInstalled.get());
 
         boolean readerConnected = OfferFilterService.isConnected();
+        // Alerts are not needed to filter (0.6.26): auto-decline works with them off.
         readyForOffers = saved.enabled && saved.hasAnyRule() && readerConnected
-                && OfferNotificationService.isConnected() && alertsAllowed.get();
+                && OfferNotificationService.isConnected();
         QualifyingWait.Estimate estimate = QualifyingWaitStore.estimate(this, saved);
         boolean showWait = readyForOffers && estimate.status == QualifyingWait.Status.READY
                 && QualifyingWaitStore.observingWaiting(this);
         AutopilotText.Status status = autopilotStatus();
         refreshAutopilot(status);
-        checklist.refresh(readerConnected, alertsAllowed.get());
-        updateReady.refresh(checklist.installsAllowed());
+        boolean installs = installsAllowed.get();
+        // Allowed (from the Update ready line, the notice or Settings): the notice goes and Settings stops asking.
+        if (installs) Updater.installsAllowed(this);
+        updateReady.refresh(installs);
         // Only while the Settings switch is on: Peek turned off there is the user's own choice, not a pause.
         String paused = FilterStore.peek(this) ? Peek.pausedWhy(this) : null;
         if (paused != null) peekPaused.problem("Peek paused: " + paused);
@@ -1970,6 +2037,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             updateMeter();
         }
         refreshAreas();
+        showWhenWorks();
         refreshHero(saved.enabled ? FilterHeroView.State.ON
                 : saved.hasAnyRule() ? FilterHeroView.State.PAUSED : FilterHeroView.State.OFF);
         updatingCover.refresh();
@@ -2094,6 +2162,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     /** Settings' rows: what needs a fix and where the accountless updater stands. */
     private void refreshSettings() {
+        alertsOff.update(alertsAllowed.get());
         doorDashAlerts.update(!FilterStore.doorDashChannelAlerts(this));
         battery.update(!batteryRestricted.get());
         ui.setRow(updatesRow, "Updates", Updater.status(this));
@@ -2851,6 +2920,27 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
+     * Each part of the homepage only once it works (0.6.26; the owner: "all ui on screen needs to be justified by what
+     * is currently functional"): the skyline and its caption from the first offer, the map and its area's line while
+     * the map is on with location allowed (Settings has its switch and its fix). Hidden, a part keeps its room, so
+     * nothing else moves as it comes.
+     */
+    private void showWhenWorks() {
+        boolean offers = !recentEntries.isEmpty();
+        boolean map = AreaMap.enabled(this) && locationAllowed.get();
+        show(chart, offers);
+        show(offerCaption, offers);
+        show(areaMap, map);
+        if (!map && areaLine.getVisibility() == View.VISIBLE) areaLine.setVisibility(View.INVISIBLE);
+        else if (map && areaLine.getVisibility() == View.INVISIBLE) areaLine.setVisibility(View.VISIBLE);
+    }
+
+    private static void show(View part, boolean shown) {
+        int visibility = shown ? View.VISIBLE : View.INVISIBLE;
+        if (part.getVisibility() != visibility) part.setVisibility(visibility);
+    }
+
+    /**
      * The chosen square in one line under the map: its place, how far and which way, its pay per mile, and a way to see
      * it. Beside Dasher in split screen this line, not a guide over Dasher's half, says where the best area is (0.6.3).
      */
@@ -2952,6 +3042,47 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
         minimums.beckon();
         hero.announceForAccessibility(KNOBS_HINT);
+    }
+
+    /**
+     * Setup's last step, Start auto-decline: the typical minimums saved and auto-decline on at once, as Resume would.
+     * Autopilot keeps its suggested goal (pay first); its chooser waits for a later Resume rather than end setup on a
+     * dialog.
+     */
+    private void startFromSetup() {
+        useTypicalMinimums("setup");
+        FilterSettings saved = FilterStore.load(this);
+        if (!saved.enabled) FilterStore.save(this, saved, saved.withEnabled(true));
+        TimeModeGuard.resumed(this);
+        AutopilotRuntime.requestPlan(this, AutopilotRuntime.Trigger.USER);
+        rulesChanged();
+        toast("Auto-decline is on.");
+    }
+
+    /** Setup's Set my own: the homepage, its hollow knobs beckoning once it is laid out. */
+    private void setMyOwnFromSetup() {
+        refresh();
+        mainPage.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override public void onGlobalLayout() {
+                mainPage.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                if (!isFinishing() && mainPage.getVisibility() == View.VISIBLE) beckonKnobs();
+            }
+        });
+    }
+
+    /** Setup's step for the offer map: Android's question for approximate location, its answer walking setup on. */
+    private void askLocationFromSetup() {
+        if (AreaMap.hasPermission(this)) return;
+        locationFromSetup = true;
+        requestPermissions(new String[] {Manifest.permission.ACCESS_COARSE_LOCATION}, LOCATION_REQUEST);
+    }
+
+    /** Setup page's "Stuck? Send feedback": the feedback form as Usability (diagnostics attached only if chosen). */
+    private void stuckInSetup() {
+        SetupFlow.Page step = setupPage.page();
+        DiagnosticLog.log(this, "setup", "Stuck? Send feedback tapped" + (step == null ? ""
+                : " on " + step.screen.name().toLowerCase(Locale.US).replace('_', ' ')));
+        feedbackDialogs.feedback(Feedback.Category.USABILITY, null);
     }
 
     /** Persists auto-decline off immediately, keeping every saved rule. */

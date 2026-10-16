@@ -48,7 +48,7 @@ final class ReadingStopped {
 
     /** At the screen reader's unbind: the log line, then the notice when Android (not the user) stopped it mid-dash. */
     static void unbound(Context context) {
-        boolean onInSettings = SetupChecklist.accessibilityEnabled(context);
+        boolean onInSettings = SetupFlow.accessibilityEnabled(context);
         DiagnosticLog.log(context, "service", "screen reader unbound; " + (onInSettings
                 ? "still on in Android's settings (Android stopped it)" : "off in Android's settings") + "; "
                 + phoneState(context));

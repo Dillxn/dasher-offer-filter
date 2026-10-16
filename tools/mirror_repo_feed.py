@@ -173,21 +173,22 @@ an app from outside the Play Store. Keep Play Protect enabled. If Android blocks
 about a warning, stop and review it; this page is not an instruction to bypass a security warning.</li>
 <li>Open {name} and read the notice and linked terms. Tap <b>I understand and accept</b> only if you agree;
 <b>Not now</b> closes the app without accepting.</li>
-<li>The homepage lists the Android steps still to do, in order, each with <b>Fix</b> (with three or more to do, the
-first shows and <b>more to set up</b> shows the rest). Enable the ones needed for the features you use:
+<li>Until {name} can filter, setup takes the whole screen, one step at a time. Each step says what to tap before it
+opens Android's screen. Enable the ones needed for the features you use:
 <ul>
-<li><b>Allow restricted settings</b> (Android 13 and later, for an app from the web): tap the switch once, then open
-App info for {name}, tap the ⋮ menu and choose <b>Allow restricted settings</b> only if you understand and accept that
-access. Back in {name}, the setting it was for opens. Menus vary by phone.</li>
-<li><b>Turn on {name} in Accessibility</b>: Accessibility access for on-screen filtering.</li>
-<li><b>Allow notification access</b>: notification access for background offers and Peek.</li>
+<li><b>Turn on screen reading</b>: Accessibility access for on-screen filtering. On Android 13 and later, Android blocks
+it the first time for an app from the web: close its message and come back, and setup's <b>Allow restricted
+settings</b> step opens App info, where the ⋮ menu has <b>Allow restricted settings</b>. Choose it only if you
+understand and accept that access. Menus vary by phone.</li>
+<li><b>Turn on background offers</b>: notification access for background offers and Peek.</li>
 <li><b>Allow alerts</b>: {name}'s notification permission for its passing/review alerts and notices.</li>
-<li><b>Allow updates</b>: shows once the steps above are done, or at once when an update waits for it.</li>
+<li><b>Map where offers pay best</b>: location for the offer map. Optional location is not needed for filtering;
+<b>Not now</b> skips it.</li>
 </ul></li>
-<li>Drag a knob on the constellation to set a minimum, then tap the mascot to resume filtering. The mascot also pauses
-it. <b>Peek is on by default</b> and can briefly open Dasher for background offers; turn it off in Settings if unwanted.
-<b>Auto-accept is off by default</b> and needs its own explicit confirmation. Optional location is only for the offer map;
-it is not needed for filtering.</li>
+<li><b>Start with typical minimums</b>: <b>Start auto-decline</b> saves them and starts filtering, or <b>Set my
+own</b> leaves the minimums to you. Drag a knob on the constellation to set a minimum, then tap the mascot to resume
+filtering. The mascot also pauses it. <b>Peek is on by default</b> and can briefly open Dasher for background offers; turn it off in Settings if unwanted.
+<b>Auto-accept is off by default</b> and needs its own explicit confirmation.</li>
 </ol>
 <h2>Updates</h2>
 <p>Already installed? Install over the existing cloud-signed 0.4.x app; don't uninstall for a normal update.
@@ -196,8 +197,8 @@ The retired 0.3.1 signing chain is different.</p>
 <b>Update ready: installs after your dash</b> while you are not dashing (for example with {name}'s Accessibility
 turned off), tap <b>Updates</b> once with Dasher not on screen, or install this download over it. Turn Accessibility
 back on afterwards if you switched it off.</p>
-<p>For in-app updates, tap <b>Fix</b> beside <b>Allow updates</b> on {name}'s homepage and enable <b>Allow from this
-source</b>. This is separate from your browser's first-install permission. From 0.5.0, when an update is ready and
+<p>For in-app updates, once an update is ready, tap <b>Allow updates</b> on {name}'s <b>Update ready</b> line and
+enable <b>Allow from this source</b>. This is separate from your browser's first-install permission. From 0.5.0, when an update is ready and
 no dash is on, the homepage shows <b>Update ready · Install now</b>; in Settings, <b>Updates</b> says where updates
 stand and a tap checks now. Android may request installation confirmation; review its prompt. Automatic installation
 waits for an observed dash end (from 0.5.0, or eight quiet hours with the screen off and nothing of a dash seen),

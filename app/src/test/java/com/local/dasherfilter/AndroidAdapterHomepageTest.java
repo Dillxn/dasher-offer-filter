@@ -101,29 +101,39 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         }
     }
 
+    /**
+     * The map shows only once it works (0.6.26, the owner: "all ui on screen needs to be justified by what is currently
+     * functional"): without location it keeps its room unseen and nothing is asked unasked; Settings' line asks for
+     * approximate location only. Allowed, it is on the ground; turned off in Settings, it goes again.
+     */
     @Test
-    public void theMapIsAlwaysOnTheGroundAndAsksOnlyForApproximateLocation() {
+    public void theMapShowsOnceLocationIsAllowedAndAsksOnlyForApproximateLocation() {
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             AreaMapView map = find(content, AreaMapView.class);
-            assertTrue("the map is part of the page from the start", map.isShown());
-            assertTrue(map.getContentDescription().toString().startsWith("Tap to allow location"));
-            assertNull("nothing is asked before a tap", Shadows.shadowOf(activity.get()).getLastRequestedPermission());
-            map.performClick();
+            assertFalse("no location: nothing on the map works yet", map.isShown());
+            assertEquals("it keeps its room", View.INVISIBLE, map.getVisibility());
+            assertNull("nothing is asked unasked", Shadows.shadowOf(activity.get()).getLastRequestedPermission());
+            iconButton(content, "Settings").performClick();
+            shownIcon(content, "The offer map needs location. Fix.").performClick();
             org.robolectric.shadows.ShadowActivity.PermissionsRequest request =
                     Shadows.shadowOf(activity.get()).getLastRequestedPermission();
             assertEquals(Arrays.asList(Manifest.permission.ACCESS_COARSE_LOCATION),
                     Arrays.asList(request.requestedPermissions));
+            iconButton(content, "Back").performClick();
 
-            // Turned off in Settings, the ground stays, and says a tap turns it back on.
+            Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION);
+            activity.pause().resume();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
+            assertTrue("location allowed: the map is on the ground", map.isShown());
+
+            // Turned off in Settings, it goes, its room kept.
             iconButton(content, "Settings").performClick();
             ((Switch) findButton(content, "Offer map")).setChecked(false);
             iconButton(content, "Back").performClick();
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
-            assertTrue(map.isShown());
-            assertTrue(map.getContentDescription().toString().startsWith("Tap to map where offers pay best"));
-            map.performClick();
-            assertTrue(AreaMap.enabled(app));
+            assertFalse(map.isShown());
+            assertEquals(View.INVISIBLE, map.getVisibility());
         }
     }
 
@@ -308,6 +318,8 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
     @Test
     @Config(qualifiers = "w360dp-h740dp-xxhdpi")
     public void theMainPageFitsOneScreenAndTheTicketSlidesUpOverIt() {
+        // The map shows once location is allowed (0.6.26).
+        Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION);
         DecisionLog.record(app, declinedEntry());
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
@@ -374,8 +386,9 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
     public void halfOfASplitScreenFitsOneScreenWithEverythingOnIt() {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
         DecisionLog.record(app, declinedEntry());
-        // Screen reading on, as while dashing; background offers still off, so one line asks for a fix. The other
-        // half is not Dasher.
+        // Screen reading on, as while dashing, and an update held, so one line needs the user. The other half is not
+        // Dasher.
+        raiseLines(1);
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
         OfferFilterService.sawDasherBeside(0);
@@ -392,7 +405,7 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
             android.widget.ScrollView page = (android.widget.ScrollView) scene.getParent();
             assertTrue("no scrolling: " + scene.getHeight() + " in " + page.getHeight(),
                     scene.getHeight() <= page.getHeight());
-            assertNotNull("the line asking for a fix", shownTextContaining(content, SetupChecklist.NOTIFICATIONS));
+            assertNotNull("the line that needs the user", shownTextContaining(content, UpdateReadyRow.WORDS));
             MinimumsStarView star = find(content, MinimumsStarView.class);
             AreaMapView map = find(content, AreaMapView.class);
             assertEquals("the constellation wholly there", 1f, scene.shown(star), 0f);
@@ -429,7 +442,8 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
     @Test
     @Config(qualifiers = "w411dp-h410dp-420dpi")
     public void besideDasherThePageKeepsTheConstellationAndTheMapTogether() {
-        Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS);
+        Shadows.shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS,
+                Manifest.permission.ACCESS_COARSE_LOCATION);
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
@@ -598,14 +612,15 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
         DecisionLog.record(app, declinedEntry());
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
-        // On a dash, so the counts are this dash's, with the totals under them.
+        // On a dash, so the counts are this dash's, with the totals under them; Peek paused itself, a line that needs
+        // the user (a held update's waits for the dash's end).
         Dashing.forgetCache();
         Dashing.seen(app);
+        Peek.pause(app, "3 offers in a row were gone by the time Dasher showed");
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
             View content = activity.get().findViewById(android.R.id.content);
             settleSky(content);
-            assertNotNull("background offers are off: a line to fix", shownTextContaining(content,
-                    SetupChecklist.NOTIFICATIONS));
+            assertNotNull("Peek paused: a line that needs the user", shownTextContaining(content, "Peek paused: "));
             Ui ui = new Ui(activity.get());
             ScenePage scene = find(content, ScenePage.class);
             android.widget.ScrollView page = (android.widget.ScrollView) scene.getParent();
@@ -694,17 +709,6 @@ public class AndroidAdapterHomepageTest extends AndroidAdapterTestBase {
                 String label = button.getText().toString();
                 assertFalse(label, button.isShown() && (label.contains("Pause") || label.contains("Resume")));
             }
-        }
-    }
-
-    @Test
-    public void setupProblemsShowOnlyWhileSomethingIsOff() {
-        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
-            View content = activity.get().findViewById(android.R.id.content);
-            // No service is connected in this test, so screen reading is reported off with a Fix button.
-            TextView problem = findText(content, SetupChecklist.ACCESSIBILITY);
-            assertNotNull(problem);
-            assertEquals(View.VISIBLE, ((View) problem.getParent()).getVisibility());
         }
     }
 }

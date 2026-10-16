@@ -9,6 +9,7 @@ import android.os.SystemClock;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.TextView;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -220,11 +221,13 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * A setup step still to do stays on the page at every size, under the header, and its tap is its Fix: here
-     * notification access, in the homepage's own words (SetupChecklist).
+     * Setup still to do takes the whole page at every size (0.6.26): in a short half of a split screen its step's title
+     * shows at the top, its one button is on the page, and its tap opens Android's own page: here notification access,
+     * screen reading running.
      */
     @Test @Config(qualifiers = "w411dp-h300dp-420dpi")
-    public void aSetupStepStaysOnThePageAndItsTapIsTheFix() {
+    public void setupsStepAndItsButtonStayOnThePageInAShortHalf() {
+        SetupFlow.pageShows = true;
         FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
         screen = Robolectric.buildService(OfferFilterService.class).create();
         screen.get().onServiceConnected();
@@ -232,14 +235,15 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
         try (ActivityController<MainActivity> activity = splitScreen()) {
             View content = content(activity);
             layOut(content);
-            assertEquals("no offer yet, and not ready for one while a step is to do", VerdictTile.NO_OFFERS,
-                    String.valueOf(verdictTile(content).getContentDescription()));
-            TextView step = shownTextContaining(content, SetupChecklist.NOTIFICATIONS);
-            assertNotNull("the step to do, on the page", step);
-            assertWhollyOnScreen("the step", step);
-            ((View) step.getParent()).performClick();
+            TextView title = shownTextContaining(content, SetupFlow.BACKGROUND_TITLE);
+            assertNotNull("the step to do, on its page", title);
+            assertWhollyOnScreen("the step's title", title);
+            assertNull("nothing of the homepage behind it", shownTextContaining(content, MainActivity.START_LINE));
+            Button open = shownButton(content, SetupFlow.OPEN_NOTIFICATION_ACCESS);
+            assertNotNull("its one button", open);
+            open.performClick();
             Intent fix = started();
-            assertNotNull("the step's own Fix: Android's notification access", fix);
+            assertNotNull("Android's notification access", fix);
             assertTrue(fix.getAction(), android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS
                     .equals(fix.getAction())
                     || android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS.equals(fix.getAction()));
@@ -343,6 +347,8 @@ public class DrivingLayoutTest extends AndroidAdapterTestBase {
     /** Half of a split screen beside Dasher: the radar and the map together (0.5.1 showed only one of them there). */
     @Test @Config(qualifiers = "w411dp-h410dp-420dpi")
     public void halfOfASplitScreenBesideDasherShowsTheRadarAndTheMapTogether() {
+        // The map shows once location is allowed (0.6.26).
+        Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_COARSE_LOCATION);
         FilterStore.save(app, FilterSettings.of(true, 200, 100, 25, 0));
         DecisionLog.record(app, declinedEntry());
         servicesUp();

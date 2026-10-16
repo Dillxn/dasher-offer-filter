@@ -175,8 +175,18 @@ public class UpdateReachTest extends AndroidAdapterTestBase {
             Shadows.shadowOf(app.getPackageManager()).setCanRequestPackageInstalls(false);
             activity.pause().resume();
             tick();
-            assertNull("installs not allowed: the setup step asks for that instead",
-                    shownIcon(content, "Update ready. Install now."));
+            assertNull(shownIcon(content, "Update ready. Install now."));
+            // Installs not allowed: the line asks for Android's switch, now that an update needs it (0.6.26).
+            View allow = shownIcon(content, "Update ready. Allow updates.");
+            assertNotNull("the line asks for the switch instead", allow);
+            while (Shadows.shadowOf(app).getNextStartedActivity() != null) {
+                // Whatever the earlier steps opened.
+            }
+            allow.performClick();
+            Intent opened = Shadows.shadowOf(app).getNextStartedActivity();
+            assertEquals(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, opened.getAction());
+            assertEquals("package:" + app.getPackageName(), opened.getDataString());
+            assertEquals(SetupFlow.ALLOW_SOURCE, org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
         }
     }
 
