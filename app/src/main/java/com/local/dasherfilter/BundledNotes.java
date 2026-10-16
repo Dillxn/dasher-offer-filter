@@ -347,6 +347,10 @@ final class BundledNotes {
         // autopilot?"; his 4:56 AM accept, right after two of the app's declines, was never counted).
         release("0.6.24", "An offer you accept yourself right after the app declines others now counts as accepted, and "
                 + "raises your learned minimums when it beats your best.");
+        // 0.6.25 (the owner, 16 October 2026, with Samsung's "App was denied access" over Accessibility: "we need to
+        // streamline this process and make it user friendly").
+        release("0.6.25", "Setup now opens each of Android's screens for you in turn and says what to tap there, Allow "
+                + "restricted settings included.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

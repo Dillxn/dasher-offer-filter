@@ -20,8 +20,11 @@ import java.util.function.Consumer;
  * Android 13 and later block Accessibility and notification access ("Restricted setting") for an app installed from a
  * downloaded or local file until the user allows it in App info, ⋮ → Allow restricted settings; and Android shows
  * that menu item only after the switch was tried once. Strangers who sideload Offer Filter meet this before anything
- * works, so the setup checklist leads with a step for it, for both accesses, before the wall: one line of
- * explanation, App info with the exact path, then back to the access being turned on; success is seen on return.
+ * works, so the setup checklist leads with a step for it, for both accesses, before the wall. Its Fix walks them
+ * through, each of Android's screens opening by itself: a short dialog first (Android's refusal named, so it does not
+ * scare anyone off), then the switch a tap away (notification access's own page) to try; back with it refused, as
+ * Android's record confirms, App info, saying where its menu item is; back with it allowed, the access being set up.
+ * Success is seen on return.
  *
  * <p>Whether the restriction applies comes from the install source (PackageManager.getInstallSourceInfo, API 33): a
  * downloaded or local file, or an unknown source with no app store as installer (a self-update, say, where the
@@ -50,18 +53,36 @@ final class RestrictedSettingsGuide {
     }
 
     static final String TITLE = "Allow restricted settings";
-    /** Before the switch was tried: Android shows the menu item only after one try. */
-    static final String TRY_FIRST = "Android blocks this switch for apps from the web: tap it once, then App info → ⋮ → "
-            + "Allow restricted settings.";
-    /** As {@link #TRY_FIRST}, for an install whose source only suggests the restriction (a self-update, say). */
-    static final String TRY_FIRST_MAYBE = "Android may block this switch for apps from outside a store: tap it once; "
-            + "if it's blocked, App info → ⋮ → Allow restricted settings.";
     /**
-     * After a try: the exact path, and back; the switch stays in reach for one who allowed it already, or whose try
-     * never reached the switch (App info then has no such item).
+     * Before a try: the walk-through, in the words of each of Android's screens. Android shows the menu item only
+     * after one try, and its refusal ("App was denied access" on newer phones, "Restricted setting" on others) is
+     * expected, so it is said before it comes.
+     */
+    static final String TRY_FIRST = "Apps from the web need one extra step on Android. " + AppName.NAME
+            + " opens each screen for you:\n\n1. Tap the switch. Android blocks it the first time: close the message and "
+            + "come back.\n2. Tap ⋮ at the top right, then Allow restricted settings.";
+    /** As {@link #TRY_FIRST}, for an install whose source only suggests the restriction (a self-update, say). */
+    static final String TRY_FIRST_MAYBE = "Apps from outside a store may need one extra step on Android. "
+            + AppName.NAME + " opens each screen for you:\n\n1. Tap the switch. If Android blocks it, close the "
+            + "message and come back.\n2. Tap ⋮ at the top right, then Allow restricted settings.";
+    /** The walk-through's button. */
+    static final String START = "Start";
+    /**
+     * After a try only this app noted (Android's record not readable, or not moved): the exact path, and back; the
+     * switch stays in reach for one who allowed it already, or whose try never reached the switch (App info then has
+     * no such item). A try Android's record confirms goes straight to App info.
      */
     static final String PATH = "In App info, tap ⋮ → Allow restricted settings, then come back. Not there? Try the "
             + "switch first.";
+    /**
+     * The toasts on Android's screens, two lines at most ({@link SetupChecklist#TOAST_MOST}): the switch to try (on its
+     * own page, or the list naming its entry), then App info's menu item.
+     */
+    static final String TRY_ON_PAGE = "Tap the switch. Blocked? Close Android's message and come back.";
+    static final String TRY_IN_LIST = "Tap " + SetupChecklist.LISTENER_NAME + ". Blocked? Come back here.";
+    static final String TRY_IN_ACCESSIBILITY = "Downloaded apps (or Installed apps) → " + AppName.NAME
+            + ". Blocked? Come back.";
+    static final String IN_APP_INFO = "Tap ⋮ at the top right → Allow restricted settings, then come back.";
     /** How long a try or a visit to App info started here is still the reason the page acts on its return. */
     static final long RETURN_WITHIN_MS = 10 * 60_000L;
 
@@ -225,15 +246,20 @@ final class RestrictedSettingsGuide {
         DiagnosticLog.log(context, "setup", "restricted settings allowed: " + why);
     }
 
+    /** What opens by itself on the way back: App info, or an access's own page. */
+    enum Next { APP_INFO, ACCESSIBILITY, NOTIFICATIONS }
+
     /**
      * Back on the page (from Android's settings, perhaps), within {@link #RETURN_WITHIN_MS} of leaving from here: a
-     * switch tried from here and still off was blocked, so App info now offers the menu item; back from App info, the
-     * access being set up opens next (itself a try), unless Android says the restriction still stands or
-     * {@code mayOpen} is false (a dash on, or the page beside another app). Anything older is forgotten unread.
+     * switch tried from here and still off was blocked, so App info now offers the menu item, and opens next when
+     * Android's record confirms the refusal (never on this app's word alone: App info without the item would be a dead
+     * end); back from App info, the access being set up opens next (itself a try), unless Android says the
+     * restriction still stands. Nothing opens while {@code mayOpen} is false (a dash on, or the page beside another
+     * app). Anything older is forgotten unread.
      *
-     * @return the access to open now, or null
+     * @return what to open now, or null
      */
-    static Access resumed(Context context, boolean accessibilityOn, boolean listenerOn, boolean mayOpen) {
+    static Next resumed(Context context, boolean accessibilityOn, boolean listenerOn, boolean mayOpen) {
         SharedPreferences prefs = prefs(context);
         if (!prefs.contains(TRYING_KEY) && !prefs.contains(RETURN_KEY)) return null;
         long now = System.currentTimeMillis();
@@ -241,16 +267,38 @@ final class RestrictedSettingsGuide {
         Access back = fresh(prefs, RETURN_AT, now) ? access(prefs.getString(RETURN_KEY, null)) : null;
         SharedPreferences.Editor edit = prefs.edit().remove(TRYING_KEY).remove(TRYING_AT).remove(RETURN_KEY)
                 .remove(RETURN_AT);
-        if (trying != null && !on(trying, accessibilityOn, listenerOn)) edit.putBoolean(TRIED_KEY, true);
-        Access next = back == null || on(back, accessibilityOn, listenerOn) || !mayOpen ? null : back;
-        if (next != null) {
-            int mode = opMode(context);
-            if (mode == AppOpsManager.MODE_ERRORED || mode == AppOpsManager.MODE_IGNORED) next = null;
+        boolean blocked = trying != null && !on(trying, accessibilityOn, listenerOn);
+        if (blocked) edit.putBoolean(TRIED_KEY, true);
+        int mode = trying != null || back != null ? opMode(context) : -1;
+        boolean standing = mode == AppOpsManager.MODE_ERRORED || mode == AppOpsManager.MODE_IGNORED;
+        Next next = null;
+        if (back != null && !on(back, accessibilityOn, listenerOn) && mayOpen && !standing) {
+            next = back == Access.ACCESSIBILITY ? Next.ACCESSIBILITY : Next.NOTIFICATIONS;
+            // Opening it is a try from here too: still off on the next return, it was blocked.
+            edit.putString(TRYING_KEY, back.name()).putLong(TRYING_AT, now);
+        } else if (blocked && back == null && mayOpen && mode == AppOpsManager.MODE_IGNORED) {
+            next = Next.APP_INFO;
         }
-        // Opening it is a try from here too: still off on the next return, it was blocked.
-        if (next != null) edit.putString(TRYING_KEY, next.name()).putLong(TRYING_AT, now);
         edit.apply();
+        if (blocked) {
+            DiagnosticLog.log(context, "setup", "restricted settings: a switch tried from here stayed off (record "
+                    + modeWord(mode) + ")" + (next == Next.APP_INFO ? "; App info next" : ""));
+        } else if (back != null) {
+            DiagnosticLog.log(context, "setup", "restricted settings: back from App info (record " + modeWord(mode)
+                    + ")" + (next != null ? "; the switch next" : ""));
+        }
         return next;
+    }
+
+    /** Android's record in fixed words, for the log. */
+    private static String modeWord(int mode) {
+        switch (mode) {
+            case AppOpsManager.MODE_ALLOWED: return "allowed";
+            case AppOpsManager.MODE_IGNORED: return "tried";
+            case AppOpsManager.MODE_ERRORED: return "restricted";
+            case AppOpsManager.MODE_DEFAULT: return "default";
+            default: return "unreadable";
+        }
     }
 
     /** Within {@link #RETURN_WITHIN_MS} of the time saved at {@code key}. */
@@ -266,26 +314,25 @@ final class RestrictedSettingsGuide {
     }
 
     /**
-     * The step's one-line guide, for {@code target}: before a try, the switch first (or App info for one tried
-     * elsewhere); after one, App info with the exact path, the switch still offered (allowed already, or never really
-     * tried). {@code openAccess} opens the access's own page.
+     * The step's guide: before a try, the walk-through, whose Start tries the switch ({@code start}); after a try
+     * Android's record confirms, App info at once ({@code appInfo}); after one only this app noted, App info with the
+     * exact path, the switch beside it ({@code trySwitch}: allowed already, or never really tried).
      */
-    static void show(Activity activity, Access target, Consumer<Access> openAccess, Consumer<Intent> open) {
-        Reading reading = read(activity);
-        boolean tried = reading.state != State.UNTRIED;
-        AlertDialog.Builder dialog = new AlertDialog.Builder(activity).setTitle(TITLE)
-                .setMessage(tried ? PATH : reading.certain ? TRY_FIRST : TRY_FIRST_MAYBE)
-                .setNegativeButton("Cancel", null);
-        Runnable trySwitch = () -> {
-            trying(activity, target);
-            openAccess.accept(target);
-        };
-        if (tried) {
-            dialog.setPositiveButton("Open App info", (shown, which) -> appInfo(activity, target, open));
-            dialog.setNeutralButton("Try the switch", (shown, which) -> trySwitch.run());
+    static void show(Activity activity, Reading reading, Runnable start, Runnable trySwitch, Runnable appInfo) {
+        if (reading.state == State.TRIED && reading.fromRecord) {
+            appInfo.run();
+            return;
+        }
+        AlertDialog.Builder dialog = new AlertDialog.Builder(activity).setTitle(TITLE);
+        if (reading.state == State.UNTRIED) {
+            dialog.setMessage(reading.certain ? TRY_FIRST : TRY_FIRST_MAYBE)
+                    .setPositiveButton(START, (shown, which) -> start.run())
+                    .setNegativeButton("Not now", null);
         } else {
-            dialog.setPositiveButton("Try the switch", (shown, which) -> trySwitch.run());
-            dialog.setNeutralButton("App info", (shown, which) -> appInfo(activity, target, open));
+            dialog.setMessage(PATH)
+                    .setPositiveButton("Open App info", (shown, which) -> appInfo.run())
+                    .setNeutralButton("Try the switch", (shown, which) -> trySwitch.run())
+                    .setNegativeButton("Cancel", null);
         }
         OwnWindowTouches.show(dialog);
     }

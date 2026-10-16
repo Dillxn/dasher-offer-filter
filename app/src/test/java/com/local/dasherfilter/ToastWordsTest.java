@@ -27,6 +27,8 @@ public final class ToastWordsTest {
                 DasherSplit.SCREEN_READING_FIRST, DasherSplit.RECENTS_REFUSED, DasherSplit.PICK_DASHER_CARD,
                 DasherSplit.PICK_DASHER_CARD_REFUSED, MainActivity.KNOBS_HINT, MainActivity.KNOBS_NEED_ROOM,
                 MainActivity.FIRST_RULE, LocationRationale.PATH, "Not allowed. " + LocationRationale.PATH,
+                RestrictedSettingsGuide.TRY_ON_PAGE, RestrictedSettingsGuide.TRY_IN_LIST,
+                RestrictedSettingsGuide.TRY_IN_ACCESSIBILITY, RestrictedSettingsGuide.IN_APP_INFO,
         };
         for (String toast : toasts) {
             assertTrue(toast.length() + " characters: " + toast, toast.length() <= SetupChecklist.TOAST_MOST);
@@ -42,6 +44,14 @@ public final class ToastWordsTest {
         assertTrue(SetupChecklist.FIND_IN_LIST.endsWith("turn it on"));
         assertTrue(SetupChecklist.RESTART_IN_LIST.startsWith("Downloaded apps (or Installed apps) → Offer Filter"));
         assertTrue(SetupChecklist.RESTART_IN_LIST.endsWith("turn it off and on"));
+        // The restricted walk-through: the switch to try (blocked, back here), then App info's menu item.
+        assertTrue(RestrictedSettingsGuide.TRY_IN_ACCESSIBILITY.startsWith(
+                "Downloaded apps (or Installed apps) → Offer Filter"));
+        assertTrue(RestrictedSettingsGuide.IN_APP_INFO.contains("⋮ at the top right → Allow restricted settings"));
+        for (String toast : new String[] {RestrictedSettingsGuide.TRY_ON_PAGE, RestrictedSettingsGuide.TRY_IN_LIST,
+                RestrictedSettingsGuide.TRY_IN_ACCESSIBILITY, RestrictedSettingsGuide.IN_APP_INFO}) {
+            assertTrue(toast, toast.contains("come back") || toast.contains("Come back"));
+        }
         assertTrue(DasherSplit.hintWithDasher("pixel").contains("Offer Filter's icon")
                 && DasherSplit.hintWithDasher("pixel").contains("Split screen, then Dasher"));
         assertTrue(DasherSplit.hintWithDasher("samsung").contains("Offer Filter's icon")

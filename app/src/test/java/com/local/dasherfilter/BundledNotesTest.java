@@ -524,12 +524,26 @@ public class BundledNotesTest {
      * autopilot?"; his 4:56 AM accept right after two of the app's declines was never counted): one line. Nothing the
      * notice says changed, so it stays 28.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.24", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(28, Consent.VERSION);
+    @Test public void release0624SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.24");
         assertEquals(Collections.singletonList("An offer you accept yourself right after the app declines others now "
                 + "counts as accepted, and raises your learned minimums when it beats your best."), lines);
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
+    }
+
+    /**
+     * 0.6.25 (the owner, 16 October 2026, with Samsung's "App was denied access" over Accessibility: "we need to
+     * streamline this process and make it user friendly"): one line. Nothing the notice says changed, so it stays 28.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.25", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(28, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.25");
+        assertEquals(Collections.singletonList("Setup now opens each of Android's screens for you in turn and says "
+                + "what to tap there, Allow restricted settings included."), lines);
         for (String line : lines) {
             assertTrue(line, line.length() <= 160);
             assertFalse(line, line.contains("Offer Filter"));

@@ -32,6 +32,11 @@ import java.util.List;
  * them all: the lines take their room from the constellation and the map under them, and five of them would shrink
  * those away just as the start line says to drag a knob.
  *
+ * <p>Each step's Fix opens its page, and setup walks on by itself from there: back from a page with its switch now on,
+ * the next step opens (the other access, then Android's question for alerts), and the restricted step walks through
+ * Android's block (the switch to try, App info, then the access), each within ten minutes of leaving, never mid-dash,
+ * beside another app or behind the notice.
+ *
  * <p>An access granted but not working gets its own words and fix instead of a page whose switch is already on:
  * "Turn Offer Filter off and on in Accessibility" opens the service's page, and "Reconnect notification access" asks
  * Android to bind the listener again (a second tap opens its page). On Android 13+, a switch tried from here that
@@ -44,6 +49,9 @@ final class SetupChecklist {
     static final String NOTIFICATIONS_ASKED = "notifications_asked";
     static final String ACCESSIBILITY_OPENED = "accessibility_opened";
     static final String LISTENER_OPENED = "listener_opened";
+    /** The access whose page was opened from here to turn it on, and when: back with it on, the next step opens. */
+    private static final String TURNING_ON = "turning_on";
+    private static final String TURNING_ON_AT = "turning_on_at";
 
     static final String RESTRICTED = RestrictedSettingsGuide.TITLE;
     static final String ACCESSIBILITY = "Turn on " + AppName.NAME + " in Accessibility";
@@ -150,9 +158,10 @@ final class SetupChecklist {
 
     /**
      * Back on the page, perhaps from Android's settings: everything is asked again, a switch tried from here that
-     * stayed off is noted, and coming back from App info opens the access being set up (the guide's last step), but
-     * only within minutes of leaving for it, never while a dash is on or beside another app, and never behind the
-     * notice ({@code behindNotice}: nothing behind it refreshes, so what the guide noted waits for the homepage).
+     * stayed off is noted, and setup walks on: back from a refused try, App info; back from App info, the access being
+     * set up; back from an access turned on, the next step. Only within minutes of leaving for it, never while a dash
+     * is on or beside another app, and never behind the notice ({@code behindNotice}: nothing behind it refreshes, so
+     * what the guide noted waits for the homepage).
      */
     void resumed(boolean behindNotice) {
         forget();
@@ -163,10 +172,53 @@ final class SetupChecklist {
         accessibilityTried = prefs.getBoolean(ACCESSIBILITY_OPENED, false) && !a11y;
         listenerTried = prefs.getBoolean(LISTENER_OPENED, false) && !listener;
         boolean mayOpen = !activity.isInMultiWindowMode() && !UpdateReadyRow.dashOn(activity);
-        RestrictedSettingsGuide.Access next = RestrictedSettingsGuide.resumed(activity, a11y, listener, mayOpen);
+        RestrictedSettingsGuide.Access turning = turningOn(prefs);
+        RestrictedSettingsGuide.Next next = RestrictedSettingsGuide.resumed(activity, a11y, listener, mayOpen);
         restriction.forget();
-        if (next == RestrictedSettingsGuide.Access.ACCESSIBILITY) openAccessibility(NOW_ON_PAGE, FIND_IN_LIST);
-        else if (next == RestrictedSettingsGuide.Access.NOTIFICATIONS) openListener(NOW_LISTENER, FIND_LISTENER);
+        if (next == RestrictedSettingsGuide.Next.APP_INFO) {
+            appInfo(firstMissing());
+        } else if (next == RestrictedSettingsGuide.Next.ACCESSIBILITY) {
+            turnOn(RestrictedSettingsGuide.Access.ACCESSIBILITY, NOW_ON_PAGE, FIND_IN_LIST);
+        } else if (next == RestrictedSettingsGuide.Next.NOTIFICATIONS) {
+            turnOn(RestrictedSettingsGuide.Access.NOTIFICATIONS, NOW_LISTENER, FIND_LISTENER);
+        } else if (turning != null && mayOpen
+                && (turning == RestrictedSettingsGuide.Access.ACCESSIBILITY ? a11y : listener)) {
+            nextStep(turning, a11y, listener);
+        }
+    }
+
+    /** The access opened from here to turn on, within minutes of leaving for it (read once). */
+    private static RestrictedSettingsGuide.Access turningOn(SharedPreferences prefs) {
+        if (!prefs.contains(TURNING_ON)) return null;
+        String name = prefs.getString(TURNING_ON, null);
+        long at = prefs.getLong(TURNING_ON_AT, 0);
+        prefs.edit().remove(TURNING_ON).remove(TURNING_ON_AT).apply();
+        long now = System.currentTimeMillis();
+        if (name == null || at <= 0 || now < at || now - at > RestrictedSettingsGuide.RETURN_WITHIN_MS) return null;
+        try {
+            return RestrictedSettingsGuide.Access.valueOf(name);
+        } catch (IllegalArgumentException unknown) {
+            return null;
+        }
+    }
+
+    /**
+     * Back from {@code done}, turned on from here: the next of setup's steps opens by itself, as its Fix would (the
+     * other access, then Android's question for alerts, asked only if it never was: a refusal is the user's answer).
+     */
+    private void nextStep(RestrictedSettingsGuide.Access done, boolean a11y, boolean listener) {
+        String was = done == RestrictedSettingsGuide.Access.ACCESSIBILITY ? "screen reading" : "notification access";
+        if (!a11y) {
+            DiagnosticLog.log(activity, "setup", was + " turned on; Accessibility next");
+            turnOn(RestrictedSettingsGuide.Access.ACCESSIBILITY, NOW_ON_PAGE, FIND_IN_LIST);
+        } else if (!listener) {
+            DiagnosticLog.log(activity, "setup", was + " turned on; notification access next");
+            turnOn(RestrictedSettingsGuide.Access.NOTIFICATIONS, NOW_LISTENER, FIND_LISTENER);
+        } else if (activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED && !prefs().getBoolean(NOTIFICATIONS_ASKED, false)) {
+            DiagnosticLog.log(activity, "setup", was + " turned on; alerts asked next");
+            allowAlerts();
+        }
     }
 
     /** Whether this app may install its updates ("Install unknown apps"), as Android said lately. */
@@ -255,7 +307,37 @@ final class SetupChecklist {
     }
 
     private void guide(RestrictedSettingsGuide.Access target) {
-        RestrictedSettingsGuide.show(activity, target, this::openAccess, this::open);
+        RestrictedSettingsGuide.show(activity, RestrictedSettingsGuide.read(activity), this::startWalk,
+                () -> {
+                    RestrictedSettingsGuide.trying(activity, target);
+                    openAccess(target);
+                },
+                () -> appInfo(target));
+    }
+
+    /**
+     * The walk-through's first screen: the switch a tap away to try, notification access's own page (Accessibility's
+     * hides Offer Filter a level down its list), unless notification access is on already.
+     */
+    private void startWalk() {
+        boolean listener = listenerOn.get();
+        RestrictedSettingsGuide.Access first = listener ? RestrictedSettingsGuide.Access.ACCESSIBILITY
+                : RestrictedSettingsGuide.Access.NOTIFICATIONS;
+        RestrictedSettingsGuide.trying(activity, first);
+        DiagnosticLog.log(activity, "setup", "restricted settings: walk-through started, trying "
+                + (listener ? "Accessibility" : "notification access"));
+        if (listener) {
+            turnOn(first, RestrictedSettingsGuide.TRY_ON_PAGE, RestrictedSettingsGuide.TRY_IN_ACCESSIBILITY);
+        } else {
+            turnOn(first, RestrictedSettingsGuide.TRY_ON_PAGE, RestrictedSettingsGuide.TRY_IN_LIST);
+        }
+    }
+
+    /** App info, saying where its menu item is, and back to {@code target}'s page within minutes. */
+    private void appInfo(RestrictedSettingsGuide.Access target) {
+        RestrictedSettingsGuide.appInfo(activity, target, intent -> {
+            if (open(intent)) toast(RestrictedSettingsGuide.IN_APP_INFO);
+        });
     }
 
     /**
@@ -322,16 +404,23 @@ final class SetupChecklist {
         OwnWindowTouches.show(new AlertDialog.Builder(activity)
                 .setTitle("Switch greyed out?")
                 .setMessage(GREYED_HELP)
-                .setPositiveButton("App info", (dialog, which) -> RestrictedSettingsGuide.appInfo(activity, target,
-                        this::open))
+                .setPositiveButton("App info", (dialog, which) -> appInfo(target))
                 .setNegativeButton(a11y ? "Accessibility" : "Notification access", (dialog, which) -> openAccess(target))
                 .setNeutralButton("Cancel", null));
     }
 
     /** An access's own page, as a step's Fix opens it: the page needs no toast, the list says where to look. */
     private void openAccess(RestrictedSettingsGuide.Access access) {
-        if (access == RestrictedSettingsGuide.Access.ACCESSIBILITY) openAccessibility(null, FIND_IN_LIST);
-        else openListener(null, FIND_LISTENER);
+        if (access == RestrictedSettingsGuide.Access.ACCESSIBILITY) turnOn(access, null, FIND_IN_LIST);
+        else turnOn(access, null, FIND_LISTENER);
+    }
+
+    /** An access's page, opened to turn it on: noted, so coming back with it on opens the next step. */
+    private void turnOn(RestrictedSettingsGuide.Access access, String onPage, String inList) {
+        prefs().edit().putString(TURNING_ON, access.name()).putLong(TURNING_ON_AT, System.currentTimeMillis())
+                .apply();
+        if (access == RestrictedSettingsGuide.Access.ACCESSIBILITY) openAccessibility(onPage, inList);
+        else openListener(onPage, inList);
     }
 
     /**

@@ -151,7 +151,13 @@ public class SetupChecklistTest extends AndroidAdapterTestBase {
         }
     }
 
-    @Test public void aSideloadLeadsWithRestrictedSettingsThenReturnsToTheSwitchItWasFor() {
+    /**
+     * Dillon's stranger-style install met Samsung's "App was denied access" (2026-10-16): the restricted step now walks
+     * through Android's block, each screen opening by itself on the way back. Start tries the switch a tap away
+     * (notification access's own page); back, refused, App info opens, saying where its menu item is; back, allowed,
+     * Accessibility; back with it on, notification access; back with that on, Android's question for alerts.
+     */
+    @Test public void aSideloadIsWalkedThroughAndroidsBlockEachScreenOpeningByItself() {
         sideloaded(PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE);
         restriction(AppOpsManager.MODE_ERRORED);
         try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
@@ -175,39 +181,203 @@ public class SetupChecklistTest extends AndroidAdapterTestBase {
             assertEquals("2", badge(accessibility));
             assertEquals("3", badge(notifications));
 
-            // Not tried yet: Android shows the App info item only after one try, so the switch comes first.
+            // Not tried yet: the walk-through, Android's refusal said before it comes, and one button to start.
             restricted.performClick();
             assertEquals(RestrictedSettingsGuide.TRY_FIRST, message());
-            assertTrue("one line with the exact path", message().contains("App info → ⋮ → Allow restricted settings"));
+            assertTrue(message().contains("Android blocks it the first time"));
+            assertTrue(message().contains("Tap ⋮ at the top right, then Allow restricted settings."));
+            AlertDialog walk = ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals(RestrictedSettingsGuide.START, walk.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString());
+            assertEquals("Not now", walk.getButton(AlertDialog.BUTTON_NEGATIVE).getText().toString());
+            assertEquals("no third choice", View.GONE, walk.getButton(AlertDialog.BUTTON_NEUTRAL).getVisibility());
             press(AlertDialog.BUTTON_POSITIVE);
-            assertEquals(DETAILS, opened().getAction());
+            assertEquals("the switch a tap away", Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS,
+                    opened().getAction());
+            assertEquals(RestrictedSettingsGuide.TRY_ON_PAGE, ShadowToast.getTextOfLatestToast());
 
-            // Android blocked it (its record says the user saw the restriction): the path to allow it.
+            // Refused, as Android's record says: back here, App info opens by itself, saying where the item is.
             restriction(AppOpsManager.MODE_IGNORED);
             activity.pause().resume();
             tick();
-            assertNull("nothing opens by itself", opened());
-            line(content, SetupChecklist.RESTRICTED).performClick();
-            assertEquals(RestrictedSettingsGuide.PATH, message());
-            press(AlertDialog.BUTTON_POSITIVE);
             Intent info = opened();
+            assertNotNull("App info, with no tap", info);
             assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, info.getAction());
             assertEquals("package:" + app.getPackageName(), info.getDataString());
+            assertEquals(RestrictedSettingsGuide.IN_APP_INFO, ShadowToast.getTextOfLatestToast());
+            assertTrue(DiagnosticLog.read(app).contains(
+                    "restricted settings: a switch tried from here stayed off (record tried); App info next"));
 
-            // Allowed in App info and back: the switch it was for opens next, and the step is done.
+            // Allowed in App info and back: Accessibility opens next, and the step is done.
             restriction(AppOpsManager.MODE_ALLOWED);
             activity.pause().resume();
             tick();
             Intent next = opened();
-            assertNotNull("back to the right access setting", next);
+            assertNotNull("on to the switch", next);
             assertEquals(DETAILS, next.getAction());
             assertEquals(SetupChecklist.NOW_ON_PAGE, ShadowToast.getTextOfLatestToast());
             assertNull("success seen on return", line(content, SetupChecklist.RESTRICTED));
             assertNotNull(line(content, SetupChecklist.ACCESSIBILITY));
 
-            // Notification access then opens straight to its page: no restriction stands in the way.
+            // Turned on and back: notification access opens next, its switch no longer blocked.
+            accessibilityOn(true);
+            activity.pause().resume();
+            tick();
+            assertEquals(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS, opened().getAction());
+            assertEquals(SetupChecklist.NOW_LISTENER, ShadowToast.getTextOfLatestToast());
+            assertTrue(DiagnosticLog.read(app).contains("screen reading turned on; notification access next"));
+
+            // Allowed and back: Android's question for alerts, once.
+            listenerAllowed(true);
+            Shadows.shadowOf(app).denyPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+            activity.pause().resume();
+            tick();
+            org.robolectric.shadows.ShadowActivity.PermissionsRequest asked =
+                    Shadows.shadowOf(activity.get()).getLastRequestedPermission();
+            assertNotNull("alerts asked", asked);
+            assertEquals(android.Manifest.permission.POST_NOTIFICATIONS, asked.requestedPermissions[0]);
+            assertTrue(DiagnosticLog.read(app).contains("notification access turned on; alerts asked next"));
+            while (opened() != null) { }
+            activity.pause().resume();
+            tick();
+            assertNull("the walk ends there", opened());
+        } finally {
+            accessibilityOn(false);
+            listenerAllowed(false);
+            Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+        }
+    }
+
+    /**
+     * A try Android's record does not confirm (the user backed out before tapping the switch, say) opens nothing by
+     * itself: App info would have no such item yet. The step's Fix walks through again.
+     */
+    @Test public void aTryAndroidsRecordDoesNotConfirmOpensNothingByItself() {
+        sideloaded(PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE);
+        restriction(AppOpsManager.MODE_ERRORED);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            tick();
+            line(content, SetupChecklist.RESTRICTED).performClick();
+            press(AlertDialog.BUTTON_POSITIVE);
+            assertEquals(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS, opened().getAction());
+            activity.pause().resume();
+            tick();
+            assertNull("no dead end in App info", opened());
+            assertTrue(DiagnosticLog.read(app).contains(
+                    "restricted settings: a switch tried from here stayed off (record restricted)"));
+            line(content, SetupChecklist.RESTRICTED).performClick();
+            assertEquals("still untried, as Android says", RestrictedSettingsGuide.TRY_FIRST, message());
+
+            // Mid-dash, a refused try opens nothing either; the step's Fix then goes straight to App info.
+            press(AlertDialog.BUTTON_POSITIVE);
+            assertNotNull(opened());
+            restriction(AppOpsManager.MODE_IGNORED);
+            Dashing.seen(app);
+            activity.pause().resume();
+            tick();
+            assertNull("a dash is on", opened());
+            ShadowAlertDialog.reset();
+            line(content, SetupChecklist.RESTRICTED).performClick();
+            assertNull("no dialog once Android says it was tried", ShadowAlertDialog.getLatestAlertDialog());
+            assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, opened().getAction());
+            assertEquals(RestrictedSettingsGuide.IN_APP_INFO, ShadowToast.getTextOfLatestToast());
+        } finally {
+            app.getSharedPreferences("dashing", 0).edit().clear().commit();
+            Dashing.forgetCache();
+        }
+    }
+
+    /**
+     * Any install: back from a switch its Fix opened, now on, the next step opens by itself (the other access, then
+     * Android's question for alerts, never asked again once answered); not after ten minutes, mid-dash, for a switch
+     * still off, or for one opened to turn off and on.
+     */
+    @Test public void backFromASwitchTurnedOnTheNextStepOpensByItself() {
+        android.content.SharedPreferences prefs = app.getSharedPreferences(SetupChecklist.PREFS, 0);
+        // Restricted settings found allowed already: a switch still off on return brings no "greyed out?" hint.
+        prefs.edit().putBoolean("restricted_cleared", true).commit();
+        Shadows.shadowOf(app).denyPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            tick();
+            line(content, SetupChecklist.ACCESSIBILITY).performClick();
+            assertEquals(DETAILS, opened().getAction());
+            activity.pause().resume();
+            tick();
+            assertNull("still off: nothing opens", opened());
+
+            line(content, SetupChecklist.ACCESSIBILITY).performClick();
+            assertEquals(DETAILS, opened().getAction());
+            accessibilityOn(true);
+            activity.pause().resume();
+            tick();
+            assertEquals("the other access", Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS,
+                    opened().getAction());
+            assertEquals(SetupChecklist.NOW_LISTENER, ShadowToast.getTextOfLatestToast());
+            activity.pause().resume();
+            tick();
+            assertNull("back without allowing it: nothing more", opened());
+
+            // Left eleven minutes ago: forgotten.
+            unfold(content, 2);
             line(content, SetupChecklist.NOTIFICATIONS).performClick();
             assertEquals(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS, opened().getAction());
+            prefs.edit().putLong("turning_on_at", System.currentTimeMillis()
+                    - RestrictedSettingsGuide.RETURN_WITHIN_MS - 60_000).commit();
+            listenerAllowed(true);
+            activity.pause().resume();
+            tick();
+            assertNull("too long ago", opened());
+            assertNull(Shadows.shadowOf(activity.get()).getLastRequestedPermission());
+
+            // Mid-dash: nothing replaces the page.
+            listenerAllowed(false);
+            activity.pause().resume();
+            tick();
+            line(content, SetupChecklist.NOTIFICATIONS).performClick();
+            assertNotNull(opened());
+            listenerAllowed(true);
+            Dashing.seen(app);
+            activity.pause().resume();
+            tick();
+            assertNull("a dash is on", Shadows.shadowOf(activity.get()).getLastRequestedPermission());
+            app.getSharedPreferences("dashing", 0).edit().clear().commit();
+            Dashing.forgetCache();
+
+            // Allowed and back: Android's question for alerts.
+            listenerAllowed(false);
+            activity.pause().resume();
+            tick();
+            line(content, SetupChecklist.NOTIFICATIONS).performClick();
+            assertNotNull(opened());
+            listenerAllowed(true);
+            activity.pause().resume();
+            tick();
+            org.robolectric.shadows.ShadowActivity.PermissionsRequest asked =
+                    Shadows.shadowOf(activity.get()).getLastRequestedPermission();
+            assertNotNull("alerts asked", asked);
+            activity.get().onRequestPermissionsResult(asked.requestCode, asked.requestedPermissions,
+                    new int[] {android.content.pm.PackageManager.PERMISSION_DENIED});
+            while (opened() != null) { }
+
+            // Refused, then notification access turned off and on again from here: not asked a second time.
+            listenerAllowed(false);
+            activity.pause().resume();
+            tick();
+            line(content, SetupChecklist.NOTIFICATIONS).performClick();
+            assertNotNull(opened());
+            listenerAllowed(true);
+            activity.pause().resume();
+            tick();
+            assertSame("a refusal is the user's answer", asked,
+                    Shadows.shadowOf(activity.get()).getLastRequestedPermission());
+            assertNull(opened());
+        } finally {
+            accessibilityOn(false);
+            listenerAllowed(false);
+            Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+            app.getSharedPreferences("dashing", 0).edit().clear().commit();
+            Dashing.forgetCache();
         }
     }
 
@@ -233,10 +403,11 @@ public class SetupChecklistTest extends AndroidAdapterTestBase {
             line(content, SetupChecklist.RESTRICTED).performClick();
             assertEquals(RestrictedSettingsGuide.TRY_FIRST, message());
             press(AlertDialog.BUTTON_POSITIVE);
-            assertEquals("the switch, tried", DETAILS, opened().getAction());
+            assertEquals("the switch, tried", Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS,
+                    opened().getAction());
             activity.pause().resume();
             tick();
-            assertNull(opened());
+            assertNull("the record says nothing: no App info on this app's word alone", opened());
 
             // Allowed in App info from the launcher, as offerfilter.org/install says; back here, Fix again.
             line(content, SetupChecklist.RESTRICTED).performClick();
@@ -271,9 +442,15 @@ public class SetupChecklistTest extends AndroidAdapterTestBase {
             View content = activity.get().findViewById(android.R.id.content);
             tick();
             line(content, SetupChecklist.RESTRICTED).performClick();
-            press(AlertDialog.BUTTON_NEUTRAL);
-            assertEquals("App info, for one who tried before", Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    opened().getAction());
+            press(AlertDialog.BUTTON_POSITIVE);
+            assertEquals(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS, opened().getAction());
+            activity.pause().resume();
+            tick();
+            line(content, SetupChecklist.RESTRICTED).performClick();
+            assertEquals(RestrictedSettingsGuide.PATH, message());
+            press(AlertDialog.BUTTON_POSITIVE);
+            assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, opened().getAction());
+            assertEquals(RestrictedSettingsGuide.IN_APP_INFO, ShadowToast.getTextOfLatestToast());
             activity.pause().resume();
             tick();
             assertEquals("back from App info: the switch it was for", DETAILS, opened().getAction());
@@ -335,17 +512,14 @@ public class SetupChecklistTest extends AndroidAdapterTestBase {
             unfold(content, 2);
             line(content, SetupChecklist.NOTIFICATIONS).performClick();
             assertEquals("for notification access too", RestrictedSettingsGuide.TRY_FIRST, message());
-            press(AlertDialog.BUTTON_NEUTRAL);
-            assertEquals("App info at once, for one who tried before", Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    opened().getAction());
+            press(AlertDialog.BUTTON_POSITIVE);
+            assertEquals(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS, opened().getAction());
 
-            // The user allowed it and turned screen reading on from there: proof the restriction lifted.
+            // The user allowed it in App info on their own and turned screen reading on from there: proof the
+            // restriction lifted.
             accessibilityOn(true);
             activity.pause().resume();
             tick();
-            assertEquals("back to the notification page it was for", Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS,
-                    opened().getAction());
-            assertEquals(SetupChecklist.NOW_LISTENER, ShadowToast.getTextOfLatestToast());
             assertNull(line(content, SetupChecklist.RESTRICTED));
             assertTrue(DiagnosticLog.read(app).contains("restricted settings allowed: an access turned on"));
             accessibilityOn(false);
@@ -410,7 +584,8 @@ public class SetupChecklistTest extends AndroidAdapterTestBase {
             tick();
             line(content, SetupChecklist.RESTRICTED).performClick();
             assertEquals(RestrictedSettingsGuide.TRY_FIRST_MAYBE, message());
-            assertTrue(message().startsWith("Android may block this switch"));
+            assertTrue(message().startsWith("Apps from outside a store may need one extra step"));
+            assertTrue(message().contains("If Android blocks it"));
         }
     }
 
@@ -424,7 +599,9 @@ public class SetupChecklistTest extends AndroidAdapterTestBase {
             tick();
             assertNotNull(line(content, SetupChecklist.RESTRICTED));
             line(content, SetupChecklist.RESTRICTED).performClick();
-            assertEquals(RestrictedSettingsGuide.PATH, message());
+            assertNull("tried, as Android says: no dialog", ShadowAlertDialog.getLatestAlertDialog());
+            assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, opened().getAction());
+            assertEquals(RestrictedSettingsGuide.IN_APP_INFO, ShadowToast.getTextOfLatestToast());
         } finally {
             accessibilityOn(false);
         }
@@ -546,6 +723,15 @@ public class SetupChecklistTest extends AndroidAdapterTestBase {
             int toasts = ShadowToast.shownToastCount();
             line(content, SetupChecklist.RESTRICTED).performClick();
             press(AlertDialog.BUTTON_POSITIVE);
+            assertEquals("the switch a tap away", Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS,
+                    opened().getAction());
+            assertEquals(RestrictedSettingsGuide.TRY_ON_PAGE, ShadowToast.getTextOfLatestToast());
+            assertEquals(toasts + 1, ShadowToast.shownToastCount());
+            activity.pause().resume();
+            tick();
+            toasts = ShadowToast.shownToastCount();
+            line(content, SetupChecklist.RESTRICTED).performClick();
+            press(AlertDialog.BUTTON_NEUTRAL);
             assertEquals("the list", Settings.ACTION_ACCESSIBILITY_SETTINGS, opened().getAction());
             assertEquals(SetupChecklist.FIND_IN_LIST, ShadowToast.getTextOfLatestToast());
             assertEquals(toasts + 1, ShadowToast.shownToastCount());
@@ -576,6 +762,39 @@ public class SetupChecklistTest extends AndroidAdapterTestBase {
             assertEquals(toasts + 1, ShadowToast.shownToastCount());
         } finally {
             accessibilityOn(false);
+        }
+    }
+
+    /**
+     * Where the walk-through's switch is not a tap away, its toast says where to look: notification access's list on a
+     * phone without the listener's own page, Accessibility's list once notification access is on.
+     */
+    @Test @Config(shadows = GuardedPages.class)
+    public void aTryInAListSaysWhichEntryToTap() {
+        GuardedPages.refused.add(DETAILS);
+        GuardedPages.refused.add(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS);
+        sideloaded(PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE);
+        restriction(AppOpsManager.MODE_ERRORED);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            tick();
+            line(content, SetupChecklist.RESTRICTED).performClick();
+            press(AlertDialog.BUTTON_POSITIVE);
+            assertEquals(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS, opened().getAction());
+            assertEquals(RestrictedSettingsGuide.TRY_IN_LIST, ShadowToast.getTextOfLatestToast());
+            assertTrue(RestrictedSettingsGuide.TRY_IN_LIST.contains(SetupChecklist.LISTENER_NAME));
+        }
+        app.getSharedPreferences(SetupChecklist.PREFS, 0).edit().clear().commit();
+        listenerAllowed(true);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = activity.get().findViewById(android.R.id.content);
+            tick();
+            line(content, SetupChecklist.RESTRICTED).performClick();
+            press(AlertDialog.BUTTON_POSITIVE);
+            assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, opened().getAction());
+            assertEquals(RestrictedSettingsGuide.TRY_IN_ACCESSIBILITY, ShadowToast.getTextOfLatestToast());
+        } finally {
+            listenerAllowed(false);
         }
     }
 

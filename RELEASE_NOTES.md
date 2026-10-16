@@ -1,3 +1,14 @@
+## 0.6.25 — Setup opens each of Android's screens for you
+
+Version 0.6.25 (code 117) answers the owner's message of 16 October 2026, sent with a screenshot of his Samsung's Accessibility list, Offer Filter greyed out under Android's "App was denied access": "we need to streamline this process and make it user friendly".
+
+- **Allow restricted settings walks you through.** Its Fix shows one short dialog: Android blocks apps from the web the first time, so tap the switch, close Android's message and come back, then tap ⋮ at the top right and Allow restricted settings. Start opens notification access's own page, where the switch is a tap away (Accessibility's list hides the app a level down). Back from Android's refusal, App info opens by itself, with a toast saying where its menu item is; back from App info, Accessibility opens. Before, you came back to the homepage after the refusal, tapped Fix again, read a second dialog and opened App info yourself, with no word there on what to tap.
+- **The next step opens by itself.** Back from an access you just turned on, the other one opens, then Android asks to allow alerts (only if it never asked). Nothing opens when you come back without doing the step, more than 10 minutes later, during a dash, beside another app or behind the notice.
+- **Diagnostics** name each step of the walk ("restricted settings: a switch tried from here stayed off (record tried); App info next" and so on), so a report shows where setup stopped.
+- Nothing in the notice, the Terms or Privacy changed, so the notice stays 28. offerfilter.org/install's restricted settings step is rewritten to match.
+
+No phone has run this build.
+
 ## 0.6.24 — An offer you take right after the app's declines counts
 
 Version 0.6.24 (code 116) answers the owner's question of 15 October 2026 on 0.6.23, sent with a screenshot of his homepage: "since I have learn on shouldn't a 109% offer raise my mins, not just autopilot?"
