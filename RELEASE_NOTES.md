@@ -1,3 +1,13 @@
+## 0.6.24 — An offer you take right after the app's declines counts
+
+Version 0.6.24 (code 116) answers the owner's question of 15 October 2026 on 0.6.23, sent with a screenshot of his homepage: "since I have learn on shouldn't a 109% offer raise my mins, not just autopilot?"
+
+- **An accept right after the app's declines counts, and teaches.** At 4:56 AM he took a $9.45 offer (0.6 mi, 13 min) right after the app declined two others. Its $43.62 an hour beat his learned $41.84, so it should have raised his learned per hour, but the app never counted it as accepted. It didn't see his Accept tap, and without one it counts an offer only when it read Dasher's wait for offers before it. The wait for offers was there (his reports show it read half a second after each decline), but a split-second screen as the offer drew in, neither the wait nor a delivery, made the app forget it. Now such a screen makes the app forget the wait only once it has stayed 5 seconds, as the screen after an offer already had to. The 109% offer was the $7.45 at 4:23 AM: it was counted, and it beat none of his learned bests, so it rightly raised none of them.
+- **Why an offer went uncounted.** The diagnostics' outcome evidence line now ends with what the app saw before the offer ("wait_before=seen", "unclear", "offer" and so on), in fixed words only.
+- Nothing in the notice, the Terms or Privacy changed, so the notice stays 28.
+
+No phone has run this build.
+
 ## 0.6.23 — Updates install beside Dasher's home screen
 
 Version 0.6.23 (code 115) answers the owner's message of 15 October 2026 on 0.6.21, sent with a screenshot of Settings above Dasher's Dash button: "in app won't update even though no ongoing dash".

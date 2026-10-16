@@ -343,6 +343,10 @@ final class BundledNotes {
         // 0.6.23 (the owner, 15 October 2026, with every update held beside Dasher's Dash button: "in app won't update
         // even though no ongoing dash").
         release("0.6.23", "Updates install when you're not dashing, even with Dasher's home screen in the other half.");
+        // 0.6.24 (the owner, 15 October 2026: "since I have learn on shouldn't a 109% offer raise my mins, not just
+        // autopilot?"; his 4:56 AM accept, right after two of the app's declines, was never counted).
+        release("0.6.24", "An offer you accept yourself right after the app declines others now counts as accepted, and "
+                + "raises your learned minimums when it beats your best.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

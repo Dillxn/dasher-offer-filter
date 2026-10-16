@@ -24,7 +24,9 @@ import java.util.regex.Pattern;
  * not decline (it passed, or it was left for the user's review) counts as accepted when all of these hold:
  * <ul>
  *   <li>Dasher's wait for offers was read after the offer before it, and before it came (positive evidence the user
- *       was waiting, not delivering); unknown, a restart, or another offer or an unclear screen since, is not;</li>
+ *       was waiting, not delivering); unknown, a restart, another offer since, or a screen of neither since that had
+ *       stayed {@value #SETTLE_MS} ms when it came, is not (one replaced sooner, such as the offer drawing in over the
+ *       wait, is passed over);</li>
  *   <li>no route was stored as it came;</li>
  *   <li>it closed while its countdown still had more than {@value #TIME_LEFT_MS} ms left (the countdown at the last
  *       read, less the time until a read found it gone), so it did not run out;</li>
@@ -378,6 +380,8 @@ final class AcceptedOfferTracker {
         final boolean deliveryBefore;
         /** Dasher's wait for offers was read after the offer before this one, and before this one came. */
         final boolean waitingBefore;
+        /** What was read before it came, in fixed words for the outcome's diagnostics ({@link #waitBefore()}). */
+        final String waitBefore;
         OfferSnapshot line;
         long at;
         int secondsLeft = -1;
@@ -388,13 +392,14 @@ final class AcceptedOfferTracker {
         boolean automaticRequest;
 
         Sighting(String key, OfferSnapshot offer, OfferSnapshot routeAfter, boolean addOn, boolean deliveryBefore,
-                 boolean waitingBefore) {
+                 boolean waitingBefore, String waitBefore) {
             this.key = key;
             this.offer = offer;
             this.routeAfter = routeAfter;
             this.addOn = addOn;
             this.deliveryBefore = deliveryBefore;
             this.waitingBefore = waitingBefore;
+            this.waitBefore = waitBefore;
         }
     }
 
@@ -429,6 +434,15 @@ final class AcceptedOfferTracker {
      * ends on anything else.
      */
     private After lastClear;
+    /**
+     * When the first screen of neither since {@link #lastClear} was read while no offer was watched, else -1. It uses
+     * {@link #lastClear} up once it had stayed {@link #SETTLE_MS} when the next offer came ({@link #clearBefore}); one
+     * replaced sooner is passed over, as after an offer watched (the owner's 15 October 2026 4:56 AM $9.45, taken right
+     * after two of the app's declines, went uncounted when a frame of neither came between the wait and it).
+     */
+    private long neitherSince = -1;
+    /** Why {@link #lastClear} is null, in the fixed words of {@link #waitBefore()}. */
+    private String clearGone = "unknown";
     /** Where Dasher's offer notifications stood as {@link #lastClear} read the wait for offers, else -1. */
     private long waitStamp = -1;
     private final List<Note> notes = new ArrayList<>();
@@ -441,6 +455,7 @@ final class AcceptedOfferTracker {
         final boolean addOn;
         final boolean deliveryBefore;
         final boolean waitingBefore;
+        final String waitBefore;
         final long firstAt;
         long lastAt;
         int secondsLeft = -1;
@@ -467,13 +482,14 @@ final class AcceptedOfferTracker {
         long unclearSince;
 
         Watch(OfferSnapshot line, OfferSnapshot learn, OfferSnapshot routeAfter, boolean addOn,
-              boolean deliveryBefore, boolean waitingBefore, long now) {
+              boolean deliveryBefore, boolean waitingBefore, String waitBefore, long now) {
             this.line = line;
             this.learn = learn;
             this.routeAfter = routeAfter;
             this.addOn = addOn;
             this.deliveryBefore = deliveryBefore;
             this.waitingBefore = waitingBefore;
+            this.waitBefore = waitBefore;
             this.firstAt = now;
             this.lastAt = now;
         }
@@ -510,8 +526,9 @@ final class AcceptedOfferTracker {
     void observeOffer(OfferSnapshot offer, OfferSnapshot routeAfter, boolean addOn, OfferSnapshot line,
                       int secondsLeft, boolean routeStored, long now) {
         String key = key(offer, routeAfter, addOn);
-        // A delivery, the wait for offers or the dash's end read since the last offer: this is a new showing.
-        boolean anew = lastClear != null;
+        // A delivery, the wait for offers or the dash's end read since the last offer: this is a new showing. (A screen
+        // of neither read since leaves it as it was: not a new showing of the offer still on screen.)
+        boolean anew = lastClear != null && neitherSince < 0;
         // A different offer cancels an Accept waiting for its delivery screen; the same offer read again does not.
         if (pending != null && (anew || !key.equals(pending.key))) {
             unconfirmedAutomatic("another offer or a new showing came before delivery confirmation");
@@ -524,7 +541,7 @@ final class AcceptedOfferTracker {
         }
         Sighting s = !anew && visible != null && visible.key.equals(key) ? visible
                 : pending != null ? pending
-                : sighting(key, offer, routeAfter, addOn, routeStored);
+                : sighting(key, offer, routeAfter, addOn, routeStored, now);
         s.line = line;
         s.at = now;
         s.goneAt = -1;
@@ -541,15 +558,62 @@ final class AcceptedOfferTracker {
      * facts yet or the same ones) keeps what came before it; another offer takes what was read since, and uses it up.
      */
     private Sighting sighting(String key, OfferSnapshot offer, OfferSnapshot routeAfter, boolean addOn,
-                              boolean routeStored) {
+                              boolean routeStored, long now) {
         Sighting before = last;
-        boolean again = before != null && lastClear == null && !screenSinceOffer && before.addOn == addOn
+        After clear = clearBefore(now);
+        boolean again = before != null && clear == null && !screenSinceOffer && before.addOn == addOn
                 && (noFacts(before.offer) || offer.agreesWith(before.offer));
-        boolean deliveryBefore = routeStored || (again ? before.deliveryBefore : lastClear == After.ROUTE);
-        boolean waitingBefore = !routeStored && (again ? before.waitingBefore : lastClear == After.WAITING);
-        lastClear = null;
+        boolean deliveryBefore = routeStored || (again ? before.deliveryBefore : clear == After.ROUTE);
+        boolean waitingBefore = !routeStored && (again ? before.waitingBefore : clear == After.WAITING);
+        String waitBefore = routeStored ? "stored_route" : again ? before.waitBefore : waitBefore(clear);
+        used("offer");
         screenSinceOffer = false;
-        return new Sighting(key, offer, routeAfter, addOn, deliveryBefore, waitingBefore);
+        return new Sighting(key, offer, routeAfter, addOn, deliveryBefore, waitingBefore, waitBefore);
+    }
+
+    /**
+     * {@link #lastClear} as an offer coming {@code now} finds it: a screen of neither read since, with no offer watched,
+     * uses it up once it had stayed {@link #SETTLE_MS}. Its words need not have stayed the same: anything but the wait,
+     * a delivery or the dash's end for that long is no wait the offer came during.
+     */
+    private After clearBefore(long now) {
+        if (lastClear != null && neitherSince >= 0 && now - neitherSince >= SETTLE_MS) used("unclear");
+        return lastClear;
+    }
+
+    /** A delivery, the wait for offers or the dash's end was read: what the next offer comes after. */
+    private void cleared(After shown) {
+        lastClear = shown;
+        neitherSince = -1;
+    }
+
+    /** What was read before is used up (by an offer, a screen of neither, a peek or a restart: {@code why}). */
+    private void used(String why) {
+        lastClear = null;
+        neitherSince = -1;
+        clearGone = why;
+    }
+
+    /** The fixed words for what an offer came after ({@link #waitBefore()}). */
+    private String waitBefore(After clear) {
+        if (clear == After.WAITING) return "seen";
+        if (clear == After.ROUTE) return "delivery";
+        if (clear == After.DASH_OVER) return "dash_over";
+        return clearGone;
+    }
+
+    /**
+     * What was read before the offer watched (or the one an Accept tap waits on) came, in fixed words for the outcome's
+     * diagnostics: "seen" (the wait for offers), "delivery", "dash_over", "stored_route", or, with none of those since
+     * the offer before it, why: "offer" (another offer came, or the app declined one, since), "unclear" (a screen of
+     * neither stayed {@link #SETTLE_MS}, or a watch ended on one or on nothing), "peek" (a peek began without the wait
+     * standing), "unknown" (nothing read since a start or a reset). "none" when no offer is followed.
+     */
+    String waitBefore() {
+        Watch w = watch;
+        if (w != null) return w.waitBefore;
+        Sighting s = pending;
+        return s != null ? s.waitBefore : "none";
     }
 
     private static boolean noFacts(OfferSnapshot offer) {
@@ -677,7 +741,7 @@ final class AcceptedOfferTracker {
                     : DecisionLog.StepKind.NOT_LEARNED, s.line, why);
             return null;
         }
-        lastClear = After.ROUTE;
+        cleared(After.ROUTE);
         visible = null;
         return new Acceptance(s.offer, s.routeAfter, s.addOn, s.line, true);
     }
@@ -730,17 +794,21 @@ final class AcceptedOfferTracker {
         Sighting s = visible;
         boolean deliveryBefore;
         boolean waitingBefore;
+        String waitBefore;
         if (s != null && s.key.equals(key(learn, routeAfter, addOn))) {
             deliveryBefore = s.deliveryBefore || routeStored;
             waitingBefore = s.waitingBefore && !routeStored;
+            waitBefore = routeStored ? "stored_route" : s.waitBefore;
         } else {
-            deliveryBefore = routeStored || lastClear == After.ROUTE;
-            waitingBefore = !routeStored && lastClear == After.WAITING;
+            After clear = clearBefore(now);
+            deliveryBefore = routeStored || clear == After.ROUTE;
+            waitingBefore = !routeStored && clear == After.WAITING;
+            waitBefore = routeStored ? "stored_route" : waitBefore(clear);
         }
         // This offer uses up what was read before it.
-        lastClear = null;
+        used("offer");
         screenSinceOffer = false;
-        Watch next = new Watch(line, learn, routeAfter, addOn, deliveryBefore, waitingBefore, now);
+        Watch next = new Watch(line, learn, routeAfter, addOn, deliveryBefore, waitingBefore, waitBefore, now);
         seen(next, secondsLeft, now);
         watch = next;
     }
@@ -768,8 +836,10 @@ final class AcceptedOfferTracker {
      */
     boolean peekBegan() {
         long now = offerStamp.getAsLong();
-        boolean waited = lastClear == After.WAITING && waitStamp >= 0 && now >= 0 && now == waitStamp + 1;
-        if (!waited) lastClear = null;
+        // A screen of neither read since the wait leaves it standing for no peek, however soon the peek came.
+        boolean waited = lastClear == After.WAITING && neitherSince < 0 && waitStamp >= 0 && now >= 0
+                && now == waitStamp + 1;
+        if (!waited) used("peek");
         Watch w = watch;
         if (w != null && w.declinePending) w.otherSince = true;
         return waited;
@@ -789,7 +859,7 @@ final class AcceptedOfferTracker {
     /** Offer Filter requested a decline of this offer (or the user took it over during one): it is not watched. */
     void offerDeclinedByApp(OfferSnapshot line, boolean addOn, long now) {
         // An offer came: the wait read before it is used up.
-        lastClear = null;
+        used("offer");
         Watch w = watch;
         if (w == null) return;
         resolve(w, w.sameOffer(line, addOn) ? End.DECLINED_BY_APP : End.ANOTHER_OFFER, now);
@@ -887,14 +957,15 @@ final class AcceptedOfferTracker {
         After shown = endOfDash(labels,
                 acceptanceScreen(labels, offerFacts, read, completeWithoutControls, original), now);
         if (shown == After.ROUTE || shown == After.WAITING || shown == After.DASH_OVER) {
-            lastClear = shown;
+            cleared(shown);
             waitStamp = shown == After.WAITING ? offerStamp.getAsLong() : -1;
         }
         if (shown != After.EMPTY && shown != After.NEW_OFFER && shown != After.OFFER_FACTS) screenSinceOffer = true;
         if (w == null) {
             // A wait read before an unrelated/unclear screen is not proof the user was waiting when the next offer
-            // arrived. With a watched offer the existing settling path makes this decision instead.
-            if (shown == After.UNCLEAR) lastClear = null;
+            // arrived, once that screen had stayed SETTLE_MS (clearBefore): one replaced sooner, such as the next offer
+            // drawing in over the wait, is passed over. With a watched offer the existing settling path decides instead.
+            if (shown == After.UNCLEAR && lastClear != null && neitherSince < 0) neitherSince = now;
             return;
         }
         if (w.leftAt < 0) w.leftAt = now;
@@ -983,7 +1054,7 @@ final class AcceptedOfferTracker {
         boolean madeItGo = at <= dashGoneAt && dashGoneAt - at <= QUESTION_AGE_MS;
         forgetEndQuestion();
         if (!madeItGo) return;
-        lastClear = After.DASH_OVER;
+        cleared(After.DASH_OVER);
         screenSinceOffer = true;
         Watch w = watch;
         if (w != null && w.leftAt >= 0) resolve(w, End.DASH_OVER, Math.max(at, dashGoneAt));
@@ -1095,7 +1166,9 @@ final class AcceptedOfferTracker {
     private void resolve(Watch w, End end, long now) {
         watch = null;
         // Anything but a clear screen leaves unknown what Dasher shows now: the next offer needs the wait read again.
-        if (end != End.WAITING && end != End.DASH_OVER && end != End.ROUTE) lastClear = null;
+        if (end != End.WAITING && end != End.DASH_OVER && end != End.ROUTE) {
+            used(end == End.UNCLEAR || end == End.TIMEOUT ? "unclear" : "offer");
+        }
         String when = w.leftAt >= 0 && end.screen() ? " " + seconds(now - w.leftAt) + " s after it left" : "";
         List<String> screen = end == End.UNCLEAR ? w.unclear : null;
         if (w.declinePending) {
@@ -1285,7 +1358,7 @@ final class AcceptedOfferTracker {
         screenSinceOffer = false;
         clearPending();
         watch = null;
-        lastClear = null;
+        used("unknown");
         notes.clear();
         forgetEndQuestion();
     }

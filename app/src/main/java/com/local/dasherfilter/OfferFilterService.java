@@ -8785,7 +8785,8 @@ public final class OfferFilterService extends AccessibilityService {
                 + "; observation=" + (acceptanceObservationEligible ? "eligible" : "blocked")
                 + "; progress_kind=" + AcceptedOfferTracker.progressKind(scan.text)
                 + "; pay_relation=" + acceptedTracker.retainedPayRelation(offer, withParts(scan))
-                + "; money_malformed=" + OfferEvidence.malformedMoney(withParts(scan));
+                + "; money_malformed=" + OfferEvidence.malformedMoney(withParts(scan))
+                + "; wait_before=" + acceptedTracker.waitBefore();
         if (categories.equals(lastOutcomeEvidence)) return;
         lastOutcomeEvidence = categories;
         outcomeEvidenceLines++;

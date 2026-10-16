@@ -18,14 +18,68 @@ import org.junit.Test;
  * report, with made-up names.
  */
 public class AcceptedOfferCloseTest {
-    @Test public void anUnclearScreenBeforeAnyOfferUsesUpTheEarlierWaitingEvidence() {
+    @Test public void anUnclearScreenThatStaysBeforeAnyOfferUsesUpTheEarlierWaitingEvidence() {
         tracker.afterScreen(WAITING, 100);
+        // The pickup of an offer accepted unseen, say: it had stayed 5 s when the next offer came.
         tracker.afterScreen(PICKUP_UNKNOWN, 500);
-        shows(OFFER, 35, 1_000);
-        tracker.afterScreen(DELIVERY, 2_000);
+        shows(OFFER, 35, 500 + AcceptedOfferTracker.SETTLE_MS);
+        assertEquals("unclear", tracker.waitBefore());
+        tracker.afterScreen(DELIVERY, 7_000);
         AcceptedOfferTracker.Note note = only(DecisionLog.StepKind.NOT_LEARNED);
         assertNull(note.accepted);
         assertEquals(AcceptedOfferTracker.WAIT_NOT_SEEN, note.detail);
+    }
+
+    /**
+     * The owner's 15 October 2026 4:56 AM $9.45, taken by hand right after two of the app's declines (each followed by
+     * the wait for offers, as his 4:21 AM report shows Dasher does): a frame of neither came between the wait and the
+     * offer, Dasher's header without its card as the offer drew in (the frame here is made up; his report kept none).
+     * Replaced within moments, it is passed over, as after an offer watched: the wait stands, so the delivery screen
+     * after the offer counts it.
+     */
+    @Test public void aFrameOfNeitherTheNextOfferReplacesSoonerKeepsTheWait() {
+        List<String> header = Arrays.asList("Open Settings", "Help", "$", "0", ".", "This dash");
+        assertEquals(AcceptedOfferTracker.After.UNCLEAR, AcceptedOfferTracker.classify(header));
+        OfferSnapshot first = new OfferSnapshot(750, 10.2, 25, 2);
+        OfferSnapshot second = new OfferSnapshot(670, 6.4, 22, 2);
+        tracker.afterScreen(WAITING, 100);
+        tracker.observeOffer(first, 1_000);
+        tracker.offerDeclinedByApp(first, false, 1_000);
+        tracker.afterScreen(WAITING, 4_000);
+        tracker.observeOffer(second, 11_000);
+        tracker.offerDeclinedByApp(second, false, 11_000);
+        tracker.afterScreen(WAITING, 14_000);
+        tracker.afterScreen(header, 33_000);
+        tracker.afterScreen(Collections.<String>emptyList(), 33_200);
+        shows(OFFER, 35, 33_400);
+        assertEquals("seen", tracker.waitBefore());
+        tracker.afterScreen(DELIVERY, 45_000);
+        assertNotNull(only(DecisionLog.StepKind.ACCEPTED_LEARNED).accepted);
+    }
+
+    @Test public void screensOfNeitherThatLastSettleMsInAllUseItUpWhateverTheirWords() {
+        tracker.afterScreen(WAITING, 100);
+        tracker.afterScreen(PICKUP_UNKNOWN, 1_000);
+        tracker.afterScreen(Collections.<String>emptyList(), 3_000);
+        tracker.afterScreen(CHROME, 4_000);
+        shows(OFFER, 35, 1_000 + AcceptedOfferTracker.SETTLE_MS);
+        assertEquals("unclear", tracker.waitBefore());
+        tracker.afterScreen(DELIVERY, 8_000);
+        assertEquals(AcceptedOfferTracker.WAIT_NOT_SEEN, only(DecisionLog.StepKind.NOT_LEARNED).detail);
+    }
+
+    @Test public void aDeliveryReadBeforeAFrameOfNeitherStillSaysADeliveryWasUnderWay() {
+        // With the Accept tap seen, too: a frame between the delivery screen and the offer leaves the delivery standing.
+        tracker.afterScreen(DELIVERY, 100);
+        tracker.afterScreen(CHROME, 1_000);
+        tracker.observeOffer(STACKED, STACKED, false, STACKED, 35, false, 1_500);
+        assertNotNull(tracker.acceptClicked(3_000));
+        assertEquals("delivery", tracker.waitBefore());
+        assertNull(tracker.observeOtherScreen(Collections.singletonList("Arrived at store"), 4_000));
+        List<AcceptedOfferTracker.Note> notes = tracker.takeNotes();
+        AcceptedOfferTracker.Note last = notes.get(notes.size() - 1);
+        assertEquals(notes.toString(), DecisionLog.StepKind.NOT_LEARNED, last.kind);
+        assertEquals(AcceptedOfferTracker.DELIVERY_UNDER_WAY, last.detail);
     }
 
     @Test public void aFreshWaitAfterTheUnclearScreenRestoresPositiveEvidence() {

@@ -507,14 +507,29 @@ public class BundledNotesTest {
 
     /**
      * 0.6.23 (the owner, 15 October 2026, with every update held beside Dasher's Dash button: "in app won't update even
-     * though no ongoing dash"): one line. Nothing the notice says changed, so it stays 28.
+     * though no ongoing dash"): one line. Nothing the notice says changed, so it stayed 28.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.23", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(28, Consent.VERSION);
+    @Test public void release0623SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.23");
         assertEquals(Collections.singletonList(
                 "Updates install when you're not dashing, even with Dasher's home screen in the other half."), lines);
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
+    }
+
+    /**
+     * 0.6.24 (the owner, 15 October 2026: "since I have learn on shouldn't a 109% offer raise my mins, not just
+     * autopilot?"; his 4:56 AM accept right after two of the app's declines was never counted): one line. Nothing the
+     * notice says changed, so it stays 28.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.24", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(28, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.24");
+        assertEquals(Collections.singletonList("An offer you accept yourself right after the app declines others now "
+                + "counts as accepted, and raises your learned minimums when it beats your best."), lines);
         for (String line : lines) {
             assertTrue(line, line.length() <= 160);
             assertFalse(line, line.contains("Offer Filter"));

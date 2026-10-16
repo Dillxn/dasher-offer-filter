@@ -32,8 +32,11 @@ import org.robolectric.shadows.ShadowSystemClock;
  * the learned bests his homepage showed then: $9.88 a stop (one order of $19.75; the chart's "Pay $21.54 ref" at
  * Autopilot's 109%), $3.73 a mile and $41.84 an hour, over his own $4.50 a stop, $2.70 a mile and $42 an hour, in area
  * mode. Its pay per stop is under the learned best and its 0.6 mi teaches no rate per mile, but its $43.62 an hour beats
- * both: the accept raises the learned per hour, full screen, in split screen and with Autopilot on. On his phone it did
- * not ("since I have learn on shouldn't a 109% offer raise my mins, not just autopilot?").
+ * both, so its acceptance raises the learned per hour. He asked "since I have learn on shouldn't a 109% offer raise my
+ * mins, not just autopilot?": the 109% offer was his $7.45 at 4:23 AM, which beat no learned best; this one came right
+ * after two of the app's declines and went uncounted ("Dasher's wait for offers wasn't seen before it"), so it taught
+ * nothing. Taken with a seen Accept tap it teaches, full screen, in split screen and with Autopilot on; taken without one
+ * (his case) it teaches once a frame of neither between the wait and the offer is passed over (0.6.24).
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {35, 36}, instrumentedPackages = {"com.local.dasherfilter"})
@@ -42,6 +45,8 @@ public class AcceptanceLearningFieldTest {
     Application app;
     ServiceController<OfferFilterService> controller;
     AccessibilityNodeInfo accept;
+    AccessibilityNodeInfo decline;
+    AccessibilityNodeInfo confirm;
     /** Offer Filter's half above Dasher's, its own window active, as on the owner's screenshot. */
     boolean split;
 
@@ -93,14 +98,46 @@ public class AcceptanceLearningFieldTest {
         for (String label : labels) Shadows.shadowOf(root).addChild(node(label, false)); return root;
     }
     private void offer() {
-        AccessibilityNodeInfo root = screen("$9.45", "incl. tips", "2 stops (0.6 mi) • 13 min", "0:35");
-        Shadows.shadowOf(root).addChild(button("Decline")); accept = button("Accept");
+        offer("$9.45", "2 stops (0.6 mi) • 13 min", "0:35");
+    }
+    private void offer(String pay, String route, String countdown) {
+        AccessibilityNodeInfo root = screen(pay, "incl. tips", route, "Corner Burger", "Customer dropoff",
+                "Guaranteed earnings for completing the offer.", countdown);
+        decline = button("Decline"); accept = button("Accept");
+        Shadows.shadowOf(root).addChild(decline);
         Shadows.shadowOf(root).addChild(accept); show(root);
     }
     private void waiting() { show(screen("This dash", "You're in a good place to wait for offers")); }
+    /** Dasher's wait for offers as his 4:21 AM report shows it, half a second after the app's decline closed. */
+    private void finding() {
+        show(screen("Open Settings", "Help", "$", "0", ".", "This dash", "Finding offers..",
+                "You're more likely to get offers at hotspots.", "Zone offer wait", "2-10 min", "Dash Preferences",
+                "Expand Button", "Safety tools", "Sam T", "500 orders completed", "Home", "Schedule", "Account"));
+    }
+    /** A frame of neither as the next offer draws in: Dasher's header without its card (made up; none was kept). */
+    private void drawingIn() {
+        show(screen("Open Settings", "Help", "$", "0", ".", "This dash"));
+    }
     private void pickup() {
         show(screen("Current dash", "Pick up by 5:04 AM", "Safety", "Help", "Pickup from", "Corner Burger",
                 "12 Elm St", "Directions", "Arrived at store"));
+    }
+    /** An offer under his rules: the app's Decline, Dasher's question as his report shows it, its confirmation. */
+    private void declinedByTheApp(String pay, String route) {
+        offer(pay, route, "0:35");
+        assertEquals("the app declines " + pay, 1, Shadows.shadowOf(decline).getPerformedActions().size());
+        later(1_000);
+        AccessibilityNodeInfo root = screen("Are you sure you want to decline this offer?",
+                "Does not lower acceptance rate", "7%",
+                "Maintaining a high acceptance rate helps you qualify for Dasher Rewards.");
+        confirm = node("Decline offer", true);
+        Shadows.shadowOf(root).addChild(confirm);
+        Shadows.shadowOf(root).addChild(node("0:05", false));
+        Shadows.shadowOf(root).addChild(node("View offer details", true));
+        show(root);
+        assertEquals("the app confirms its decline of " + pay, 1, Shadows.shadowOf(confirm).getPerformedActions().size());
+        later(500);
+        finding();
     }
     private static AccessibilityWindowInfo window(int id, int type, AccessibilityNodeInfo root, boolean active,
             Rect bounds) {
@@ -122,6 +159,7 @@ public class AcceptanceLearningFieldTest {
             Shadows.shadowOf(controller.get().getWindows().get(0)).setFocused(true);
             AccessibilityEvent event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
             event.setPackageName("com.doordash.driverapp"); controller.get().onAccessibilityEvent(event);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
             return;
         }
         AccessibilityNodeInfo ours = AccessibilityNodeInfo.obtain(new View(app));
@@ -135,6 +173,11 @@ public class AcceptanceLearningFieldTest {
         event.setPackageName("com.doordash.driverapp");
         ((ShadowAccessibilityRecord) Shadow.extract(event)).setWindowId(303);
         controller.get().onAccessibilityEvent(event);
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+    }
+    private void later(long ms) {
+        ShadowSystemClock.advanceBy(Duration.ofMillis(ms));
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
     }
     private void tapAccept() {
         AccessibilityEvent tap = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_CLICKED);
@@ -148,6 +191,29 @@ public class AcceptanceLearningFieldTest {
         pickup();
         Shadows.shadowOf(Looper.getMainLooper()).idle();
     }
+    /**
+     * His 4:55–4:56 AM in split screen: the wait, $7.50 and $6.70 declined by the app (the wait for offers after each),
+     * a frame of neither {@code frameMs} before the $9.45, and his hand: no tap seen, the offer closing with time left
+     * into its pickup.
+     */
+    private void takeTheFieldOfferAfterTwoDeclines(long frameMs) {
+        split = true;
+        finding();
+        later(5_000);
+        declinedByTheApp("$7.50", "2 stops (10.2 mi) • 25 min");
+        later(8_000);
+        declinedByTheApp("$6.70", "2 stops (6.4 mi) • 22 min");
+        later(20_000);
+        drawingIn();
+        later(frameMs);
+        offer();
+        assertTrue("it passes", Shadows.shadowOf(decline).getPerformedActions().isEmpty());
+        later(10_000);
+        offer("$9.45", "2 stops (0.6 mi) • 13 min", "0:25");
+        later(1_000);
+        pickup();
+        later(1_000);
+    }
     private void assertPerHourLearned() {
         AcceptedFloors learned = FilterStore.load(app).accepted;
         assertEquals("its $43.62 an hour beats the $41.84 learned", 945, learned.minutePay);
@@ -158,6 +224,10 @@ public class AcceptanceLearningFieldTest {
         assertTrue(DiagnosticLog.read(app).contains(
                 "[learner] manual acceptance: learned; the learned minimums rose (Adopt on the homepage)"));
         assertNotNull("the homepage's note, with Adopt", FilterStore.learnedRaise(app));
+    }
+    private String history() {
+        DecisionLog.flush();
+        return DecisionLog.report(app, 10);
     }
 
     /** The seeded bests are the ones his homepage drew, and the offer scored 178% under them, not 109%. */
@@ -188,5 +258,28 @@ public class AcceptanceLearningFieldTest {
         acceptTheFieldOffer();
         assertPerHourLearned();
         assertTrue(DiagnosticLog.read(app).contains("floor 150%"));
+    }
+
+    /** His case: no tap seen, the offer right after two of the app's declines, a frame of neither as it drew in. */
+    @Test public void takenByHandRightAfterTheAppsDeclinesItCountsAndTeaches() {
+        takeTheFieldOfferAfterTwoDeclines(300);
+        String history = history();
+        assertTrue(history, history.contains("Accepted: it closed with about 0:24 left on its countdown, and Dasher "
+                + "showed a delivery screen"));
+        assertFalse(history, history.contains("Dasher's wait for offers wasn't seen before it"));
+        assertTrue(DiagnosticLog.read(app).contains("; wait_before=seen"));
+        assertPerHourLearned();
+    }
+
+    /** A screen of neither that had stayed 5 s when the offer came still leaves it uncounted, and nothing is learned. */
+    @Test public void aScreenOfNeitherThatStayedStillLeavesItUncounted() {
+        takeTheFieldOfferAfterTwoDeclines(AcceptedOfferTracker.SETTLE_MS + 1_000);
+        String history = history();
+        assertTrue(history, history.contains(
+                "Not counted from what followed: Dasher's wait for offers wasn't seen before it"));
+        assertTrue(DiagnosticLog.read(app).contains("; wait_before=unclear"));
+        AcceptedFloors learned = FilterStore.load(app).accepted;
+        assertEquals("the learned per hour stays $41.84", 1534, learned.minutePay);
+        assertEquals(22, learned.minutes);
     }
 }

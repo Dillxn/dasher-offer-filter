@@ -2,6 +2,7 @@ package com.local.dasherfilter;
 
 import org.junit.Test;
 import java.util.Arrays;
+import java.util.List;
 import static org.junit.Assert.*;
 
 public final class AcceptedOfferTrackerTest {
@@ -177,6 +178,21 @@ public final class AcceptedOfferTrackerTest {
         long[] stamp = {41};
         AcceptedOfferTracker tracker = new AcceptedOfferTracker(() -> stamp[0]);
         tracker.afterScreen(Arrays.asList("Arrived at store"), 900);
+        stamp[0] = 42;
+        assertFalse(tracker.peekBegan());
+        OfferSnapshot offer = new OfferSnapshot(1750, 16.6, 34, 2);
+        tracker.observeOffer(offer, offer, false, offer, 30, false, 1000);
+        assertFalse(tracker.waitedFor(offer));
+    }
+
+    /** A screen of neither since the wait (passed over for an offer read moments later) still forgets it for a peek. */
+    @Test public void aScreenOfNeitherSinceTheWaitForgetsItAtAPeekAsBefore() {
+        long[] stamp = {41};
+        AcceptedOfferTracker tracker = new AcceptedOfferTracker(() -> stamp[0]);
+        tracker.afterScreen(Arrays.asList("Finding offers"), 900);
+        List<String> neither = Arrays.asList("Heading to Store A", "Store A", "Order for Sam");
+        assertEquals(AcceptedOfferTracker.After.UNCLEAR, AcceptedOfferTracker.classify(neither));
+        tracker.afterScreen(neither, 950);
         stamp[0] = 42;
         assertFalse(tracker.peekBegan());
         OfferSnapshot offer = new OfferSnapshot(1750, 16.6, 34, 2);
