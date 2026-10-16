@@ -13,9 +13,11 @@ import android.widget.TextView;
  * Setup's page (0.6.26), the whole screen while {@link SetupFlow} has a step to show: a strip of sky with the step's
  * title (through the first run's walk, "2 of 5" over it) and the mascot, the step's few words, one button, at most one
  * quiet link, and at the foot "Stuck? Send feedback". Nothing else: the homepage shows once Offer Filter can filter
- * (the owner: "all ui on screen needs to be justified by what is currently functional"). It takes every touch, so
- * nothing behind it can be reached. Built once; a step's words and buttons are made only when they change, and
- * screen readers hear each new step's title.
+ * (the owner: "all ui on screen needs to be justified by what is currently functional"). The one exception is
+ * auto-decline's own toggle at the foot, Pause auto-decline (Resume once paused), while screen reading runs with a rule
+ * saved: auto-decline goes on behind the page then (background offers off or reconnecting, mid-dash too), and the
+ * user's touch always wins. It takes every touch, so nothing behind it can be reached. Built once; a step's words and
+ * buttons are made only when they change, and screen readers hear each new step's title.
  */
 final class SetupPage {
     /** A button or link tapped on the step shown. */
@@ -24,6 +26,9 @@ final class SetupPage {
     }
 
     static final String STUCK = "Stuck? Send feedback";
+    /** The mascot's own words for auto-decline's toggle (MainActivity's hero). */
+    static final String PAUSE = "Pause auto-decline";
+    static final String RESUME = "Resume auto-decline";
 
     final ScrollView view;
     private final Ui ui;
@@ -33,11 +38,16 @@ final class SetupPage {
     private final LinearLayout words;
     /** The step's button and its link, made with their words, so no button is ever without a label. */
     private final LinearLayout actions;
+    /** Auto-decline's Pause or Resume, made with its words like every button here, shown only while it works. */
+    private final Button toggle;
     private SetupFlow.Page shown;
     private String shownKey = "";
 
-    /** @param stuck the foot's "Stuck? Send feedback" */
-    SetupPage(Context context, Ui ui, Act act, Runnable stuck) {
+    /**
+     * @param toggleAutoDecline the foot's Pause or Resume, as the mascot's tap
+     * @param stuck the foot's "Stuck? Send feedback"
+     */
+    SetupPage(Context context, Ui ui, Act act, Runnable toggleAutoDecline, Runnable stuck) {
         this.ui = ui;
         this.act = act;
         LinearLayout page = ui.column();
@@ -69,6 +79,12 @@ final class SetupPage {
         View spacer = new View(context);
         spacer.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         page.addView(spacer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        toggle = ui.link(PAUSE, toggleAutoDecline);
+        toggle.setVisibility(View.GONE);
+        LinearLayout.LayoutParams toggleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        toggleParams.gravity = Gravity.CENTER_HORIZONTAL;
+        page.addView(toggle, toggleParams);
         Button help = ui.link(STUCK, stuck);
         LinearLayout.LayoutParams helpParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -128,6 +144,15 @@ final class SetupPage {
         // Screen readers hear the new step's title as the page changes.
         view.setAccessibilityPaneTitle(page.title);
         if (newStep) view.scrollTo(0, 0);
+    }
+
+    /**
+     * Auto-decline's toggle at the foot: {@link #PAUSE} or {@link #RESUME} while screen reading runs with a rule saved,
+     * or none (null) while nothing could be declined.
+     */
+    void showToggle(String label) {
+        toggle.setVisibility(label == null ? View.GONE : View.VISIBLE);
+        if (label != null && !label.contentEquals(toggle.getText())) toggle.setText(label);
     }
 
     boolean shown() {

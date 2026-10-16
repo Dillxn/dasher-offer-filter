@@ -374,7 +374,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         setupPage = new SetupPage(this, ui, (step, action) -> {
             setupFlow.act(step, action);
             refresh();
-        }, this::stuckInSetup);
+        }, this::toggleAutoDecline, this::stuckInSetup);
         root.addView(setupPage.view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
         updatingCover = new UpdatingCover(this, ui, root);
@@ -687,6 +687,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             return;
         }
         setupPage.show(step);
+        setupPage.showToggle(setupToggle());
         if (was) return;
         setupPage.view.setVisibility(View.VISIBLE);
         mainPage.setVisibility(View.GONE);
@@ -1929,8 +1930,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         FilterSettings saved = FilterStore.load(this);
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
         shownState = state;
-        hero.setAction(saved.enabled ? "Pause auto-decline" : saved.hasAnyRule() ? "Resume auto-decline"
-                : "Set up rules");
+        hero.setAction(saved.enabled ? SetupPage.PAUSE : saved.hasAnyRule() ? SetupPage.RESUME : "Set up rules");
         if (splitButton != null) {
             splitButton.setVisibility(DasherSplit.offered(this, dasherInstalled.get()) ? View.VISIBLE : View.GONE);
             String label = DasherSplit.label(this);
@@ -3075,6 +3075,18 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (AreaMap.hasPermission(this)) return;
         locationFromSetup = true;
         requestPermissions(new String[] {Manifest.permission.ACCESS_COARSE_LOCATION}, LOCATION_REQUEST);
+    }
+
+    /**
+     * Setup's page's Pause or Resume (its foot): while screen reading runs with a rule saved, auto-decline goes on
+     * behind the page (only background offers wait), so the mascot's toggle is there too; none while nothing could be
+     * declined (screen reading not running, or no rule yet).
+     */
+    private String setupToggle() {
+        if (!OfferFilterService.isConnected()) return null;
+        FilterSettings saved = FilterStore.load(this);
+        if (!saved.hasAnyRule()) return null;
+        return saved.enabled ? SetupPage.PAUSE : SetupPage.RESUME;
     }
 
     /** Setup page's "Stuck? Send feedback": the feedback form as Usability (diagnostics attached only if chosen). */

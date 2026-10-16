@@ -81,8 +81,8 @@ public class NavigationHeaderTest extends AndroidAdapterTestBase {
     }
 
     /**
-     * A third of a narrow phone beside Dasher, a line to fix taking its room: the map is on its way out (a 360 dp half
-     * keeps it whole), and Navigate in the header still takes the user to the best area.
+     * A third of a narrow phone beside Dasher, a line that needs the user taking its room: the map is on its way out (a
+     * 360 dp half keeps it whole), and Navigate in the header still takes the user to the best area.
      */
     @Test @Config(qualifiers = "w320dp-h240dp-xhdpi")
     public void besideDasherNavigationWorksWithTheMapOnItsWayOut() {
@@ -91,6 +91,8 @@ public class NavigationHeaderTest extends AndroidAdapterTestBase {
         ServiceController<OfferFilterService> service = Robolectric.buildService(OfferFilterService.class).create();
         service.get().onServiceConnected();
         OfferFilterService.sawDasherBeside(SystemClock.uptimeMillis());
+        // A held update: a line under the header, where setup's step stood before 0.6.26.
+        raiseLines(1);
         ActivityController<MainActivity> built = Robolectric.buildActivity(MainActivity.class);
         Shadows.shadowOf(built.get()).setInMultiWindowMode(true);
         try (ActivityController<MainActivity> activity = built.setup()) {

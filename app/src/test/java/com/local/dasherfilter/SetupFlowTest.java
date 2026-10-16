@@ -526,6 +526,36 @@ public class SetupFlowTest extends AndroidAdapterTestBase {
     }
 
     /**
+     * With screen reading running and a rule saved, auto-decline goes on behind setup's page (here background offers
+     * are off, as a listener that drops mid-dash leaves it), so the page carries the mascot's Pause auto-decline, then
+     * Resume; with screen reading stopped nothing can be declined, and the toggle goes.
+     */
+    @Test public void whileAutoDeclineGoesOnBehindSetupItsPauseIsOnThePage() {
+        FilterStore.save(app, FilterSettings.of(true, 1000, 0, 0, 0));
+        readerRunning();
+        listenerAllowed(false);
+        try (ActivityController<MainActivity> activity = Robolectric.buildActivity(MainActivity.class).setup()) {
+            View content = content(activity);
+            tick();
+            assertEquals(SetupFlow.BACKGROUND_TITLE, step(content));
+            tap(content, SetupPage.PAUSE);
+            assertFalse("paused", FilterStore.load(app).enabled);
+            assertTrue("every rule kept", FilterStore.load(app).hasAnyRule());
+            assertEquals("Paused. Nothing will be declined.", ShadowToast.getTextOfLatestToast());
+            assertEquals("the step stays", SetupFlow.BACKGROUND_TITLE, step(content));
+            assertNull(shownButton(content, SetupPage.PAUSE));
+            tap(content, SetupPage.RESUME);
+            assertTrue("on again", FilterStore.load(app).enabled);
+            assertNotNull(shownButton(content, SetupPage.PAUSE));
+            screen.destroy();
+            tick();
+            assertNotNull("setup's page still", step(content));
+            assertNull("screen reading stopped: nothing to pause", shownButton(content, SetupPage.PAUSE));
+            assertNull(shownButton(content, SetupPage.RESUME));
+        }
+    }
+
+    /**
      * Set my own saves nothing: the homepage, auto-decline still off, its knobs beckoning. With the map off, the walk
      * has four steps and no location step; with alerts and location allowed already, it goes straight to the minimums.
      */
