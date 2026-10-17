@@ -128,12 +128,12 @@ final class MinimumsDetails {
                 + "%, never above 100%.");
         boolean[] approximate = {false};
         for (int axis : new int[] {AreaScore.PAY, AreaScore.MILE, AreaScore.MINUTE}) {
-            if (!floors.active[axis] && floors.acceptedCents[axis] == null) continue;
+            if (!floors.active[axis] && floors.acceptedCents()[axis] == null) continue;
             String name = axis == AreaScore.PAY ? "Pay per stop" : axis == AreaScore.MILE ? "Per mile" : "Per hour";
-            lines.add(name + " — saved " + projection(floors.fixedCents[axis], approximate)
-                    + " · learned " + projection(floors.acceptedCents[axis], approximate)
+            lines.add(name + " — saved " + projection(floors.fixedCents()[axis], approximate)
+                    + " · learned " + projection(floors.acceptedCents()[axis], approximate)
                     + (rules.acceptanceLearning ? "" : " (off)")
-                    + " · resolved " + projection(floors.effectiveCents[axis], approximate));
+                    + " · resolved " + projection(floors.effectiveCents()[axis], approximate));
         }
         long required = AreaScore.requiredPay(rules, facts, judgedBar);
         lines.add(required < 0 ? rules.scoreByArea && floors.degenerateArea()

@@ -136,7 +136,7 @@ public class SkylineFitnessTest extends AndroidAdapterTestBase {
     /** What the pay minimum asks of a single order (Dasher's "2 stops") at {@code bar}, rounded up to the cent. */
     private static long singleOrderCents(FilterSettings rules, int bar) {
         java.math.BigDecimal pay = AreaScore.floors(atBar(rules, bar), new OfferSnapshot(null, null, null, 2))
-                .effectiveCents[AreaScore.PAY];
+                .effectiveCents()[AreaScore.PAY];
         return AreaScore.roundedCents(pay, bar);
     }
 

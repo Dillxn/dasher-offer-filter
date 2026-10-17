@@ -39,17 +39,19 @@ final class AreaScore {
     }
 
     /** Saved, observed accepted and currently effective asks of one route. Null means inactive or unread.
-     * Public decimal arrays are display projections; private fractions retain exact decision arithmetic. */
+     * The decimal arrays are display projections, made at their first read (0.6.27: made with every floor, they were
+     * most of Autopilot's planning time, which never reads them); private fractions retain exact decision arithmetic. */
     static final class Floors {
-        final BigDecimal[] fixedCents = new BigDecimal[AXES];
-        final BigDecimal[] acceptedCents = new BigDecimal[AXES];
-        final BigDecimal[] effectiveCents = new BigDecimal[AXES];
         final boolean[] active = new boolean[AXES];
         final boolean missing;
+        private final Fraction[] fixed = new Fraction[AXES];
+        private final Fraction[] accepted = new Fraction[AXES];
         private final Fraction[] effective = new Fraction[AXES];
         /** The least an active axis whose own fact is unread can ask (pay per stop with stops unread: one stop). */
         private final Fraction[] lower = new Fraction[AXES];
         private final int count;
+        /** The saved, accepted and effective projections once read (from any thread: a race makes the same twice). */
+        private volatile BigDecimal[][] projections;
         private Floors(FilterSettings rules, OfferSnapshot offer) {
             int[] saved = rules.minimums();
             boolean unread = false;
@@ -60,13 +62,12 @@ final class AreaScore {
                 boolean learnedSet = axis == PAY ? rules.accepted.highestPayCents > 0
                         : axis == MILE ? rules.accepted.hasPerMile() : rules.accepted.hasPerMinute();
                 active[axis] = saved[axis] > 0 || (rules.acceptanceLearning && learnedSet);
-                fixedCents[axis] = display(fixed);
-                acceptedCents[axis] = display(learned);
+                this.fixed[axis] = fixed;
+                accepted[axis] = learned;
                 if (!active[axis]) continue;
                 axes++;
                 Fraction used = maximum(fixed, rules.acceptanceLearning ? learned : null);
                 effective[axis] = used;
-                effectiveCents[axis] = display(used);
                 if (used == null) {
                     unread = true;
                     if (axis == PAY) lower[axis] = maximum(fraction(fixedFloor(PAY, saved[PAY], 1)),
@@ -75,6 +76,24 @@ final class AreaScore {
             }
             missing = unread;
             count = axes;
+        }
+        /** The saved asks in cents, a display projection. */
+        BigDecimal[] fixedCents() { return projections()[0]; }
+        /** The observed accepted asks in cents, a display projection. */
+        BigDecimal[] acceptedCents() { return projections()[1]; }
+        /** The currently effective asks in cents, a display projection. */
+        BigDecimal[] effectiveCents() { return projections()[2]; }
+        private BigDecimal[][] projections() {
+            BigDecimal[][] made = projections;
+            if (made != null) return made;
+            made = new BigDecimal[3][AXES];
+            for (int axis : MONEY_AXES) {
+                made[0][axis] = display(fixed[axis]);
+                made[1][axis] = display(accepted[axis]);
+                made[2][axis] = display(effective[axis]);
+            }
+            projections = made;
+            return made;
         }
         boolean complete() { return !missing; }
         /** A multi-axis area cannot use a reciprocal of zero as an observed fitness. */

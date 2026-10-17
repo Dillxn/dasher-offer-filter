@@ -234,7 +234,7 @@ public class AcceptanceLearningFieldTest {
     @Test public void theSeededBestsDrawHisChartAndScoreTheOffer() {
         FilterSettings rules = FilterStore.load(app);
         assertEquals(2154, AreaScore.roundedCents(AreaScore.floors(rules, new OfferSnapshot(null, null, null, 2))
-                .effectiveCents[AreaScore.PAY], 109));
+                .effectiveCents()[AreaScore.PAY], 109));
         assertEquals(178, AreaScore.scorePercent(rules, new OfferSnapshot(945, 0.6, 13, 2)));
     }
 

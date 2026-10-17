@@ -80,7 +80,7 @@ public final class AreaLearningScoreTest {
         assertArrayEquals(new int[] {500, 0, 0, 0, 0, 0}, after.minimums());
         assertTrue(resolved.active[AreaScore.MILE]);
         assertTrue(resolved.active[AreaScore.MINUTE]);
-        assertEquals(1001, resolved.effectiveCents[AreaScore.PAY].intValueExact());
+        assertEquals(1001, resolved.effectiveCents()[AreaScore.PAY].intValueExact());
         // Activation changes normalized topology. It is explicitly distinct from fixed-axis monotonicity.
         assertTrue(AreaScore.requiredPay(after, OFFER, 100) < AreaScore.requiredPay(before, OFFER, 100));
         assertTrue(AreaScore.effectiveFloorsRaised(before, after, OFFER));
@@ -149,7 +149,7 @@ public final class AreaLearningScoreTest {
         assertNotEquals(SAVED.rulesKey(), SAVED.withAcceptanceLearning(true).rulesKey());
         assertNotEquals(learned.rulesKey(), learned.withAccepted(AcceptedFloors.NONE).rulesKey());
         assertEquals(learned.rulesKey(), learned.withMinimumScalePercent(70).rulesKey());
-        assertEquals(0, AreaScore.floors(learned, OFFER).fixedCents[0].compareTo(BigDecimal.valueOf(500)));
+        assertEquals(0, AreaScore.floors(learned, OFFER).fixedCents()[0].compareTo(BigDecimal.valueOf(500)));
     }
     @Test public void addOnsStayStrictSavedOnlyEvenWhileStandaloneUsesAreaAndLearning() {
         AddOnOffer addOn=AddOnOffer.parse(null,java.util.Arrays.asList("Add to route", "Total pay $8.00",

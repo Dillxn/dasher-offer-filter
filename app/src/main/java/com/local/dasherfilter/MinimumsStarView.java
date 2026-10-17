@@ -502,11 +502,11 @@ final class MinimumsStarView extends View {
             setRates[axis] = Math.max(0, rates[axis]);
             java.math.BigDecimal ask = AreaScore.fixedFloor(axis, setRates[axis], example);
             if (ask != null && ask.signum() > 0) setCents[axis] = ask.doubleValue();
-            if (floors.acceptedCents[axis] != null && floors.acceptedCents[axis].signum() > 0) {
-                learnedCents[axis] = floors.acceptedCents[axis].doubleValue();
+            if (floors.acceptedCents()[axis] != null && floors.acceptedCents()[axis].signum() > 0) {
+                learnedCents[axis] = floors.acceptedCents()[axis].doubleValue();
             }
-            if (floors.effectiveCents[axis] != null && floors.effectiveCents[axis].signum() > 0) {
-                effectiveCents[axis] = floors.effectiveCents[axis].doubleValue();
+            if (floors.effectiveCents()[axis] != null && floors.effectiveCents()[axis].signum() > 0) {
+                effectiveCents[axis] = floors.effectiveCents()[axis].doubleValue();
             }
         }
         maxStops = Math.max(0, rules.maxStops);

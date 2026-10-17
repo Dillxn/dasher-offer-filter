@@ -217,7 +217,7 @@ final class DecisionChartView extends View {
      * only with a pay minimum, at what it asks of a single order (Dasher's "2 stops") at the bar.
      */
     void setRules(FilterSettings rules) {
-        java.math.BigDecimal pay = AreaScore.floors(rules, SINGLE_ORDER).effectiveCents[AreaScore.PAY];
+        java.math.BigDecimal pay = AreaScore.floors(rules, SINGLE_ORDER).effectiveCents()[AreaScore.PAY];
         long payout = pay == null ? 0 : AreaScore.roundedCents(pay, rules.minimumScalePercent);
         if (minimumScalePercent == rules.minimumScalePercent && areaMode == rules.scoreByArea
                 && payoutMinimumCents == payout) {
