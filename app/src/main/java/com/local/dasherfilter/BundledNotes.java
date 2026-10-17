@@ -366,6 +366,12 @@ final class BundledNotes {
                 + "only once it works.");
         // 0.6.27 (the owner, 17 October 2026: "it should be on area score mode by default").
         release("0.6.27", AREA_BY_DEFAULT);
+        // 0.6.28 (the owner's two reports of 16 October 2026: "was +1 didnt read it", of Dasher's add-on card, and a
+        // "+$3" offer it "didnt read" through several showings, a lifetime "N orders completed" drawn under it).
+        release("0.6.28", "Offers with a +$ amount are read again when Dasher shows \"orders completed\" under "
+                + "them: if even pay plus the +$ misses your minimums, they're declined.",
+                "Dasher's add-on card, such as +$9.40 for +1 stop and +7 min, is read as an add-on to your route; one "
+                + "paying too little for its minutes is declined.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

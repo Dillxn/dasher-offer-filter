@@ -44,6 +44,11 @@ final class OfferParser {
     private static final Pattern DROPOFF_STOPS = Pattern.compile(
             "(?i)^(?:multiple\\s+)?(?:customer\\s+)?drop[ -]?offs?\\s*\\(\\s*([1-9]\\d?)\\s+stops?\\s*\\)$");
     private static final Pattern ORDER_WORD = Pattern.compile("(?i)\\borders?\\b");
+    /**
+     * A lifetime count drawn under the offer, beside a name ("N orders completed" below the offer's Accept and
+     * countdown, the owner's 16 October 2026 report): never a count of this offer's orders.
+     */
+    private static final Pattern COMPLETED_ORDERS = Pattern.compile("(?i)\\d[\\d,]*\\s+orders?\\s+completed");
     private static final Pattern PICKUP_WORD = Pattern.compile("(?i)\\bpick[ -]?ups?\\b");
     private static final Pattern DROPOFF_WORD = Pattern.compile("(?i)\\bdrop[ -]?offs?\\b");
     private static final Pattern METRIC_NUMBER = Pattern.compile("\\d{1,3}(?:\\.\\d{1,2})?");
@@ -342,6 +347,9 @@ final class OfferParser {
             } else if (dropoff.matches()) {
                 countEvidence = true;
                 dropoffs.add(Integer.parseInt(dropoff.group(1)));
+            } else if (COMPLETED_ORDERS.matcher(label).matches()) {
+                // Neither a count nor partial count evidence: the two-stop fallback stands.
+                continue;
             } else {
                 boolean pickupWord = PICKUP_WORD.matcher(label).find();
                 boolean dropoffWord = DROPOFF_WORD.matcher(label).find();

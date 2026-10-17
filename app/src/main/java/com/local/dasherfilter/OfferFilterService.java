@@ -8840,6 +8840,8 @@ public final class OfferFilterService extends AccessibilityService {
     private void notePayNotFound(Scan scan, OfferSnapshot offer) {
         if (offer.payCents != null || offer.payAtMostCents != null) return;
         if (offer.miles == null && offer.minutes == null && offer.stops == null) return;
+        // An add-on's pay is its "+$" increment, read on its own line, never a standalone total.
+        if (AddOnOffer.isLikely(scan.text)) return;
         int whole = 0;
         int bare = 0;
         int digits = 0;

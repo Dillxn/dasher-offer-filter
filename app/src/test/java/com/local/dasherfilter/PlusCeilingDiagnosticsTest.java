@@ -48,6 +48,48 @@ public class PlusCeilingDiagnosticsTest {
         }
     }
 
+    /**
+     * The owner's 16 October 2026 report of a "+$3" offer the app "didnt read" through several showings: under the
+     * offer, Dasher drew a name and a lifetime "N orders completed", and that count, never this offer's, took the
+     * ceiling away ("pickup, dropoff or order counts"). It neither counts orders nor stands in for a count.
+     */
+    @Test
+    public void aLifetimeOrderCountUnderTheOfferLeavesTheCeiling() {
+        String[] under = {"Pat", "312 orders completed", "Rising Shopper", "trailing_icon", "Home", "Schedule",
+                "Account"};
+        String[] first = with(new String[] {"+$3", "Decline", "$9.90", "incl. tips", "2 stops (2.9 mi) • 17 min",
+                "Qdoba Mexican Eats", "100 Main St", "200 Oak Ave", "Customer dropoff",
+                "Guaranteed earnings for completing the offer.", "Accept", "0:13"}, under);
+        String[] busy = with(new String[] {"Very busy", "+$3", "Decline", "$11.80", "2 stops (9.4 mi) • 25 min",
+                "Chick-fil-A", "100 Main St", "200 Oak Ave", "Customer dropoff",
+                "Guaranteed earnings for completing the offer.", "Accept", "0:41"}, under);
+        assertNull(reason(first));
+        assertEquals(Integer.valueOf(1290), OfferParser.parse(Arrays.asList(first)).payAtMostCents);
+        assertNull(reason(busy));
+        assertEquals(Integer.valueOf(1480), OfferParser.parse(Arrays.asList(busy)).payAtMostCents);
+        assertEquals(Integer.valueOf(1480), OfferParser.parse(Arrays.asList(
+                with(busy, new String[] {"1,204 orders completed"}))).payAtMostCents);
+
+        // Not a count of this offer's orders: three stops with no counts still have no ceiling, and a counted bundle
+        // keeps its own count.
+        assertEquals("pickup, dropoff or order counts", reason(with(new String[] {"+$1", "Decline", "$13.00",
+                "3 stops (7.0 mi) • 33 min", "Accept", "0:24"}, under)));
+        assertEquals(Integer.valueOf(1500), OfferParser.parse(Arrays.asList(with(new String[] {"+$1", "Decline",
+                "$13.00 incl. tips", "3 stops (7.0 mi) • 33 min", "Pick up 2 orders", "Multiple dropoffs (2 stops)",
+                "Accept", "0:24"}, under))).payAtMostCents);
+        // Any other wording with orders in it still takes the ceiling away.
+        assertEquals("pickup, dropoff or order counts", reason("+$3", "Decline", "$9.90",
+                "2 stops (2.9 mi) • 17 min", "2 orders", "Accept", "0:13"));
+        assertEquals("pickup, dropoff or order counts", reason("+$3", "Decline", "$9.90",
+                "2 stops (2.9 mi) • 17 min", "1 of 2 orders completed", "Accept", "0:13"));
+    }
+
+    private static String[] with(String[] screen, String[] more) {
+        String[] all = Arrays.copyOf(screen, screen.length + more.length);
+        System.arraycopy(more, 0, all, screen.length, more.length);
+        return all;
+    }
+
     private static String reason(String... labels) {
         return OfferParser.noCeilingReason(new ArrayList<>(Arrays.asList(labels)), Collections.emptyList());
     }

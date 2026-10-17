@@ -1,6 +1,7 @@
 package com.local.dasherfilter;
 
 import java.util.Arrays;
+import java.util.List;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -95,5 +96,69 @@ public final class AddOnOfferTest {
         assertNull(addOn.combined.payCents);
         FilterSettings settings = FilterSettings.of(true, 2000, 100, 0, 0);
         assertEquals(OfferRule.Result.REVIEW, OfferRule.evaluateAddOn(addOn, settings).result);
+    }
+
+    /**
+     * Dasher's add-on card as the owner's 16 October 2026 report kept it ("was +1 didnt read it"): no add-on phrase,
+     * the added pay alone and a route line of the stops and minutes it adds. It is read as an add-on: $9.40, one stop
+     * and 7 minutes more on the route under way. The miles in brackets are not marked as added, so they stay unread.
+     */
+    private static final List<String> CARD = Arrays.asList("+$9.40", "incl. tips", "+1 stop (1.9 mi) • +7 min",
+            "Guaranteed earnings for completing the offer.");
+    /** The offer the owner had accepted 3 minutes before it: $10.65 for 1.3 mi and 13 min, 2 stops. */
+    private static final OfferSnapshot UNDER_WAY = new OfferSnapshot(1065, 1.3, 13, 2);
+
+    @Test
+    public void dashersAddOnCardWithNoPhraseIsReadAsAnAddOn() {
+        assertTrue(AddOnOffer.isLikely(CARD));
+        List<String> drawn = Arrays.asList("+$9.40", "Decline", "incl. tips", "+1 stop (1.9 mi) • +7 min",
+                "Guaranteed earnings for completing the offer.", "Accept", "0:40");
+        assertTrue("with its controls and countdown", AddOnOffer.isLikely(drawn));
+        for (List<String> labels : Arrays.asList(CARD, drawn)) {
+            AddOnOffer addOn = AddOnOffer.parse(UNDER_WAY, labels);
+            assertEquals(Integer.valueOf(940), addOn.incremental.payCents);
+            assertEquals(Integer.valueOf(1), addOn.incremental.stops);
+            assertEquals(Integer.valueOf(7), addOn.incremental.minutes);
+            assertNull("not marked as added", addOn.incremental.miles);
+            assertEquals(Integer.valueOf(2005), addOn.combined.payCents);
+            assertEquals(Integer.valueOf(3), addOn.combined.stops);
+            assertEquals(Integer.valueOf(20), addOn.combined.minutes);
+            assertNull(addOn.combined.miles);
+        }
+    }
+
+    @Test
+    public void withAnyOtherAmountOrNoAddedStopsItIsNotThatCard() {
+        // The owner's "+$3" offer of the same dash: a bonus beside its total, standalone.
+        assertFalse(AddOnOffer.isLikely(Arrays.asList("+$3", "Decline", "$9.90", "incl. tips",
+                "2 stops (2.9 mi) • 17 min", "Guaranteed earnings for completing the offer.", "Accept", "0:13")));
+        // A second amount: the "+$" may be a bonus on it.
+        assertFalse(AddOnOffer.isLikely(Arrays.asList("+$1", "$9.40", "incl. tips", "+1 stop (1.9 mi) • +7 min")));
+        assertFalse(AddOnOffer.isLikely(Arrays.asList("+$1", "+$9.40", "incl. tips", "+1 stop (1.9 mi) • +7 min")));
+        // No stops added, or pay with words.
+        assertFalse(AddOnOffer.isLikely(Arrays.asList("+$9.40", "incl. tips", "1 stop (1.9 mi) • 7 min")));
+        assertFalse(AddOnOffer.isLikely(Arrays.asList("+$9.40", "incl. tips", "1.9 mi • +7 min")));
+        assertFalse(AddOnOffer.isLikely(Arrays.asList("+$2.00 Peak Pay", "+1 stop (1.9 mi) • +7 min")));
+    }
+
+    @Test
+    public void theCardIsJudgedAsAnAddOnByTheOwnersRules() {
+        // The owner's rules then: $4.50 a stop, $16.20 a mile, $0.70 a minute, Autopilot's bar at 50%, scored by area
+        // (an add-on is judged strictly whatever the mode).
+        FilterSettings rules = FilterSettings.of(true, 450, 1620, 70, 0).withScoreByArea(true).withAutopilot(true, 0)
+                .withMinimumScalePercent(50);
+        OfferRule.Decision decision = OfferRule.evaluateAddOn(AddOnOffer.parse(UNDER_WAY, CARD), rules);
+        // $9.40 covers the $2.45 its 7 minutes ask at 50%; the miles it adds are unread, so it stays the user's.
+        assertEquals(OfferRule.Result.REVIEW, decision.result);
+        assertEquals(OfferRule.ADD_ON_UNCLEAR, decision.reason);
+        assertEquals(245, decision.requiredCents);
+
+        // $2.00 for the same stop and 7 minutes misses those minutes' $2.45 on any route: declined.
+        OfferSnapshot richer = new OfferSnapshot(2000, 1.3, 13, 2);
+        OfferRule.Decision thin = OfferRule.evaluateAddOn(AddOnOffer.parse(richer,
+                Arrays.asList("+$2.00", "incl. tips", "+1 stop (1.9 mi) • +7 min")), rules);
+        assertEquals(OfferRule.Result.DECLINE, thin.result);
+        assertEquals("50% bar: " + OfferRule.ADD_ON_ECONOMICS, thin.reason);
+        assertEquals(245, thin.requiredCents);
     }
 }

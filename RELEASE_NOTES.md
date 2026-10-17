@@ -1,3 +1,14 @@
+## 0.6.28 — A +$ offer with "orders completed" under it, and Dasher's add-on card, are read
+
+Version 0.6.28 (code 120) answers the owner's two reports of 16 October 2026, sent from a midday dash on 0.6.24: "was +1 didnt read it" (15:55 UTC) and "ha dplenty fo opportunity multiple screens abd modea abd didnt read" (16:33 UTC).
+
+- **A +$ offer with "orders completed" under it is judged again.** Dasher now draws a name, a lifetime count ("N orders completed") and a badge under its offers. That count took away the +$ ceiling (pay plus the +$ amount) on every showing of his "+$3, $9.90" offer, so it was left as "pay not found". The count is now set aside: such an offer is declined when even pay plus the +$ misses your rules (at the lower of the bar and 100%, as before), and otherwise left to you. Any other wording with "orders" in it still takes the ceiling away.
+- **Dasher's add-on card is read as an add-on.** The card has no add-on phrase: "+$9.40", "incl. tips", "+1 stop (1.9 mi) • +7 min". When the screen's one amount is a bare +$ and a route line starts with the stops it adds, the app reads it as an add-on to the route under way: $9.40, 1 stop and 7 minutes more. The miles in brackets aren't marked as added, so they stay unread, and an add-on that needs them is left to you; one whose added pay misses what its added minutes ask at the bar, or that makes the whole route fail your rules, is declined. A +$ beside another amount is still not taken for this card. An earlier reported card of the same kind ("+$5.50", "+2 stops (3.8 mi) • +12 min") is now read the same way.
+- An add-on's screen no longer logs "pay not found" in diagnostics.
+- Nothing in the notice, the Terms or Privacy changed, so the notice stays 29. What's new says it in two lines.
+
+No phone has run this build.
+
 ## 0.6.27 — Offers are scored by Area by default
 
 Version 0.6.27 (code 119) answers the owner's message of 17 October 2026: "it should be on area score mode by default".

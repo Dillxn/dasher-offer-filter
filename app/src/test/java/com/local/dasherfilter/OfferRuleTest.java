@@ -638,17 +638,27 @@ public final class OfferRuleTest {
         assertEquals("add-on has missing or ambiguous incremental/route evidence", rate.reason);
     }
 
+    /**
+     * A reported add-on with only increments and no add-on phrase: "pay not found" until 0.6.28, which reads Dasher's
+     * add-on card (the owner, 16 October 2026, of the same card: "was +1 didnt read it"). $5.50 for two more stops and
+     * 12 more minutes, its bracketed miles unread; with no route known, the add-on stays the user's.
+     */
     @Test
-    public void theReportedAddOnWithOnlyIncrementsStaysReview() {
+    public void theReportedAddOnWithOnlyIncrementsIsReadAsAnAddOn() {
         java.util.List<String> labels = Arrays.asList("+$5.50", "+2 stops (3.8 mi) • +12 min",
                 "Multiple dropoffs (2 stops)", "Guaranteed earnings for completing the offer. Contains restricted items,"
                         + " check the recipient's ID.", "Accept", "Decline");
-        assertFalse(AddOnOffer.isLikely(labels));
-        OfferSnapshot offer = OfferParser.parse(labels);
-        assertNull(offer.payCents);
-        OfferRule.Decision decision = evaluate(offer, REPORT_RULES);
+        assertTrue(AddOnOffer.isLikely(labels));
+        AddOnOffer addOn = AddOnOffer.parse(null, labels);
+        assertEquals(Integer.valueOf(550), addOn.incremental.payCents);
+        assertEquals(Integer.valueOf(2), addOn.incremental.stops);
+        assertEquals(Integer.valueOf(12), addOn.incremental.minutes);
+        assertNull(addOn.incremental.miles);
+        OfferRule.Decision decision = OfferRule.evaluateAddOn(addOn, REPORT_RULES);
         assertEquals(OfferRule.Result.REVIEW, decision.result);
-        assertEquals("pay not found", decision.reason);
+        assertEquals(OfferRule.ADD_ON_UNCLEAR, decision.reason);
+        // Never a standalone total.
+        assertNull(OfferParser.parse(labels).payCents);
     }
 
     // ---- A "+$X" amount beside a total "$Y" (seen while on a delivery, so possibly an add-on) ----
@@ -798,6 +808,35 @@ public final class OfferRuleTest {
         assertEquals(OfferRule.Result.DECLINE, decision.result);
         assertEquals("pay at most $6.75 with its +$ amount; dollars per stop", decision.reason);
         assertEquals(1000, decision.requiredCents);
+    }
+
+    /**
+     * The owner's 16 October 2026 "+$3" offers, a name and a lifetime "N orders completed" drawn under them (addresses
+     * replaced): read with that count, never this offer's, set aside, each misses his rules even at its ceiling. His
+     * rules then: $4.50 a stop, $16.20 a mile, $0.70 a minute, Autopilot's bar at 62%, scored by area.
+     */
+    @Test
+    public void theOwnersPlusOffersWithALifetimeOrderCountUnderThemDeclineBelowTheirCeilings() {
+        FilterSettings rules = FilterSettings.of(true, 450, 1620, 70, 0).withScoreByArea(true).withAutopilot(true, 0)
+                .withMinimumScalePercent(62);
+        String[] under = {"Pat", "312 orders completed", "Rising Shopper", "trailing_icon", "Home", "Schedule",
+                "Account"};
+        String[][] screens = {
+                {"+$3", "Decline", "$9.90", "incl. tips", "2 stops (2.9 mi) • 17 min", "Qdoba Mexican Eats",
+                        "100 Main St", "200 Oak Ave", "Customer dropoff",
+                        "Guaranteed earnings for completing the offer.", "Accept", "0:13"},
+                {"Very busy", "+$3", "Decline", "$11.80", "2 stops (9.4 mi) • 25 min", "Chick-fil-A", "100 Main St",
+                        "200 Oak Ave", "Customer dropoff", "Guaranteed earnings for completing the offer.", "Accept",
+                        "0:41"}};
+        String[] ceilings = {"$12.90", "$14.80"};
+        for (int i = 0; i < screens.length; i++) {
+            java.util.List<String> labels = new java.util.ArrayList<>(Arrays.asList(screens[i]));
+            labels.addAll(Arrays.asList(under));
+            OfferRule.Decision decision = evaluate(OfferParser.parse(labels), rules);
+            assertEquals(labels.toString(), OfferRule.Result.DECLINE, decision.result);
+            assertEquals("pay at most " + ceilings[i] + " with its +$ amount; 62% bar: area requirement",
+                    decision.reason);
+        }
     }
 
     @Test

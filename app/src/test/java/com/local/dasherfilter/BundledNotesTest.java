@@ -569,9 +569,7 @@ public class BundledNotesTest {
      * 0.6.27 (the owner, 17 October 2026: "it should be on area score mode by default"): the card says what notice 29
      * says, that offers are scored by area by default and how to choose Strict.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.27", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(29, Consent.VERSION);
+    @Test public void release0627SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.27");
         assertEquals("the card says what notice 29 says", notice(29), lines);
         assertEquals(lines.toString(), 2, lines.size());
@@ -581,6 +579,24 @@ public class BundledNotesTest {
                 "Tap the word in the radar's middle to choose Strict, which checks every minimum."}) {
             assertTrue(fact, card.contains(fact));
         }
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
+    }
+
+    /**
+     * 0.6.28 (the owner's two reports of 16 October 2026: "was +1 didnt read it", of Dasher's add-on card, and a "+$3"
+     * offer it "didnt read" through several showings): two lines. Nothing the notice says changed, so it stays 29.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.28", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(29, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.28");
+        assertEquals(Arrays.asList("Offers with a +$ amount are read again when Dasher shows \"orders completed\" "
+                + "under them: if even pay plus the +$ misses your minimums, they're declined.",
+                "Dasher's add-on card, such as +$9.40 for +1 stop and +7 min, is read as an add-on to your route; one "
+                + "paying too little for its minutes is declined."), lines);
         for (String line : lines) {
             assertTrue(line, line.length() <= 160);
             assertFalse(line, line.contains("Offer Filter"));

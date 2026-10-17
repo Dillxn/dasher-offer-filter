@@ -18,6 +18,8 @@ final class AddOnOffer {
     private static final String[] ADD_ON_PHRASES = {
             "add to route", "add this order", "add order", "add-on", "add on", "additional order",
             "another order", "on your route", "along your route"};
+    private static final Pattern ADDED_PAY_LABEL = Pattern.compile("\\+\\s*\\$\\s*" + VALUE);
+    private static final Pattern ADDED_STOPS_LINE = Pattern.compile("\\+\\s*[0-9]{1,2}\\s+stops?\\b");
 
     /** Accepted route context before this add-on; fields are null when unknown. */
     final OfferSnapshot active;
@@ -32,15 +34,27 @@ final class AddOnOffer {
         this.combined = combined;
     }
 
+    /**
+     * An add-on phrase, or Dasher's add-on card with no phrase at all: the screen's one amount is a label of nothing
+     * but the added pay, with a route line that starts with the stops it adds ("+$9.40", "incl. tips",
+     * "+1 stop (1.9 mi) • +7 min", the owner's 16 October 2026 report). Any other amount leaves it to the phrases: a
+     * bare "+$" beside a total may be a bonus on it.
+     */
     static boolean isLikely(List<String> labels) {
         if (!OfferEvidence.bounded(labels)) return false;
+        int amounts = 0;
+        boolean addedPay = false;
+        boolean addedStops = false;
         for (String raw : labels) {
             String label = OfferEvidence.normalize(raw).toLowerCase(Locale.US);
             for (String phrase : ADD_ON_PHRASES) {
                 if (label.contains(phrase)) return true;
             }
+            if (label.indexOf('$') >= 0) amounts++;
+            addedPay |= ADDED_PAY_LABEL.matcher(label).matches();
+            addedStops |= ADDED_STOPS_LINE.matcher(label).lookingAt();
         }
-        return false;
+        return addedPay && addedStops && amounts == 1;
     }
 
     /**
