@@ -16,7 +16,7 @@ import static org.junit.Assert.assertTrue;
 public final class LegalTextsTest {
     @Test public void restoredLearningAndModelsHaveBoundedChoicesAndRetention() {
         String terms = LegalTexts.Doc.TERMS.text();
-        for (String fact : new String[] {"Strict mode is the default", "Area mode is a separate, initially off choice",
+        for (String fact : new String[] {"Area mode is the default (from 0.6.27", "Strict mode checks every active minimum; choose it in How offers are judged",
                 "An offer permitted by the filter is not an accepted delivery", "confirmed manual standalone",
                 "Unknown facts do not teach their axes", "strictly meets every active saved and enabled learned",
                 "Add-on filtering stays strict against saved minimums", "it is conditional and cannot overwrite later changes",
@@ -41,17 +41,18 @@ public final class LegalTextsTest {
      * The beta texts' effective identities, also read by ConsentGateTest. Only a text changed in substance gets
      * a new identity in its header; then tools/legal_texts.py regenerates the app's matching copy.
      */
-    static final String TERMS_EFFECTIVE = "15 October 2026";
+    static final String TERMS_EFFECTIVE = "17 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.21";
+    static final String TERMS_VERSION = "0.6.27";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
      * 0.6.21 both (an accept holds the bar for the 24 offers after it; Autopilot no longer grows the minimums; the
-     * divider for a map in either half).
+     * divider for a map in either half); 0.6.27 both (area scoring is the default, and whether the mode was picked is
+     * kept).
      */
-    static final String PRIVACY_EFFECTIVE = "15 October 2026";
-    static final String PRIVACY_VERSION = "0.6.21";
+    static final String PRIVACY_EFFECTIVE = "17 October 2026";
+    static final String PRIVACY_VERSION = "0.6.27";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {

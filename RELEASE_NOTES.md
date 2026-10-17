@@ -1,3 +1,14 @@
+## 0.6.27 — Offers are scored by Area by default
+
+Version 0.6.27 (code 119) answers the owner's message of 17 October 2026: "it should be on area score mode by default".
+
+- **Area is the default.** A new install scores offers by area: stronger pay or rates can make up for a weaker one in the combined score. Max stops stays a hard limit, an offer whose pay or a needed figure can't be read is still left to you, and add-ons and auto-accept stay strict.
+- **Installs updating move to Area once.** Nothing before 0.6.27 kept whether Strict was picked, so a Strict install moves to Area with this update, keeping its minimums, Autopilot's bar and the bar held after an offer accepted by hand. Tap the word in the radar's middle to choose Strict again; from then on the app keeps it as your pick. An install already on Area changes nothing.
+- **Autopilot plans with less work.** It no longer works out, for every offer it weighs, figures only the screen shows; its decisions are the same (the release thread's gate speed-up).
+- The Terms and Privacy now say Area is the default, so the notice shows once more (29); its words are unchanged. What's new says the same.
+
+No phone has run this build.
+
 ## 0.6.26 — Setup first, one step at a time
 
 Version 0.6.26 (code 118) answers the owner's messages of 16 October 2026 on 0.6.25, sent with screenshots of his Galaxy's home screen before setup and of the Accessibility page the app opened: "shouldn't have this limbo screen. if the app is unable to work for permissions or whathaveyou then we shepherd the user directly to resolution. all ui on screen needs to be justified by what is currently functional", and "it gave me a toast with instructions saying andrioid would block turning on notifications, it didnt, then it drops the user into the settings screen which does block them with toast instructions too long to read."

@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 15 October 2026 · for {app} 0.6.21
+            Beta terms, effective 17 October 2026 · for {app} 0.6.27
 
             ## What {app} is
 
@@ -76,42 +76,44 @@ final class LegalTexts {
             four times for four, so $5 a stop asks $10 of a single order and $15 of three stops. When 0.6.14 began \
             counting the pickup, your number was not changed, so a single order asks twice what it did under 0.6.12 \
             and 0.6.13. When an offer's stops are not read, it stays for review unless its pay misses even one \
-            stop's worth or another minimum. Strict mode is the default and checks every active minimum. Area mode \
-            is a separate, initially off choice: stronger pay or rates can compensate for weaker ones in the \
-            combined score. Maximum stops remains a hard limit, missing required facts stay for review, and add-ons \
-            remain strict. An offer permitted by the filter is not an accepted delivery. When an offer fails the \
-            chosen rules, the app can tap Decline and Dasher's confirmation for you. From 0.6.18 it confirms only a \
-            decline question worded as Dasher's usual one ("Are you sure you want to decline this offer?"), seen in \
-            the developer's own reports; any other question, or one saying declines are limited or that another \
-            decline would end your dash, is left to you and auto-decline pauses until you resume it. An offer \
-            already left to you stays yours if you change your rules while it shows; the new rules judge the next \
-            offer. Autopilot is on by default (from 0.6.2, and turned on once then for earlier installs), with pay \
-            first as its goal (from 0.6.18, when it replaced the suggested acceptance-rate goal of 70%: once, a 70% \
-            goal moved to pay first, since it could not be told from the suggested one, and a 50% goal stayed) \
-            until you choose a goal that protects your acceptance rate (70% or 50%); you can turn it off from its \
-            chip on the homepage. While it is on, it applies one bar to the chosen scoring model and resolved \
-            saved/learned requirements, between 50% and 150%, using your recent offers, how often they come and the \
-            acceptance rate Dasher shows when you decline. When you accept a standalone offer yourself (the \
-            confirmed acceptances acceptance learning counts, whether or not learning is on) and its score under \
-            your current rules is above the bar, Autopilot raises the bar to that score (at most 150%) at its next \
-            safe point and keeps it at least at that score for the next 24 offers, across dashes however long they \
-            take (from 0.6.21; from 0.6.18, the best such score of the last 7 days; before, for the rest of that \
-            dash), even above what an acceptance goal allows, which can mean more declines and a lower acceptance \
-            rate. An accept stops holding the bar once 24 offers have come after it (from 0.6.21; from 0.6.19, 7 \
-            days after it, even after newer offers had pushed it out of the decision history); a change of your \
-            goal (turning Autopilot on with another goal included), minimums, max stops, mode or learning ends that \
-            hold; turning Autopilot off and on again (from 0.6.19; before, turning it on ended it) and Adopt keep \
-            it. Above 100% it declines offers that meet your minimums. Offers it lets through below your minimums \
-            are left to you. Autopilot never changes your minimums, only its bar (from 0.6.21; from 0.5.1 to 0.6.20 \
-            it also raised them, at most 10% at a time, once its bar had stayed at 103% or more for 30 offers over \
-            at least 2 days, with Let my minimums grow to turn that off): what offers must meet otherwise rises \
-            only through acceptance learning, below, as you accept offers that beat your best. A growth made before \
-            0.6.21 keeps its note on the homepage, with Undo, until you tap it or your minimums change another way. \
-            Auto-accept starts off. If you separately enable it in Settings, it can tap Accept on a complete \
-            standalone offer that strictly meets every active saved and enabled learned minimum at 100% or any \
-            higher Autopilot bar, even in area mode, committing you to that delivery. Automatic acceptance leaves \
-            add-ons and unclear offers to you. Add-on filtering stays strict against saved minimums at the current \
-            bar; standalone learned floors do not apply to add-ons unless adopted as saved minimums.
+            stop's worth or another minimum. Area mode is the default (from 0.6.27, and set once then for earlier \
+            installs, whose Strict could not be told from the earlier default): stronger pay or rates can \
+            compensate for weaker ones in the combined score. Strict mode checks every active minimum; choose it in \
+            How offers are judged, the word in the radar's middle on the homepage. Maximum stops remains a hard \
+            limit, missing required facts stay for review, and add-ons remain strict. An offer permitted by the \
+            filter is not an accepted delivery. When an offer fails the chosen rules, the app can tap Decline and \
+            Dasher's confirmation for you. From 0.6.18 it confirms only a decline question worded as Dasher's usual \
+            one ("Are you sure you want to decline this offer?"), seen in the developer's own reports; any other \
+            question, or one saying declines are limited or that another decline would end your dash, is left to \
+            you and auto-decline pauses until you resume it. An offer already left to you stays yours if you change \
+            your rules while it shows; the new rules judge the next offer. Autopilot is on by default (from 0.6.2, \
+            and turned on once then for earlier installs), with pay first as its goal (from 0.6.18, when it \
+            replaced the suggested acceptance-rate goal of 70%: once, a 70% goal moved to pay first, since it could \
+            not be told from the suggested one, and a 50% goal stayed) until you choose a goal that protects your \
+            acceptance rate (70% or 50%); you can turn it off from its chip on the homepage. While it is on, it \
+            applies one bar to the chosen scoring model and resolved saved/learned requirements, between 50% and \
+            150%, using your recent offers, how often they come and the acceptance rate Dasher shows when you \
+            decline. When you accept a standalone offer yourself (the confirmed acceptances acceptance learning \
+            counts, whether or not learning is on) and its score under your current rules is above the bar, \
+            Autopilot raises the bar to that score (at most 150%) at its next safe point and keeps it at least at \
+            that score for the next 24 offers, across dashes however long they take (from 0.6.21; from 0.6.18, the \
+            best such score of the last 7 days; before, for the rest of that dash), even above what an acceptance \
+            goal allows, which can mean more declines and a lower acceptance rate. An accept stops holding the bar \
+            once 24 offers have come after it (from 0.6.21; from 0.6.19, 7 days after it, even after newer offers \
+            had pushed it out of the decision history); a change of your goal (turning Autopilot on with another \
+            goal included), minimums, max stops, mode or learning ends that hold; turning Autopilot off and on \
+            again (from 0.6.19; before, turning it on ended it) and Adopt keep it. Above 100% it declines offers \
+            that meet your minimums. Offers it lets through below your minimums are left to you. Autopilot never \
+            changes your minimums, only its bar (from 0.6.21; from 0.5.1 to 0.6.20 it also raised them, at most 10% \
+            at a time, once its bar had stayed at 103% or more for 30 offers over at least 2 days, with Let my \
+            minimums grow to turn that off): what offers must meet otherwise rises only through acceptance \
+            learning, below, as you accept offers that beat your best. A growth made before 0.6.21 keeps its note \
+            on the homepage, with Undo, until you tap it or your minimums change another way. Auto-accept starts \
+            off. If you separately enable it in Settings, it can tap Accept on a complete standalone offer that \
+            strictly meets every active saved and enabled learned minimum at 100% or any higher Autopilot bar, even \
+            in area mode, committing you to that delivery. Automatic acceptance leaves add-ons and unclear offers \
+            to you. Add-on filtering stays strict against saved minimums at the current bar; standalone learned \
+            floors do not apply to add-ons unless adopted as saved minimums.
             - It also declines a standalone offer from a store you put on your skip list (from an offer's details; \
             Settings → Skipped stores removes one), whatever it pays, when it reads that store's name on Dasher's \
             screen. An offer from two stores is declined when either is on the list; an offer whose store it cannot \
@@ -248,7 +250,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 15 October 2026 · for {app} 0.6.21
+            Beta privacy policy, effective 17 October 2026 · for {app} 0.6.27
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -382,7 +384,8 @@ final class LegalTexts {
             picked it yourself in its goal question, its current bar and whether you have answered that question \
             (until 0.6.21, also whether Let my minimums grow was on; that choice is removed from the phone with the \
             growth it switched). What else Autopilot keeps is under Autopilot and your acceptance rate below.
-            - Your separate scoring-mode and acceptance-learning choices: area mode starts off; learning is on by \
+            - Your separate scoring-mode and acceptance-learning choices, and whether you picked the mode yourself: \
+            area mode is on by default (from 0.6.27, and set once then for earlier installs); learning is on by \
             default (from 0.6.1, and turned on once then for earlier installs). Learned evidence starts empty: \
             deleted old lessons and historical decisions are not reconstructed. While filtering and learning are \
             on, positively confirmed manual standalone acceptances can store the best accepted pay per stop (that \
@@ -789,9 +792,10 @@ final class LegalTexts {
             Dasher shows it, and never with battery saver on or the battery at 20% or less and not charging. It \
             never wakes or unlocks the phone, and the power button still turns the screen off; pausing auto-decline \
             ends the hold. Peek pauses while your phone is locked.
-            - Area mode is the Strict/Area chip beside Autopilot's on the homepage; acceptance learning is the \
-            Learn button on the homepage (a long press shows what it learned). Turning learning off retains bests; \
-            confirmed Reset or Clear history clears them. Neither enables the optional timing study or sharing.
+            - The scoring mode (Area by default, or Strict) is the word in the radar's middle on the homepage; \
+            acceptance learning is the Learn button on the homepage (a long press shows what it learned). Turning \
+            learning off retains bests; confirmed Reset or Clear history clears them. Neither enables the optional \
+            timing study or sharing.
             - Autopilot is on by default; turning it off (from its chip on the homepage) puts the bar back to \
             exactly your minimums. The acceptance-rate reading is kept whether or not Autopilot is on; Clear \
             history removes it. From 0.6.21 nothing grows your saved minimums. Enabled acceptance learning can \

@@ -165,7 +165,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         int words = 0;
         for (String[] point : Consent.POINTS) words += (point[0] + " " + point[1]).split("\\s+").length;
         assertTrue(words + " words", words <= 420);
-        assertEquals("28 (0.6.21): the 24-offer hold, no more growth of the minimums, the divider for a map", 28,
+        assertEquals("29 (0.6.27): area scoring by default, said in the Terms and Privacy; the notice's words stay", 29,
                 Consent.VERSION);
         // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
         String account = point("Your Dasher account.");
@@ -220,7 +220,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         String terms = LegalTexts.Doc.TERMS.text();
         for (String fact : new String[] {"It reads the Dasher app's screen and notifications on your phone",
                 "so $5 a stop asks $10 of a single order and $15 of three stops",
-                "Strict mode is the default and checks every active minimum",
+                "Area mode is the default (from 0.6.27, and set once then for earlier installs",
+                "Strict mode checks every active minimum; choose it in How offers are judged",
                 "An offer permitted by the filter is not an accepted delivery",
                 "From 0.6.18 it confirms only a decline question worded as Dasher's usual one",
                 "It also declines a standalone offer from a store you put on your skip list",
@@ -384,8 +385,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // offer holds and the divider moved during a delivery; 23, pay per stop; 24, the pickup counted; 25, the plain
         // account warning; 26, pay first by default and the 7-day floor; 27, the floor kept through Autopilot off and
         // on, and its accepts kept 7 days; 28, the 24-offer hold, the minimums no longer growing on their own, and the
-        // divider moved for a map. A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(28, Consent.VERSION);
+        // divider moved for a map; 29, area scoring by default. A phone that accepted 14 (0.5.0) sees it again too.
+        assertEquals(29, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

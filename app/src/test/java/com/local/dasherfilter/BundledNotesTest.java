@@ -129,6 +129,7 @@ public class BundledNotesTest {
         both.addAll(notice(26));
         both.addAll(notice(27));
         both.addAll(notice(28));
+        both.addAll(notice(29));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -347,7 +348,8 @@ public class BundledNotesTest {
         since19.addAll(notice(26));
         since19.addAll(notice(27));
         since19.addAll(notice(28));
-        assertEquals("a reader of notice 19 sees 20's lines, then 21's to 28's", since19,
+        since19.addAll(notice(29));
+        assertEquals("a reader of notice 19 sees 20's lines, then 21's to 29's", since19,
                 BundledNotes.noticeChanges(19, true));
         for (String wrong : new String[] {"identifier", "track", "location", "earn more", "guarantee",
                 "only daily totals"}) {
@@ -551,11 +553,9 @@ public class BundledNotesTest {
     /**
      * 0.6.26 (the owner, 16 October 2026: "shouldn't have this limbo screen. if the app is unable to work for
      * permissions or whathaveyou then we shepherd the user directly to resolution. all ui on screen needs to be
-     * justified by what is currently functional"): one line. Nothing the notice says changed, so it stays 28.
+     * justified by what is currently functional"): one line. Nothing the notice says changed, so it stayed 28.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.26", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(28, Consent.VERSION);
+    @Test public void release0626SaysWhatChanged() {
         List<String> lines = BundledNotes.whatsNew("0.6.26");
         assertEquals(Collections.singletonList("Setup now goes one step at a time on a page of its own, and the home "
                 + "screen shows each part only once it works."), lines);
@@ -566,13 +566,42 @@ public class BundledNotesTest {
     }
 
     /**
+     * 0.6.27 (the owner, 17 October 2026: "it should be on area score mode by default"): the card says what notice 29
+     * says, that offers are scored by area by default and how to choose Strict.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.27", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(29, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.27");
+        assertEquals("the card says what notice 29 says", notice(29), lines);
+        assertEquals(lines.toString(), 2, lines.size());
+        String card = String.join(" ", lines);
+        for (String fact : new String[] {"Offers are scored by Area by default now",
+                "stronger pay or rates can make up for a weaker one", "If yours was Strict, it moved to Area",
+                "Tap the word in the radar's middle to choose Strict, which checks every minimum."}) {
+            assertTrue(fact, card.contains(fact));
+        }
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
+    }
+
+    /** 0.6.27's notice (29): offers are scored by area by default; Strict is a pick in the radar's middle. */
+    @Test public void notice29SaysAreaIsTheDefault() {
+        List<String> lines = BundledNotes.noticeChanges(28);
+        assertEquals(notice(29), lines);
+        assertEquals(lines.toString(), 2, lines.size());
+        assertTrue(String.join(" ", lines).contains("scored by Area by default"));
+    }
+
+    /**
      * 0.6.21's notice (28): an accept holds the bar for the next 24 offers instead of 7 days; the minimums no longer grow
      * on their own (learning raises what offers must meet; Autopilot only moves its bar); a map's half gets 70% of a
      * split, not only during a delivery, until the user moves the divider.
      */
     @Test public void notice28SaysTheHoldThatNothingGrowsTheMinimumsAndTheMap() {
-        List<String> lines = BundledNotes.noticeChanges(27);
-        assertEquals(notice(28), lines);
+        List<String> lines = notice(28);
         assertEquals(lines.toString(), 3, lines.size());
         String notice = String.join(" ", lines);
         for (String fact : new String[] {"An offer you accept yourself now holds Autopilot's bar for your next "
@@ -617,6 +646,7 @@ public class BundledNotesTest {
         List<String> lines = notice(27);
         List<String> since26 = new ArrayList<>(lines);
         since26.addAll(notice(28));
+        since26.addAll(notice(29));
         assertEquals(since26, BundledNotes.noticeChanges(26));
         assertEquals(lines.toString(), 3, lines.size());
         String notice = String.join(" ", lines);
@@ -642,6 +672,7 @@ public class BundledNotesTest {
         List<String> since25 = new ArrayList<>(lines);
         since25.addAll(notice(27));
         since25.addAll(notice(28));
+        since25.addAll(notice(29));
         assertEquals(since25, BundledNotes.noticeChanges(25));
         assertEquals(lines.toString(), 6, lines.size());
         String notice = String.join(" ", lines);

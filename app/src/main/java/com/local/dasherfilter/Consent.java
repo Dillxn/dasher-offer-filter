@@ -46,7 +46,10 @@ final class Consent {
     // ("mins should grow as we accept offers with higher mins when adaptive / learned mins is on. autopilot is the
     // buffer": learning raises them, Autopilot moves its bar); and in split screen the divider gives a map's half 70%
     // whenever one shows, not only during a delivery (all the owner's, 15 October 2026).
-    static final int VERSION = 28;
+    // 29 (0.6.27): offers are scored by area by default, for new installs and once for installs updating (none kept
+    // whether Strict was picked), Strict a pick in How offers are judged (the owner, 17 October 2026: "it should be on
+    // area score mode by default"). The notice's words are unchanged: the Terms and Privacy say it.
+    static final int VERSION = 29;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

@@ -87,6 +87,12 @@ final class BundledNotes {
             "In split screen, a map in either half now gets " + SplitDivider.MAP_SHARE + "% of the screen, not only "
                     + "during a delivery. Move the divider yourself and it stops for that dash."};
 
+    /** Notice 29's lines, also 0.6.27's card: offers are scored by area by default, Strict a pick in the radar's middle. */
+    private static final String[] AREA_BY_DEFAULT = {
+            "Offers are scored by Area by default now: stronger pay or rates can make up for a weaker one.",
+            "If yours was Strict, it moved to Area with this update. Tap the word in the radar's middle to choose "
+                    + "Strict, which checks every minimum."};
+
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
                     + "pay line and the 100% line.";
@@ -194,6 +200,8 @@ final class BundledNotes {
         // accept offers with higher mins when adaptive / learned mins is on. autopilot is the buffer", "whenever one
         // half has nav open make it 70% height"). Notice 15's growth (0.5.1) is retired by it.
         notice(28, HOLD_GROWTH_MAP);
+        // 0.6.27 (the owner, 17 October 2026: "it should be on area score mode by default").
+        notice(29, AREA_BY_DEFAULT);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -356,6 +364,8 @@ final class BundledNotes {
         // justified by what is currently functional").
         release("0.6.26", "Setup now goes one step at a time on a page of its own, and the home screen shows each part "
                 + "only once it works.");
+        // 0.6.27 (the owner, 17 October 2026: "it should be on area score mode by default").
+        release("0.6.27", AREA_BY_DEFAULT);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

@@ -114,6 +114,24 @@ final class FilterStore {
      */
     static volatile boolean autopilotOnByDefault = true;
     static final String AREA_MODE = "area_mode_v3";
+    /**
+     * Area is the default mode (0.6.27; the owner, 17 October 2026: "it should be on area score mode by default"): 1
+     * once {@link #initializeAreaDefault} has run, turning area scoring on for a new install and, once, for an install
+     * updating whose user never picked a mode. From then on the user's own pick decides.
+     */
+    private static final String AREA_DEFAULT_SCHEMA = "area_mode_default_schema";
+    private static final int AREA_DEFAULT_SCHEMA_NOW = 1;
+    /**
+     * The user picked the mode themselves in How offers are judged (0.6.27, {@link #setScoreByArea}). Before 0.6.27
+     * nothing kept this, so a stored Strict could not be told from the default.
+     */
+    private static final String AREA_MODE_CHOSEN = "area_mode_chosen";
+    /**
+     * Test seam: whether {@link #initializeAreaDefault} turns area scoring on. On in the app. Tests written before
+     * 0.6.27 run as an install whose user keeps Strict (ConsentedTestApp turns this off); AreaModeDefaultTest turns it
+     * back on to test the default itself.
+     */
+    static volatile boolean areaModeByDefault = true;
     static final String ACCEPTANCE_LEARNING = "acceptance_learning_v3";
     static final String ACCEPTED_PAY = "accepted_v3_pay";
     /** The pay best's stops, the pickup included ({@link AreaScore#payUnits}; 0.6.14); 1 when absent. */
@@ -201,6 +219,7 @@ final class FilterStore {
         initializePayPerStop(context, prefs);
         initializeAutopilot(context, prefs);
         initializeLearning(prefs);
+        initializeAreaDefault(context, prefs);
         stampMinimumsSince(prefs);
         return read(prefs);
     }
@@ -352,6 +371,38 @@ final class FilterStore {
             edit.apply();
         }
     }
+
+    /**
+     * Area scoring by default (0.6.27; the owner, 17 October 2026: "it should be on area score mode by default"): a new
+     * install, and once an install updating from an earlier version whose user never picked a mode
+     * ({@link #AREA_MODE_CHOSEN}), score offers by area. Nothing before 0.6.27 kept whether Strict was picked, so an
+     * earlier install's Strict moves to Area once, as Autopilot's and learning's defaults moved earlier installs (one
+     * tap in How offers are judged brings Strict back, and from then on it is kept as picked). Runs after the learner's
+     * first state (which writes Strict) and before every read of the mode. As the user's own change of mode does, it
+     * moves the learner's epoch on; unlike it, "minimums since" and Autopilot's accepted floor stay (not the user's
+     * change; hand accepts are rescored under the current rules anyway), and Autopilot's runtime is never called (its
+     * lock is taken before this class's): the mode is in the rules key, so a plan made under Strict is stale. One
+     * fixed line in the log when the mode moved.
+     */
+    private static void initializeAreaDefault(Context context, SharedPreferences prefs) {
+        if (prefs.getInt(AREA_DEFAULT_SCHEMA, 0) >= AREA_DEFAULT_SCHEMA_NOW) return;
+        boolean moved = false;
+        synchronized (FilterStore.class) {
+            if (prefs.getInt(AREA_DEFAULT_SCHEMA, 0) >= AREA_DEFAULT_SCHEMA_NOW) return;
+            SharedPreferences.Editor edit = prefs.edit().putInt(AREA_DEFAULT_SCHEMA, AREA_DEFAULT_SCHEMA_NOW);
+            if (areaModeByDefault && !prefs.getBoolean(AREA_MODE_CHOSEN, false)
+                    && !prefs.getBoolean(AREA_MODE, false)) {
+                edit.putBoolean(AREA_MODE, true);
+                advanceEpoch(prefs, edit);
+                moved = true;
+            }
+            edit.commit();
+        }
+        if (moved && context != null) DiagnosticLog.log(context, "rules", AREA_BY_DEFAULT_LOG);
+    }
+
+    /** The area default's one line (0.6.27). */
+    static final String AREA_BY_DEFAULT_LOG = "area scoring on by default (How offers are judged chooses Strict)";
 
     /**
      * Autopilot on by default (0.6.2; the owner, 12 October 2026: Autopilot "should be on by default"): a new install,
@@ -820,6 +871,7 @@ final class FilterStore {
         initializePayPerStop(context, prefs);
         initializeAutopilot(context, prefs);
         initializeLearning(prefs);
+        initializeAreaDefault(context, prefs);
         synchronized (FilterStore.class) {
             FilterSettings stored = read(prefs);
             SharedPreferences.Editor edit = prefs.edit();
@@ -932,8 +984,12 @@ final class FilterStore {
 
     // ---- Confirmed manual acceptance learning (fresh 0.6.0 state) ----
 
+    /** How offers are judged, as the user picks it there: kept as their pick from 0.6.27 ({@link #AREA_MODE_CHOSEN}). */
     static void setScoreByArea(Context context, boolean on) {
         FilterSettings before = load(context);
+        synchronized (FilterStore.class) {
+            prefs(context).edit().putBoolean(AREA_MODE_CHOSEN, true).apply();
+        }
         save(context, before, before.withScoreByArea(on));
         if (before.scoreByArea != on) AutopilotRuntime.rulesChanged(context);
     }

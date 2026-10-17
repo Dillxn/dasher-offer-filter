@@ -10,8 +10,8 @@ import android.widget.TextView;
 
 /**
  * How offers are judged, as one word on the homepage (0.6.3; the owner: the mode belongs on the homepage, not in
- * Settings): "Strict" (the default) in a quiet grey pill, or "Area" ringed in the saved minimums' blue, never Autopilot's
- * purple or the learner's teal. A tap opens the chooser ("How offers are judged"), whose one more tap picks a mode: a
+ * Settings): "Area" (the default from 0.6.27; Strict before) ringed in the saved minimums' blue, or "Strict" in a quiet
+ * grey pill, never Autopilot's purple or the learner's teal. A tap opens the chooser ("How offers are judged"), whose one more tap picks a mode: a
  * stray tap beside Autopilot's chip changes nothing, and each choice says what it means. It is its own control, never
  * Autopilot's (the 0.6.0 directive). Screen readers hear the mode and what it means; it is no live region.
  */
