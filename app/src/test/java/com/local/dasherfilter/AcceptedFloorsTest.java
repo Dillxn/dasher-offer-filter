@@ -14,15 +14,43 @@ public class AcceptedFloorsTest {
         assertSame(a, a.raisedBy(new OfferSnapshot(1000, 2.0, 10, 2)));
         assertSame(a, a.raisedBy(new OfferSnapshot(500, 9.0, 30, 2)));
     }
-    @Test public void unknownMeasuresStayUnsetAndShortTripsDoNotSetRateBests() {
+    @Test public void unknownMeasuresStayUnsetAndReadableShortTripsSetIndependentRateBests() {
         // Unread stops teach nothing on pay per stop (0.6.12).
         assertEquals(0, AcceptedFloors.NONE.raisedBy(new OfferSnapshot(700, null, null, null)).highestPayCents);
         AcceptedFloors a = AcceptedFloors.NONE.raisedBy(new OfferSnapshot(700, null, null, 2));
         assertEquals(700, a.highestPayCents); assertFalse(a.hasPerMile()); assertFalse(a.hasPerMinute());
         a = a.raisedBy(new OfferSnapshot(800, 1.0, 7, 2));
-        assertEquals(800, a.highestPayCents); assertFalse(a.hasPerMile()); assertFalse(a.hasPerMinute());
-        a = a.raisedBy(new OfferSnapshot(900, 2.0, null, null));
-        assertEquals(900, a.milePay); assertFalse(a.hasPerMinute());
+        assertEquals(800, a.highestPayCents);
+        assertEquals(800, a.milePay); assertEquals(1.0, a.miles, 0);
+        assertEquals(800, a.minutePay); assertEquals(7, a.minutes);
+        a = a.raisedBy(new OfferSnapshot(1700, 2.0, null, null));
+        assertEquals(1700, a.milePay);
+        assertEquals("unread measures preserve their earlier highs", 800, a.minutePay);
+        assertEquals("unread stops do not invent a pay best", 800, a.highestPayCents);
+    }
+    @Test public void theOwnersPointEightMileOfferRaisesMileageWithoutLoweringOtherHighs() {
+        AcceptedFloors before = new AcceptedFloors(1341, 2, 390, 2.0, 560, 10);
+        AcceptedFloors after = before.raisedBy(new OfferSnapshot(360, 0.8, 10, 2));
+        assertEquals(360, after.milePay); assertEquals(0.8, after.miles, 0);
+        assertEquals(450, after.milePay / after.miles, 0);
+        assertEquals(before.highestPayCents, after.highestPayCents);
+        assertEquals(before.minutePay, after.minutePay);
+        assertEquals(before.minutes, after.minutes);
+        assertSame("a later lower offer cannot lower any learned high", after,
+                after.raisedBy(new OfferSnapshot(300, 0.8, 10, 2)));
+        assertEquals("the short rate survives stored-pair validation", after,
+                new AcceptedFloors(after.highestPayCents, after.payUnits, after.milePay, after.miles,
+                        after.minutePay, after.minutes));
+    }
+    @Test public void commonPlausibilityBoundariesStillApplyToStoredAndObservedRates() {
+        AcceptedFloors a = AcceptedFloors.NONE.raisedBy(new OfferSnapshot(500, 0.5, 5, 2));
+        assertEquals(500, a.milePay); assertEquals(500, a.minutePay);
+        for (OfferSnapshot offer : new OfferSnapshot[] {
+                new OfferSnapshot(900, 0.499, 5, 2), new OfferSnapshot(900, 0.5, 4, 2),
+                new OfferSnapshot(900, 0.5, 5, 1)}) {
+            assertSame(a, a.raisedBy(offer));
+        }
+        assertTrue(new AcceptedFloors(0, 900, 0.499, 900, 4).isEmpty());
     }
     @Test public void anyKnownImplausibleFigureRejectsTheEntireLessonIncludingPayout() {
         for (OfferSnapshot offer : new OfferSnapshot[] {

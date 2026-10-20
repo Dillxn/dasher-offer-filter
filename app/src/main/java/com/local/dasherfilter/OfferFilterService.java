@@ -9021,7 +9021,7 @@ public final class OfferFilterService extends AccessibilityService {
         switch (lesson) {
             case RAISED: return "learned; the learned minimums rose (Adopt on the homepage)";
             case SAVED: return "learned a new best; your saved minimums are still higher";
-            case UNCHANGED: return "nothing new: no best beaten (rates need at least 2 mi and 10 min)";
+            case UNCHANGED: return "nothing new: no best beaten or no eligible readable rate";
             case OFF: return "not taught: learning or filtering is off, or the notice is not accepted";
             case UNKNOWN: return "not taught: its pay was not read";
             case STALE:

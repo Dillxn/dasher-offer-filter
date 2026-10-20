@@ -612,9 +612,10 @@ public class BundledNotesTest {
         assertEquals(lines, notice(30));
         assertEquals(lines, BundledNotes.noticeChanges(29));
         String words = String.join(" ", lines);
-        for (String fact : new String[] {"With Autopilot on", "accept yourself", "readable active minimum",
-                "up or down", "newest acceptance replaces earlier", "Saved minimums and learned bests stay separate",
-                "unread and disabled", "Tap Auto", "bar can still move them together", "turning Autopilot off"}) {
+        for (String fact : new String[] {"With Autopilot on", "newest confirmed personal acceptance",
+                "readable active minimum", "up or down", "Saved minimums and learned bests stay separate",
+                "unread and disabled", "Tap Auto", "bar still moves working minimums together", "dashed green",
+                "higher saved or learned", "every active axis", "Readable short trips can teach new highs"}) {
             assertTrue(fact, words.contains(fact));
         }
         for (String line : lines) assertTrue(line, line.length() <= 160);

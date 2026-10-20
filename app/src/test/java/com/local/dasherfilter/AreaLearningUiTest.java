@@ -256,7 +256,8 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
         star.compose(360, 300, 220);
         assertEquals(1200, star.setAsks(AreaScore.PAY), 0);
         assertTrue("learned-only axis leaves saved knob unset", Double.isNaN(star.setAsks(AreaScore.MILE)));
-        assertEquals(801, star.learnedAsks(AreaScore.PAY), 0);
+        assertEquals("calculated learning includes the higher saved pay minimum", 1200,
+                star.learnedAsks(AreaScore.PAY), 0);
         assertEquals(1000, star.learnedAsks(AreaScore.MILE), 0);
         assertEquals("saved pay still dominates lower learned pay", 1440, star.barAsks(AreaScore.PAY), 0);
         assertEquals("bar uses learned-only active axis", 1200, star.barAsks(AreaScore.MILE), 0);
@@ -264,10 +265,13 @@ public class AreaLearningUiTest extends AndroidAdapterTestBase {
         star.show(rules, comparison, Collections.singletonList(decided(rules, new OfferSnapshot(300, 40.0, 90, 2))));
         assertEquals(ring, star.ringCents());
         String said = star.getContentDescription().toString();
-        for (String fact : new String[] {"blue is saved", "teal is learned", "purple", "do not move saved knobs"}) {
+        for (String fact : new String[] {"blue is saved", "dashed green", "higher saved or learned", "purple",
+                "do not move saved knobs"}) {
             assertTrue(fact + ": " + said, said.contains(fact));
         }
         star.show(rules.withAcceptanceLearning(false), comparison, Collections.emptyList());
+        assertEquals("off keeps the raw observed best, not the calculated envelope", 801,
+                star.learnedAsks(AreaScore.PAY), 0);
         assertTrue(Double.isNaN(star.barAsks(AreaScore.MILE)));
         assertTrue(star.getContentDescription().toString().contains("stored but off"));
     }

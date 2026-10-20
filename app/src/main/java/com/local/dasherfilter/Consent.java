@@ -49,7 +49,8 @@ final class Consent {
     // 29 (0.6.27): offers are scored by area by default, for new installs and once for installs updating (none kept
     // whether Strict was picked), Strict a pick in How offers are judged (the owner, 17 October 2026: "it should be on
     // area score mode by default"). The notice's words are unchanged: the Terms and Privacy say it.
-    // 30 (0.6.29): confirmed personal acceptances set independent Autopilot working minimums up or down.
+    // 30 (0.6.29): confirmed personal acceptances set independent Autopilot working minimums up or down;
+    // readable plausible short trips can teach learned highs, and green shows the calculated learned envelope.
     static final int VERSION = 30;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";

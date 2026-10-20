@@ -150,6 +150,9 @@ final class MinimumsStarView extends View {
     private final DashPathEffect dash;
     /** Cents each set minimum asks of the example offer; NaN where there is no such minimum. */
     private final double[] setCents = new double[NAMES.length];
+    /** Raw observed bests, retained for an off learner and the preview of a saved knob being dragged. */
+    private final double[] acceptedCents = new double[NAMES.length];
+    /** Calculated saved/learned envelope while Learn is on; raw stored bests while off. */
     private final double[] learnedCents = new double[NAMES.length];
     private final double[] effectiveCents = new double[NAMES.length];
     /** Cents Autopilot asks on each spoke; NaN without an adjustment, including an uncalibrated bar of 100. */
@@ -379,6 +382,8 @@ final class MinimumsStarView extends View {
     private final double[] drawnSet = new double[NAMES.length];
     private final float[] drawnFrom = new float[NAMES.length];
     private final float[] drawnTo = new float[NAMES.length];
+    private final double[] drawnLearned = new double[NAMES.length];
+    private final float[] drawnLearnedAt = new float[NAMES.length];
     private final TextPaint pillText = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final RectF pillBox = new RectF();
     /** Where each hollow knob rests, in pixels out along its spoke ({@link #placeRests}); stale after a change. */
@@ -494,16 +499,22 @@ final class MinimumsStarView extends View {
     void show(FilterSettings rules, OfferSnapshot example, List<DecisionLog.Entry> recent) {
         int[] rates = rules.minimums();
         Arrays.fill(setCents, Double.NaN);
+        Arrays.fill(acceptedCents, Double.NaN);
         Arrays.fill(learnedCents, Double.NaN);
         Arrays.fill(effectiveCents, Double.NaN);
         Arrays.fill(setRates, 0);
         AreaScore.Floors floors = AreaScore.floors(rules, example);
+        java.math.BigDecimal[] learnedDisplay = rules.acceptanceLearning
+                ? floors.baselineCents() : floors.acceptedCents();
         for (int axis : SPOKES) {
             setRates[axis] = Math.max(0, rates[axis]);
             java.math.BigDecimal ask = AreaScore.fixedFloor(axis, setRates[axis], example);
             if (ask != null && ask.signum() > 0) setCents[axis] = ask.doubleValue();
             if (floors.acceptedCents()[axis] != null && floors.acceptedCents()[axis].signum() > 0) {
-                learnedCents[axis] = floors.acceptedCents()[axis].doubleValue();
+                acceptedCents[axis] = floors.acceptedCents()[axis].doubleValue();
+            }
+            if (learnedDisplay[axis] != null && learnedDisplay[axis].signum() > 0) {
+                learnedCents[axis] = learnedDisplay[axis].doubleValue();
             }
             if (floors.effectiveCents()[axis] != null && floors.effectiveCents()[axis].signum() > 0) {
                 effectiveCents[axis] = floors.effectiveCents()[axis].doubleValue();
@@ -779,7 +790,8 @@ final class MinimumsStarView extends View {
         described += " " + (shownRules.scoreByArea ? "Area mode permits compensation between active measures."
                 : "Strict mode checks every active minimum.")
                 + " Farther out means higher pay or pay rates. Solid blue is saved minimums; "
-                + (shownRules.acceptanceLearning ? "teal is learned bests in use" : "gray is learned bests stored but off")
+                + (shownRules.acceptanceLearning ? "dashed green is your calculated learned minimums, the higher saved "
+                        + "or learned value on every active axis" : "gray is learned bests stored but off")
                 + (shownRules.hasAutopilotAxes() ? "; dashed purple is Autopilot's independent working requirement, "
                         + "including at a 100% bar. Learned bests do "
                         : "; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. Learned bests do ")
@@ -1384,8 +1396,9 @@ final class MinimumsStarView extends View {
      * 100%, its dashed purple shape at that share of each minimum, what Autopilot asks now.
      */
     private void drawMinimums(Canvas canvas, float cx, float cy, float radius, float glide) {
+        holdLearned(glide);
         drawShape(canvas, cx, cy, radius, drawnSet, drawnFrom, drawnTo, glide, setColor(), false);
-        drawShape(canvas, cx, cy, radius, learned, learnedFrom, learnedTo, glide,
+        drawShape(canvas, cx, cy, radius, drawnLearned, drawnLearnedAt, drawnLearnedAt, 1,
                 shownRules.acceptanceLearning ? (ui.dark ? 0xFF83E3D1 : 0xFF00796B) : 0xFF858F8D, true);
         drawShape(canvas, cx, cy, radius, auto, autoFrom, autoTo, glide, autopilotColor(), true);
     }
@@ -2130,9 +2143,12 @@ final class MinimumsStarView extends View {
         int value = dragValue;
         float at = heldFraction();
         float glide = Motion.settle(glideStart, GLIDE_MS);
+        holdSet();
+        holdLearned(glide);
         for (int i = 0; i < NAMES.length; i++) {
             setFrom[i] = setTo[i] = setFrom[i] + (setTo[i] - setFrom[i]) * glide;
             autoFrom[i] = autoTo[i] = autoFrom[i] + (autoTo[i] - autoFrom[i]) * glide;
+            learnedFrom[i] = learnedTo[i] = drawnLearnedAt[i];
         }
         for (int m = 0; m < markTo.size(); m++) {
             float[] shown = markShown(m, glide);
@@ -2163,6 +2179,30 @@ final class MinimumsStarView extends View {
         drawnSet[held] = dragValue > 0 ? askCents(held, dragValue) : Double.NaN;
         drawnFrom[held] = at;
         drawnTo[held] = at;
+    }
+
+    /** The active learned envelope contains the simultaneously drawn saved shape, including during a drag or glide.
+     * A held axis uses its preview and the raw best, so lowering a knob does not retain its old saved requirement.
+     * Autopilot's independent working rates and buffer never become learned highs. */
+    private void holdLearned(float glide) {
+        System.arraycopy(learned, 0, drawnLearned, 0, learned.length);
+        for (int axis : SPOKES) {
+            float at = Double.isNaN(learned[axis]) ? 0
+                    : learnedFrom[axis] + (learnedTo[axis] - learnedFrom[axis]) * glide;
+            if (shownRules.acceptanceLearning) {
+                if (dragging && axis == held) {
+                    double best = acceptedCents[axis];
+                    double saved = drawnSet[axis];
+                    drawnLearned[axis] = Double.isNaN(best) ? saved : Double.isNaN(saved) ? best
+                            : Math.max(best, saved);
+                    at = Math.max(fraction(best), Double.isNaN(saved) ? 0 : heldFraction());
+                } else if (!Double.isNaN(drawnSet[axis])) {
+                    if (Double.isNaN(drawnLearned[axis])) drawnLearned[axis] = drawnSet[axis];
+                    at = Math.max(at, drawnFrom[axis] + (drawnTo[axis] - drawnFrom[axis]) * glide);
+                }
+            }
+            drawnLearnedAt[axis] = at;
+        }
     }
 
     /**
@@ -2552,6 +2592,12 @@ final class MinimumsStarView extends View {
 
     List<float[]> learnedShape() {
         List<float[]> shape = shapePolygon(learned, learnedFrom, learnedTo, 1, skyX, skyY, skyRadius);
+        return shape == null ? new ArrayList<>() : shape;
+    }
+
+    /** The last rendered learned outline, including its current glide and held knob preview (for tests). */
+    List<float[]> drawnLearnedShape() {
+        List<float[]> shape = shapePolygon(drawnLearned, drawnLearnedAt, drawnLearnedAt, 1, skyX, skyY, skyRadius);
         return shape == null ? new ArrayList<>() : shape;
     }
 

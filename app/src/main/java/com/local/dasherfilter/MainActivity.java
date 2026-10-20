@@ -1297,13 +1297,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return "On by default. When you accept an offer yourself and it beats your best pay per stop, pay per mile or "
                 + "pay per hour, the learned minimums rise to match it, and offers must meet them as well as your own. Your "
                 + "own minimums stay as you set them. Automatic accepts, add-ons, declines and unclear acceptances do "
-                + "not teach it; pay per mile needs a trip of at least 2 miles and pay per hour at least 10 minutes. "
+                + "not teach it. Readable rates on short trips can teach it too; unknown or implausible facts cannot. "
                 + "Off keeps the bests without using them or learning.\n\n"
                 + MinimumsDetails.learningSummary(rules) + "\n\n"
-                + "Teal on the chart is your learned bests. Adopt raises any lower minimum of yours to them. Undo puts "
+                + "The dashed green triangle is your calculated learned minimums: the higher saved or learned value "
+                + "on every active axis. Adopt raises any lower minimum of yours to the learned bests. Undo puts "
                 + "back the last adoption until a later minimum change, Reset or Clear history. Reset clears learned "
-                + "bests, not your minimums or Autopilot settings. Autopilot's minimum growth and its Undo are "
-                + "separate.";
+                + "bests, not your minimums or Autopilot settings. Autopilot's working minimums are separate.";
     }
 
     private void confirmResetLearning() {
