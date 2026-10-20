@@ -58,32 +58,40 @@ public final class RetiredRulesSourceTest {
     @Test
     public void filterSettingsHasOnlyCurrentStrictAndExplicitThreeAxisRestorationConstructors() throws IOException {
         Constructor<?>[] constructors = FilterSettings.class.getDeclaredConstructors();
-        assertEquals("only current constructors; no legacy positional constructor", 2, constructors.length);
+        assertEquals("only current constructors; no legacy positional constructor", 3, constructors.length);
         List<List<Class<?>>> signatures = new ArrayList<>();
         for (Constructor<?> constructor : constructors) signatures.add(Arrays.asList(constructor.getParameterTypes()));
         assertTrue(signatures.contains(Arrays.asList(boolean.class, int.class, int.class, int.class, int.class,
                 boolean.class, int.class, int.class)));
         assertTrue(signatures.contains(Arrays.asList(boolean.class, int.class, int.class, int.class, int.class,
                 boolean.class, int.class, int.class, boolean.class, boolean.class, AcceptedFloors.class)));
+        assertTrue(signatures.contains(Arrays.asList(boolean.class, int.class, int.class, int.class, int.class,
+                boolean.class, int.class, int.class, boolean.class, boolean.class, AcceptedFloors.class,
+                AutopilotAxes.class)));
         FilterSettings fresh = FilterSettings.of(true, 0, 0, 0, 0);
         assertFalse(fresh.scoreByArea);
         assertFalse(fresh.acceptanceLearning);
         assertTrue(fresh.accepted.isEmpty());
+        assertTrue("the strict constructor has no working calibration", fresh.autopilotAxes.isEmpty());
         FilterSettings restored = fresh.withScoreByArea(true).withAcceptanceLearning(true)
                 .withAccepted(new AcceptedFloors(100, 200, 2, 300, 10));
+        assertTrue("accepted-proof restoration does not invent a calibration", restored.autopilotAxes.isEmpty());
         AreaScore.Floors floors = AreaScore.floors(restored, new OfferSnapshot(500, 2.0, 10, 2));
         assertArrayEquals(new boolean[] {true, true, true, false, false, false}, floors.active);
         assertArrayEquals(new int[] {0,0,0,0,0,0}, restored.minimums());
         assertArrayEquals(new String[] {"RAISED","SAVED","UNCHANGED","OFF","STALE","UNKNOWN"},
                 Arrays.stream(FilterStore.AcceptedLesson.values()).map(Enum::name).toArray(String[]::new));
-        // Every call in the app passes those eight values: enabled, three minimums, max stops, Autopilot, goal, bar.
+        // Calls use only the strict form or the explicit accepted-proof/working-axes forms above. No retired
+        // positional axis value is restored through a compatibility constructor.
         List<String> calls = new ArrayList<>();
         for (Path source : mainSources()) {
             String text = read(source);
             Matcher call = Pattern.compile("new FilterSettings\\(").matcher(text);
             while (call.find()) {
                 List<String> args = arguments(text, call.end());
-                if (args.size() != 8 && args.size() != 11) calls.add(source.getFileName() + ": " + args);
+                if (args.size() != 8 && args.size() != 11 && args.size() != 12) {
+                    calls.add(source.getFileName() + ": " + args);
+                }
             }
         }
         assertEquals(Arrays.asList(), calls);

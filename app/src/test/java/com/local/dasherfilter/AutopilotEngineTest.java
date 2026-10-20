@@ -899,13 +899,13 @@ public final class AutopilotEngineTest {
             assertSame(jump, Autopilot.commitReason(plan, 100, 119, jump));
         }
         for (Autopilot.Reason own : Arrays.asList(Autopilot.Reason.VALUE_UP, Autopilot.Reason.MINIMUMS_GREW,
-                Autopilot.Reason.ACCEPTED)) {
+                Autopilot.Reason.ACCEPTED, Autopilot.Reason.ACCEPTED_AXES)) {
             assertFalse(own.jump);
             try {
                 Autopilot.commitReason(plan, 100, 119, own);
                 fail("only a user's change is a jump");
             } catch (IllegalArgumentException expected) {
-                // A plan's own reason, or the minimums' growth, is never a pending jump.
+                // A plan's reason, minimums growth or an independent calibration is never a pending scalar jump.
             }
         }
         String[] words = {"Autopilot turned on", "you changed your goal", "you changed your minimums",
@@ -913,7 +913,8 @@ public final class AutopilotEngineTest {
                 "acceptance rate below your goal", "keeping enough offers for your goal",
                 "keeping at least 1 in 5 offers coming to you", "holding at your minimums", "offers are coming often",
                 "offers are slower", "your minimums grew", "your learned minimums rose",
-                "you accepted an offer at this score"};
+                "you accepted an offer at this score",
+                "you accepted an offer; Autopilot minimums followed each measure"};
         Autopilot.Reason[] reasons = Autopilot.Reason.values();
         assertEquals(words.length, reasons.length);
         for (int i = 0; i < words.length; i++) assertEquals(reasons[i].name(), words[i], reasons[i].words);
