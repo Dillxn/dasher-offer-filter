@@ -32,15 +32,13 @@ import java.util.TimeZone;
  * number. θ, the largest bar at which an offer is not declined, is {@link AreaScore#passThreshold}; there is no second
  * requirement formula here.
  *
- * <p>Autopilot never accepts anything and never decides a single offer. The one thing it takes from what the user
- * accepts (0.6.11, the owner: "if an accepted offer's score beats the autopilot ask, the ask needs to jump to the new
- * higher score"; across dashes from 0.6.18): the bar never stays below the best score, under the current rules, among
- * the offers the user accepted by hand since their own last change, each for the {@value #FLOOR_OFFERS} offers after it
- * ({@link #acceptedFloor}, at most 150%), in every mode. Nothing else is learned: the history only counts offers
- * and outcomes for the acceptance rate, and the market for the value. Autopilot is the buffer and never changes the
- * minimums themselves (0.6.21, the owner: "mins should grow as we accept offers with higher mins when adaptive /
- * learned mins is on. autopilot is the buffer"): only learning raises what offers must meet. From 0.5.1 to 0.6.20 a
- * plan could also grow them ({@link Growth}); that is retired.
+ * <p>Autopilot never accepts anything and never decides a single offer. From 0.6.29 the runtime supplies independent
+ * working rates set by the latest prospective personal acceptance ({@link AutopilotAxes}). This planner protects
+ * that acceptance's reference bar for the next {@value #FLOOR_OFFERS} counted offers, and optimizes its shared buffer
+ * over that working shape. A newer lower acceptance replaces an older higher one. Before a working shape exists,
+ * the legacy highest-accepted-score hold ({@link #acceptedFloor}, at most 150%) remains. The saved minimums and
+ * learner's independent bests are never changed here. From 0.5.1 to 0.6.20 a plan could also grow saved minimums
+ * ({@link Growth}); that is retired.
  */
 final class Autopilot {
     // ---- Bar ----
@@ -205,7 +203,9 @@ final class Autopilot {
          * The bar rose to, or stays held at, the score of an offer the user accepted by hand (0.6.11; for the 24 offers
          * after it from 0.6.21, the last 7 days from 0.6.18).
          */
-        ACCEPTED(false, "you accepted an offer at this score");
+        ACCEPTED(false, "you accepted an offer at this score"),
+        /** A prospective acceptance replaced independent working rates, possibly in both directions at once. */
+        ACCEPTED_AXES(false, "you accepted an offer; Autopilot minimums followed each measure");
 
         /** A change the next commit must follow at once: the user's or a lesson's; it goes straight to the target. */
         final boolean jump;
@@ -937,10 +937,18 @@ final class Autopilot {
         ArNow ar = arNow(in.reading, counted, ignoreExempt, in.wallNow);
         Rate rate = lambda(in.waits, in.wallNow);
         List<MixLine> mix = mix(rules, window, thetas, in.costPerMileCents);
-        List<HandAccept> accepts = handAccepts(rules, in.newestFirst, in.keptAccepts);
         Draft draft = new Draft(in, window, thetas, mix, ar, rate, ignoreExempt);
-        draft.floor = acceptedFloor(accepts, in.floorSince, counted);
-        draft.floorOffersLeft = floorOffersLeft(accepts, in.floorSince, counted, draft.floor);
+        if (rules.hasAutopilotAxes()) {
+            // A prospective personal acceptance sets a new independent working shape. Its own reference bar holds
+            // that shape for the next 24 offers; no older, higher accepted score may override a newer lower choice.
+            // Re-scoring history would also lose partial-axis accepts and reintroduce the learner's pay +1 cent.
+            draft.floorOffersLeft = anchorOffersLeft(rules.autopilotAxes, counted);
+            draft.floor = draft.floorOffersLeft > 0 ? rules.autopilotAxes.referenceBar : -1;
+        } else {
+            List<HandAccept> accepts = handAccepts(rules, in.newestFirst, in.keptAccepts);
+            draft.floor = acceptedFloor(accepts, in.floorSince, counted);
+            draft.floorOffersLeft = floorOffersLeft(accepts, in.floorSince, counted, draft.floor);
+        }
 
         if (!rules.autopilot) return draft.gated(Mode.OFF);
         if (!rules.hasMonetaryRule()) return draft.gated(Mode.NO_RULES);
@@ -1008,6 +1016,16 @@ final class Autopilot {
     }
 
     // ---- (b) The accepted floor (0.6.11) ----
+
+    /** The latest prospective working-shape anchor's remaining offer hold; its rates remain after the hold ends. */
+    static int anchorOffersLeft(AutopilotAxes axes, List<OfferRecord> counted) {
+        if (axes == null || axes.isEmpty()) return 0;
+        int after = 0;
+        if (counted != null) for (OfferRecord offer : counted) {
+            if (offer != null && offer.at > axes.acceptedAt && ++after >= FLOOR_OFFERS) return 0;
+        }
+        return FLOOR_OFFERS - after;
+    }
 
     /** An offer the user accepted by hand: when (its ACCEPTED step, wall clock) and its score under the plan's rules. */
     static final class HandAccept {

@@ -152,7 +152,8 @@ final class OfferReport {
         return "pay " + (entry.facts.payCents == null ? "unknown" : DecisionLog.money(entry.facts.payCents)) + ", "
                 + DecisionLog.facts(entry.facts)
                 + (entry.requiredCents > 0 ? ", needed " + DecisionLog.money(entry.requiredCents) : "")
-                + (entry.scorePercent >= 0 ? ("area".equals(entry.scoreKind) ? ", area score " : ", score ")
+                + (entry.scorePercent >= 0 ? (AutopilotText.usesAutopilotScore(entry) ? ", Autopilot score "
+                        : "area".equals(entry.scoreKind) ? ", area score " : ", score ")
                         + entry.scorePercent + "%" : "");
     }
 

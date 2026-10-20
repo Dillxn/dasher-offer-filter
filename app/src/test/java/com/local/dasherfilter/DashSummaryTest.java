@@ -458,6 +458,30 @@ public class DashSummaryTest {
     }
 
     @Test
+    public void summaryNamesRecordedAutopilotScoresWithoutExportingExactWorkingRates() throws Exception {
+        FilterSettings original = FilterSettings.of(true, 400, 200, 40, 3).withAutopilot(true, 0)
+                .withMinimumScalePercent(82);
+        OfferSnapshot offer = new OfferSnapshot(660, 6.0, 12, 2);
+        Feedback.setAfterDash(app, true);
+        Dashing.seen(app);
+        long start = Dashing.currentStart(app);
+        FilterSettings adjusted = original.withAutopilotAxes(AutopilotAxes.NONE.withOffer(original, offer, start));
+        DecisionLog.record(app, DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, offer,
+                OfferRule.evaluate(offer, adjusted), DecisionLog.Action.PASSES, true, Collections.emptyList()));
+        // Changing current rules afterward cannot change the meaning of this recorded score.
+        FilterStore.save(app, original.withAutopilot(false, 0));
+        DashSummary.stuck(app, "waiting for the question");
+        DashSummary.flush();
+        String summary = DashSummary.build(app, start, start + 600_000L, DashSummary.End.DASH_OVER,
+                modelForTest(start));
+        assertTrue(summary, summary.contains("| KEEP | pay $6.60 | needed $6.60 | Autopilot score 82% |"));
+        for (String localOnly : new String[] {"autopilotAxes", "referenceBar", "acceptedAt",
+                adjusted.autopilotAxes.encode()}) {
+            assertFalse(localOnly, summary.contains(localOnly));
+        }
+    }
+
+    @Test
     public void summaryKeepsRecordedAreaAndStrictScoresWhileReportingOnlyLearningSwitch() throws Exception {
         FilterSettings strict = FilterSettings.of(true, 250, 100, 25, 0);
         FilterSettings area = strict.withScoreByArea(true);

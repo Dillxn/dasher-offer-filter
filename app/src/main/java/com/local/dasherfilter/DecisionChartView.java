@@ -217,14 +217,15 @@ final class DecisionChartView extends View {
      * only with a pay minimum, at what it asks of a single order (Dasher's "2 stops") at the bar.
      */
     void setRules(FilterSettings rules) {
-        java.math.BigDecimal pay = AreaScore.floors(rules, SINGLE_ORDER).effectiveCents()[AreaScore.PAY];
-        long payout = pay == null ? 0 : AreaScore.roundedCents(pay, rules.minimumScalePercent);
+        long payout = Math.max(0, AreaScore.floors(rules, SINGLE_ORDER)
+                .axisRequiredCents(AreaScore.PAY, rules.minimumScalePercent));
         if (minimumScalePercent == rules.minimumScalePercent && areaMode == rules.scoreByArea
-                && payoutMinimumCents == payout) {
+                && payoutMinimumCents == payout && independentAutopilot == rules.hasAutopilotAxes()) {
             return;
         }
         payoutMinimumCents = payout;
         areaMode = rules.scoreByArea;
+        independentAutopilot = rules.hasAutopilotAxes();
         minimumScalePercent = rules.minimumScalePercent;
         setContentDescription(describe(entries));
         invalidate();
@@ -232,6 +233,7 @@ final class DecisionChartView extends View {
 
     /** A single order as Dasher counts it, for the pay line: nothing else read. */
     private static final OfferSnapshot SINGLE_ORDER = new OfferSnapshot(null, null, null, 2);
+    private boolean independentAutopilot;
 
     /** A tree stands only for a score this version's rules worked out: never a retired one. */
     private static boolean tree(DecisionLog.Entry entry) {
@@ -1012,12 +1014,14 @@ final class DecisionChartView extends View {
         int unknown = 0;
         int retired = 0;
         int clipped = 0;
+        boolean independentScores = independentAutopilot;
         for (DecisionLog.Entry entry : entries) {
+            independentScores |= AutopilotText.usesAutopilotScore(entry);
             if (entry.scorePercent < 0) unknown++;
             else if (!tree(entry)) retired++;
             else if (entry.scorePercent > SCORE_DISPLAY_CAP) clipped++;
         }
-        return summary + selectedDescription() + " " + AutopilotText.SKYLINE_DESCRIPTION
+        return summary + selectedDescription() + " " + AutopilotText.skylineDescription(independentScores)
                 + (minimumScalePercent != 100 ? " Dashed line: " + AutopilotText.skylineBarRail(minimumScalePercent)
                 + "." : "")
                 + (payoutMinimumCents > 0 ? " Solid line: a single order's " + (areaMode
@@ -1042,7 +1046,9 @@ final class DecisionChartView extends View {
         return " Selected offer " + (selected + 1) + " of " + entries.size() + ": "
                 + (entry.facts.payCents == null ? "payout unknown" : DecisionLog.money(entry.facts.payCents))
                 + ", " + DecisionLog.facts(entry.facts) + ", " + state
-                + (tree(entry) ? entry.model >= 3 && "area".equals(entry.scoreKind)
+                + (tree(entry) ? AutopilotText.usesAutopilotScore(entry)
+                        ? ", recorded Autopilot score " + entry.scorePercent + "%."
+                        : entry.model >= 3 && "area".equals(entry.scoreKind)
                         ? ", recorded area score " + entry.scorePercent + "%."
                         : ", score " + entry.scorePercent + "% of your minimums."
                 : entry.scorePercent >= 0 ? ", score from earlier area rules." : ", score unknown.")

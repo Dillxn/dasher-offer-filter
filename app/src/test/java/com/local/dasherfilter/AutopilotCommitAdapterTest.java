@@ -51,6 +51,7 @@ import org.robolectric.shadows.ShadowWindowManagerImpl;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -150,11 +151,12 @@ public final class AutopilotCommitAdapterTest {
         assertEquals("decided at the bar it was shown at", 82, line.barPercent);
     }
 
-    // ---- An accepted offer's floor (0.6.11) ----
+    // ---- A confirmed personal acceptance's independent minimums (0.6.29) ----
 
     /**
-     * The user accepts an offer by hand that scores 120% ($8.10 for the $6.75 asked): Autopilot's floor commit waits
-     * while the offer is up and for 10 s after it, like any commit, then lands at the next safe tick, straight to 120%.
+     * The user accepts $8.10 by hand: each working rate follows that offer at the existing 82% bar. The whole shape
+     * waits while the offer is up and for 10 s after it, then lands together at the next safe tick. Its old score of
+     * 120% stays on the historical decision and never becomes a second scalar adjustment to the accepted rates.
      */
     @Test public void aHandAcceptsFloorCommitWaitsForTheOfferToGoThenLandsAtTheNextSafeTick() {
         connect(null);
@@ -163,23 +165,76 @@ public final class AutopilotCommitAdapterTest {
         show(offer("$8.10", "0:35"));
         pass(2_000);
         userClicks(accept);
+        assertNull("the tap alone is not confirmed acceptance", FilterStore.pendingAutopilotAxes(app));
         show(delivery());
         long gone = now();
         assertTrue(DecisionLog.hasStep(line(810), DecisionLog.StepKind.ACCEPTED));
-        Autopilot.Plan plan = AutopilotRuntime.latest();
-        assertNotNull(plan);
-        assertEquals(120, plan.floor);
-        assertEquals(120, plan.target);
+        FilterStore.PendingAutopilotAxes pending = FilterStore.pendingAutopilotAxes(app);
+        assertNotNull("confirmed choice waits for the scanner", pending);
+        assertEquals(82, pending.axes.referenceBar);
+        assertFalse("no working rate changes while the offer is recent", FilterStore.load(app).hasAutopilotAxes());
         assertEquals("not within 10 s of the offer", 82, bar());
         assertTrue(log(), logged(AutopilotText.LOG_DEFERRED) >= 1);
         long tick = tickAtOrAfter(gone + OfferFilterService.BAR_CHANGE_QUIET_MS);
         passUntil(tick - 1);
         assertEquals("nothing before Autopilot's next safe tick", 82, bar());
+        assertFalse(FilterStore.load(app).hasAutopilotAxes());
+        assertNotNull(FilterStore.pendingAutopilotAxes(app));
         assertEquals(0, commits());
         passUntil(tick + 1);
-        assertEquals("straight to the accepted offer's score", 120, bar());
-        assertEquals(1, commits());
-        assertEquals("commit 82% -> 120% (you accepted an offer at this score)", firstCommit());
+        assertAcceptedAxes(810);
+        assertEquals("the old accepted score never moves the shared bar", 0, commits());
+        DecisionLog.Entry decided = line(810);
+        assertEquals("the historical decision retains its original score", 120, decided.scorePercent);
+        assertEquals(82, decided.barPercent);
+        assertNotNull(decided.scoringRules);
+        assertFalse("a later acceptance cannot rewrite an earlier decision", decided.scoringRules.hasAutopilotAxes());
+    }
+
+    @Test public void aConservativelyInferredManualAcceptanceFollowsEachAxisWithLearnOff() {
+        FilterSettings before = FilterStore.load(app);
+        FilterStore.save(app, before, before.withAcceptanceLearning(false));
+        connect(null);
+        show(waiting());
+        pass(5_000);
+        show(offer("$8.10", "0:35"));
+        pass(2_000);
+        // No click event: the observed wait, unexpired offer and pickup are the detector's positive confirmation.
+        show(delivery());
+        long gone = now();
+        DecisionLog.Entry accepted = line(810);
+        assertTrue(DecisionLog.hasStep(accepted, DecisionLog.StepKind.ACCEPTED));
+        assertFalse(DecisionLog.hasStep(accepted, DecisionLog.StepKind.ACCEPTED_AUTOMATIC));
+        assertTrue(log(), log().contains("[accept] Accepted without a seen tap"));
+        assertNotNull(FilterStore.pendingAutopilotAxes(app));
+        assertFalse(FilterStore.load(app).hasAutopilotAxes());
+        assertTrue("Autopilot's permit does not depend on Learn", FilterStore.load(app).accepted.isEmpty());
+        passUntil(tickAtOrAfter(gone + OfferFilterService.BAR_CHANGE_QUIET_MS) + 1);
+        assertAcceptedAxes(810);
+        assertTrue("the learned baseline stays separate", FilterStore.load(app).accepted.isEmpty());
+    }
+
+    @Test public void aConfirmedAddOnAcceptanceNeverCalibratesStandaloneAutopilotAxes() {
+        connect(null);
+        show(delivery());
+        ActiveRouteStore.save(app, new OfferSnapshot(1065, 1.3, 13, 2));
+        pass(5_000);
+        AccessibilityNodeInfo addOn = offer("+$9.40", "+1 stop (1.9 mi) • +7 min", "0:40");
+        Shadows.shadowOf(addOn).addChild(node("Add to route", false));
+        show(addOn);
+        assertTrue("the offer is recognized as an add-on", line(940).addOn);
+        pass(2_000);
+        userClicks(accept);
+        show(delivery());
+        DecisionLog.Entry accepted = line(940);
+        assertTrue(DecisionLog.hasStep(accepted, DecisionLog.StepKind.ACCEPTED_ADD_ON));
+        assertFalse(DecisionLog.hasStep(accepted, DecisionLog.StepKind.ACCEPTED));
+        assertNull("add-on evidence cannot stage standalone minimums", FilterStore.pendingAutopilotAxes(app));
+        assertFalse(FilterStore.load(app).hasAutopilotAxes());
+        assertTrue(FilterStore.load(app).accepted.isEmpty());
+        passUntil(tickAtOrAfter(now() + OfferFilterService.BAR_CHANGE_QUIET_MS) + 1);
+        assertNull(FilterStore.pendingAutopilotAxes(app));
+        assertFalse("later safe ticks cannot turn add-on history into a calibration", FilterStore.load(app).hasAutopilotAxes());
     }
 
     // ---- Nothing of Dasher's screen read yet ----
@@ -540,6 +595,9 @@ public final class AutopilotCommitAdapterTest {
         // Dasher reports the click of the app's own tap, then its delivery screen.
         userClicks(accept);
         show(delivery());
+        assertNull("an automatic Accept cannot stage personal minimums", FilterStore.pendingAutopilotAxes(app));
+        assertFalse(FilterStore.load(app).hasAutopilotAxes());
+        assertTrue("automatic provenance cannot teach the baseline either", FilterStore.load(app).accepted.isEmpty());
         pass(20_000);
         // No offer for 20 s, but the request was 21 s ago.
         wantCommit();
@@ -896,6 +954,31 @@ public final class AutopilotCommitAdapterTest {
 
     // ---- Assertions ----
 
+    /** All active axes reproduce the accepted pay exactly, once, at the unchanged shared bar. */
+    private void assertAcceptedAxes(int acceptedPay) {
+        FilterSettings rules = FilterStore.load(app);
+        assertEquals(82, rules.minimumScalePercent);
+        assertTrue(rules.hasAutopilotAxes());
+        assertNull(FilterStore.pendingAutopilotAxes(app));
+        OfferSnapshot accepted = new OfferSnapshot(acceptedPay, 6.6, 27, 2);
+        AreaScore.Floors floors = AreaScore.floors(rules, accepted);
+        for (int axis : new int[] {AreaScore.PAY, AreaScore.MILE, AreaScore.MINUTE}) {
+            assertEquals("accepted route's axis " + axis, acceptedPay,
+                    floors.axisRequiredCents(axis, rules.minimumScalePercent));
+        }
+        OfferRule.Decision decision = OfferRule.evaluate(accepted, rules);
+        assertEquals(OfferRule.Result.KEEP, decision.result);
+        assertEquals(acceptedPay, decision.requiredCents);
+        assertEquals(STARTER.flatCents, rules.flatCents);
+        assertEquals(STARTER.perMileCents, rules.perMileCents);
+        assertEquals(STARTER.perMinuteCents, rules.perMinuteCents);
+        AutopilotStore.Change change = AutopilotStore.lastChange(app);
+        assertNotNull(change);
+        assertEquals(Autopilot.Reason.ACCEPTED_AXES.name(), change.why);
+        assertEquals(82, change.from);
+        assertEquals(82, change.to);
+    }
+
     /**
      * Nothing commits before the first of Autopilot's ticks at or after {@code safeFrom} (uptime), when nothing else
      * is under way, and that tick commits the bar from 82% to the learning target, 100%.
@@ -1029,13 +1112,17 @@ public final class AutopilotCommitAdapterTest {
 
     /** An offer as Dasher draws it: Decline, the pay, the route line, Accept, then its countdown. */
     private AccessibilityNodeInfo offer(String pay, String countdown) {
+        return offer(pay, ROUTE, countdown);
+    }
+
+    private AccessibilityNodeInfo offer(String pay, String route, String countdown) {
         AccessibilityNodeInfo root = node(null, false);
         decline = button("Decline");
         accept = button("Accept");
         Shadows.shadowOf(root).addChild(decline);
         Shadows.shadowOf(root).addChild(node(pay, false));
         Shadows.shadowOf(root).addChild(node("incl. tips", false));
-        Shadows.shadowOf(root).addChild(node(ROUTE, false));
+        Shadows.shadowOf(root).addChild(node(route, false));
         Shadows.shadowOf(root).addChild(accept);
         Shadows.shadowOf(root).addChild(node(countdown, false));
         return root;

@@ -222,12 +222,10 @@ public class AcceptanceLearningAdapterTest {
         assertTrue(FilterStore.load(app).accepted.isEmpty());
     }
     /**
-     * Autopilot on (0.6.11): the service's no-tap accept ("Accepted without a seen tap") puts the ACCEPTED step on the
-     * line before the plan it asks for reads the history, so that plan holds the bar at the offer's score, and the
-     * next commit makes it so. Learning is off here: the floor counts the accepts the learner is asked about, whatever
-     * it makes of them (with learning on, this offer's own lesson would put its score just under 100).
+     * The service's confirmed no-tap accept records ACCEPTED, then stages independent working rates (0.6.29).
+     * Learning is off: a confirmed personal choice still calibrates Autopilot. Its bar stays where it was.
      */
-    @Test public void aNoTapAcceptLiftsAutopilotsBarToItsScore() {
+    @Test public void aNoTapAcceptSetsAutopilotsWorkingAxesAtTheNextCommit() {
         FilterStore.setAcceptanceLearning(app, false);
         AutopilotStore.clear(app); AutopilotRuntime.forgetCache();
         AutopilotRuntime.executorForTests = Runnable::run;
@@ -258,12 +256,19 @@ public class AcceptanceLearningAdapterTest {
         assertTrue(DiagnosticLog.read(app).contains("Accepted without a seen tap"));
         assertFalse("its plan was asked for", stepped.isEmpty());
         assertTrue("the plan after the accept read the line with its step", stepped.get(stepped.size() - 1));
-        Autopilot.Plan plan = AutopilotRuntime.latest();
-        assertEquals(140, plan.floor);
-        assertEquals(140, plan.target);
+        assertNotNull(FilterStore.pendingAutopilotAxes(app));
+        assertFalse(FilterStore.load(app).hasAutopilotAxes());
         assertEquals(AutopilotRuntime.Commit.COMMITTED, AutopilotRuntime.commitIfDue(app));
-        assertEquals(140, FilterStore.load(app).minimumScalePercent);
+        FilterSettings adjusted = FilterStore.load(app);
+        assertEquals(100, adjusted.minimumScalePercent);
+        assertTrue(adjusted.hasAutopilotAxes());
+        OfferSnapshot accepted = new OfferSnapshot(1050, 3.9, 30, 3);
+        AreaScore.Floors floors = AreaScore.floors(adjusted, accepted);
+        for (int axis = AreaScore.PAY; axis <= AreaScore.MINUTE; axis++) {
+            assertEquals(1050, floors.axisRequiredCents(axis, adjusted.minimumScalePercent));
+        }
+        assertTrue(adjusted.accepted.isEmpty());
         assertTrue(DiagnosticLog.read(app).contains(
-                "[autopilot] commit 100% -> 140% (you accepted an offer at this score)"));
+                "[autopilot] commit: Autopilot minimums followed your accepted offer, measure by measure"));
     }
 }

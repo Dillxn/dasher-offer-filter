@@ -165,7 +165,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         int words = 0;
         for (String[] point : Consent.POINTS) words += (point[0] + " " + point[1]).split("\\s+").length;
         assertTrue(words + " words", words <= 420);
-        assertEquals("29 (0.6.27): area scoring by default, said in the Terms and Privacy; the notice's words stay", 29,
+        assertEquals("30 (0.6.29): each acceptance sets separate working minimums up or down", 30,
                 Consent.VERSION);
         // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
         String account = point("Your Dasher account.");
@@ -187,15 +187,13 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         }
         String defaults = point("On by default.");
         for (String fact : new String[] {
-                // Autopilot's bar goes both ways (FilterStore.BAR_MIN to BAR_MAX); raised, it declines offers that
-                // meet the minimums. 0.6.18: pay first; an accept holds the bar (the best of 7 days; from 0.6.21, each
-                // for the 24 offers after it).
-                "Autopilot moves the bar offers must meet between " + FilterStore.BAR_MIN + "% and "
-                        + FilterStore.BAR_MAX + "% of your minimums, putting pay first; above 100% it declines offers "
-                        + "that meet them.",
-                "After you accept an offer yourself, the bar stays at or above its score for your next "
-                        + Autopilot.FLOOR_OFFERS + " offers.",
-                "Learning raises the minimums offers must meet when you accept an offer that beats your best.",
+                // A changed working shape is no longer uniformly a percent of the saved or learned minimums.
+                "Autopilot puts pay first. Its bar moves from " + FilterStore.BAR_MIN + "% to "
+                        + FilterStore.BAR_MAX + "% of its working references.",
+                "Each offer you accept yourself sets its readable active minimums up or down to that offer's "
+                        + "values; the latest acceptance replaces earlier levels.",
+                "This can allow offers below your saved or learned minimums, or decline offers that meet them.",
+                "Learning separately raises learned minimums when you accept an offer that beats your best.",
                 "Peek can briefly open Dasher to read an offer that came in the background.",
                 // 0.6.3 (notice 20): the anonymous daily count.
                 "An anonymous daily count tells the developer how many people use the app.",
@@ -226,8 +224,10 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "From 0.6.18 it confirms only a decline question worded as Dasher's usual one",
                 "It also declines a standalone offer from a store you put on your skip list",
                 "Autopilot can weigh your own cost per mile, off unless you set it in its details",
-                "Autopilot never changes your minimums, only its bar",
-                "what offers must meet otherwise rises only through acceptance learning", "Auto-accept starts off.",
+                "Autopilot never changes your saved minimums or learned bests",
+                "each readable active working minimum to that offer's own pay per stop, pay per mile or pay per hour, "
+                        + "independently up or down",
+                "The newest acceptance replaces earlier accepted levels", "Auto-accept starts off.",
                 "it can press Back and retry the same offer, at most twice",
                 "it moves the divider, using the divider's own controls (the ones Android gives screen readers), to "
                         + "give the map about 70% of the screen",
@@ -244,8 +244,11 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         for (String fact : new String[] {"with a 24-hour retention window",
                 "Up to 200 numeric wait-estimate records in a rolling 24-hour window", "The latest 200 decisions",
                 "This history has no age-based expiry",
-                // 0.6.19: the hand accepts kept for the accepted floor.
+                // Legacy hand accepts stay bounded; the new local rate state is disclosed separately.
                 "At most " + AutopilotStore.KEPT_ACCEPTS_MAX + ", each for 7 days",
+                "at most three exact numeric rate pairs", "one pending copy",
+                "latest 200 decision snapshots retain the exact adjustments",
+                "not included in reports, automatic summaries or the timing study",
                 // Dasher's acceptance rate never goes in the summary after a dash.
                 "It is never in the summary after each dash",
                 "Auto theme can use the same existing, fresh approximate location",
@@ -385,8 +388,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // offer holds and the divider moved during a delivery; 23, pay per stop; 24, the pickup counted; 25, the plain
         // account warning; 26, pay first by default and the 7-day floor; 27, the floor kept through Autopilot off and
         // on, and its accepts kept 7 days; 28, the 24-offer hold, the minimums no longer growing on their own, and the
-        // divider moved for a map; 29, area scoring by default. A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(29, Consent.VERSION);
+        // divider moved for a map; 29, area scoring by default; 30, independent working minimums following each accept.
+        // A phone that accepted 14 (0.5.0) sees it again too.
+        assertEquals(30, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

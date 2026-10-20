@@ -46,6 +46,8 @@ final class AreaScore {
         final boolean missing;
         private final Fraction[] fixed = new Fraction[AXES];
         private final Fraction[] accepted = new Fraction[AXES];
+        /** The saved/enabled-learned requirement, before Autopilot's independent working rates. */
+        private final Fraction[] baseline = new Fraction[AXES];
         private final Fraction[] effective = new Fraction[AXES];
         /** The least an active axis whose own fact is unread can ask (pay per stop with stops unread: one stop). */
         private final Fraction[] lower = new Fraction[AXES];
@@ -67,11 +69,17 @@ final class AreaScore {
                 if (!active[axis]) continue;
                 axes++;
                 Fraction used = maximum(fixed, rules.acceptanceLearning ? learned : null);
+                baseline[axis] = used;
+                if (rules.autopilot && rules.autopilotAxes.hasAxis(axis)) {
+                    used = autopilotFloor(axis, rules.autopilotAxes, offer);
+                }
                 effective[axis] = used;
                 if (used == null) {
                     unread = true;
-                    if (axis == PAY) lower[axis] = maximum(fraction(fixedFloor(PAY, saved[PAY], 1)),
-                            rules.acceptanceLearning ? acceptedFloor(PAY, rules.accepted, 1) : null);
+                    if (axis == PAY) lower[axis] = rules.autopilot && rules.autopilotAxes.hasAxis(PAY)
+                            ? autopilotRate(rules.autopilotAxes, PAY)
+                            : maximum(fraction(fixedFloor(PAY, saved[PAY], 1)),
+                                    rules.acceptanceLearning ? acceptedFloor(PAY, rules.accepted, 1) : null);
                 }
             }
             missing = unread;
@@ -83,14 +91,21 @@ final class AreaScore {
         BigDecimal[] acceptedCents() { return projections()[1]; }
         /** The currently effective asks in cents, a display projection. */
         BigDecimal[] effectiveCents() { return projections()[2]; }
+        /** Saved/enabled-learned asks, without the independent Autopilot rates or its shared bar. */
+        BigDecimal[] baselineCents() { return projections()[3]; }
+        /** Exact final whole-cent working ask for one axis; never round a repeating display projection first. */
+        long axisRequiredCents(int axis, int bar) {
+            return axis < 0 || axis >= AXES || effective[axis] == null ? -1 : cents(effective[axis].square(), bar);
+        }
         private BigDecimal[][] projections() {
             BigDecimal[][] made = projections;
             if (made != null) return made;
-            made = new BigDecimal[3][AXES];
+            made = new BigDecimal[4][AXES];
             for (int axis : MONEY_AXES) {
                 made[0][axis] = display(fixed[axis]);
                 made[1][axis] = display(accepted[axis]);
                 made[2][axis] = display(effective[axis]);
+                made[3][axis] = display(baseline[axis]);
             }
             projections = made;
             return made;
@@ -131,7 +146,7 @@ final class AreaScore {
     static boolean effectiveFloorsRaised(FilterSettings before, FilterSettings after, OfferSnapshot offer) {
         Floors old = floors(before, offer), next = floors(after, offer);
         for (int axis : MONEY_AXES) {
-            Fraction a = old.effective[axis], b = next.effective[axis];
+            Fraction a = old.baseline[axis], b = next.baseline[axis];
             if (b != null && (a == null ? b.n.signum() > 0 : b.compareTo(a) > 0)) return true;
         }
         return false;
@@ -189,6 +204,9 @@ final class AreaScore {
 
     /** Largest integer bar that is not a known decline, including REVIEW and the conservative +$ ceiling policy. */
     static int passThreshold(FilterSettings rules, OfferSnapshot offer) {
+        if (offer.payCents == null && offer.payAtMostCents != null && rules.hasAutopilotAxes()) {
+            return passThreshold(rules.withoutAutopilotAxes(), offer);
+        }
         if (rules.maxStops > 0 && offer.stops != null && offer.stops > rules.maxStops) return 0;
         Fraction square = floors(rules, offer).requiredSquare(rules.scoreByArea, true);
         if (square == null || square.zero()) return Integer.MAX_VALUE;
@@ -201,6 +219,10 @@ final class AreaScore {
     static int scorePercent(FilterSettings rules, OfferSnapshot offer) {
         Fraction square = floors(rules, offer).requiredSquare(rules.scoreByArea, false);
         return offer.payCents == null || square == null ? -1 : percent(offer.payCents, square);
+    }
+    /** Original saved/enabled-learned score; a lowered working rate never relabels a below-minimum offer. */
+    static int baselineScorePercent(FilterSettings rules, OfferSnapshot offer) {
+        return scorePercent(rules.withoutAutopilotAxes(), offer);
     }
     private static int percent(long pay, Fraction square) {
         if (square.zero()) return -1;
@@ -270,6 +292,24 @@ final class AreaScore {
         if (axis == MINUTE && proof.hasPerMinute() && offer.minutes != null) {
             return Fraction.of(proof.minutePay).times(Fraction.of(offer.minutes)).dividedBy(Fraction.of(proof.minutes));
         }
+        return null;
+    }
+    private static Fraction autopilotRate(AutopilotAxes axes, int axis) {
+        AutopilotAxes.Rate rate = axes.rate(axis);
+        return rate == null ? null : new Fraction(rate.numerator, rate.denominator);
+    }
+
+    /** Exact independent working ask at a bar of 100; the normal decision applies the shared bar once. */
+    private static Fraction autopilotFloor(int axis, AutopilotAxes axes, OfferSnapshot offer) {
+        Fraction rate = autopilotRate(axes, axis);
+        if (rate == null) return null;
+        if (axis == PAY) {
+            Integer stops = payUnits(offer.stops);
+            return stops == null ? null : rate.times(Fraction.of(stops));
+        }
+        if (axis == MILE) return offer.miles == null ? null
+                : rate.times(Fraction.of(BigDecimal.valueOf(offer.miles)));
+        if (axis == MINUTE) return offer.minutes == null ? null : rate.times(Fraction.of(offer.minutes));
         return null;
     }
     private static Fraction fraction(BigDecimal value) { return value == null ? null : Fraction.of(value); }

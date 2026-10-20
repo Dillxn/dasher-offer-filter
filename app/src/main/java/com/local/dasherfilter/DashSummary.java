@@ -794,7 +794,8 @@ final class DashSummary {
                     .append(" | ").append(entry.result)
                     .append(" | pay ").append(entry.facts.payCents == null ? "?" : DecisionLog.money(entry.facts.payCents))
                     .append(" | needed ").append(entry.requiredCents == 0 ? "-" : DecisionLog.money(entry.requiredCents))
-                    .append(entry.scorePercent < 0 ? "" : ("area".equals(entry.scoreKind) ? " | area score "
+                    .append(entry.scorePercent < 0 ? "" : (AutopilotText.usesAutopilotScore(entry)
+                            ? " | Autopilot score " : "area".equals(entry.scoreKind) ? " | area score "
                             : " | score ") + entry.scorePercent + "%")
                     .append(" | ").append(DecisionLog.facts(entry.facts))
                     .append(" | ").append(entry.reason)

@@ -114,6 +114,45 @@ public class OfferReportTest {
     }
 
     @Test
+    public void independentAutopilotScoreKeepsItsReferenceButNeverExportsTheLocalRates() throws JSONException {
+        FilterSettings historical = RULES.withScoreByArea(true).withAutopilot(true, 0)
+                .withMinimumScalePercent(83);
+        OfferSnapshot facts = new OfferSnapshot(913, 7.3, 23, 3);
+        historical = historical.withAutopilotAxes(AutopilotAxes.NONE.withOffer(historical, facts, AT));
+        OfferRule.Decision decided = OfferRule.evaluate(facts, historical);
+        DecisionLog.Entry notice = DecisionLog.Entry.of(DecisionLog.Source.NOTIFICATION, false, facts, decided,
+                DecisionLog.Action.CHECK_BELL, true, Collections.emptyList());
+        DecisionLog.Entry screen = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, false, facts, decided,
+                DecisionLog.Action.PASSES, true, Collections.emptyList()).withNotification(notice);
+        JSONObject local = screen.toJson();
+        String exact = local.getJSONObject("rules").getString("autopilotAxes");
+        assertFalse(exact.isEmpty());
+        assertEquals(exact, local.getJSONObject("notification").getJSONObject("rules")
+                .getString("autopilotAxes"));
+
+        JSONObject outgoing = report(screen);
+        JSONObject entry = outgoing.getJSONObject("entry");
+        assertTrue(outgoing.getString("read").contains("Autopilot score 83%"));
+        assertEquals("autopilot", entry.getString("scoreReference"));
+        assertEquals("autopilot", entry.getJSONObject("notification").getString("scoreReference"));
+        assertFalse(entry.has("rules"));
+        assertFalse(entry.getJSONObject("notification").has("rules"));
+        assertFalse(outgoing.toString().contains("autopilotAxes"));
+        assertFalse(outgoing.toString().contains(exact));
+
+        outgoing.put("entry", local);
+        String remasked = OfferReport.remask(outgoing.toString());
+        JSONObject repaired = new JSONObject(remasked).getJSONObject("entry");
+        assertEquals("autopilot", repaired.getString("scoreReference"));
+        assertEquals("autopilot", repaired.getJSONObject("notification").getString("scoreReference"));
+        assertFalse(repaired.has("rules"));
+        assertFalse(repaired.getJSONObject("notification").has("rules"));
+        assertFalse(remasked.contains("autopilotAxes"));
+        assertFalse(remasked.contains(exact));
+        assertTrue("export does not discard the local provenance", screen.toJson().has("rules"));
+    }
+
+    @Test
     public void localLearnedSnapshotsNeverLeaveInTheEntryOrFoldedNotification() throws JSONException {
         FilterSettings historical = RULES.withScoreByArea(true).withAcceptanceLearning(true)
                 .withAccepted(new AcceptedFloors(17321, 24683, 17.4, 31579, 83));

@@ -41,10 +41,11 @@ import java.util.function.LongSupplier;
  * them. A user's change (Autopilot turned on, another goal, other minimums, history cleared) is a "jump": the next
  * commit goes straight to the target, still only at a safe point.
  *
- * <p><b>The minimums never grow here</b> (0.6.21, the owner: "mins should grow as we accept offers with higher mins
- * when adaptive / learned mins is on. autopilot is the buffer"): only learning raises what offers must meet, and
- * Autopilot moves only its bar. From 0.5.1 to 0.6.20 a commit could grow them ({@link Growth}); a growth made then
- * keeps its note and Undo ({@link #undoGrowth}, the user's change) while it still applies.
+ * <p><b>Saved minimums and learned bests stay separate.</b> From 0.6.29 a confirmed prospective personal acceptance
+ * stages independent Autopilot working rates, up or down, through {@link #confirmedManualAcceptance}. Their atomic
+ * safe-point commit takes priority over scalar plans and preserves the shared bar. The saved knobs and learner's
+ * bests never change here. From 0.5.1 to 0.6.20 a commit could grow saved minimums ({@link Growth}); a growth made
+ * then keeps its note and Undo ({@link #undoGrowth}, the user's change) while it still applies.
  *
  * <p><b>Dasher's acceptance rate</b> comes only from its decline question ({@link #confirmationSeen}): the labels are
  * parsed here, off the screen reader's thread, one number is kept (no text), and an offer Dasher says is free to
@@ -134,7 +135,7 @@ final class AutopilotRuntime {
         DISCARDED,
         /** The step holds the bar (at the target, within a minute of the last commit, deadband, waiting to raise). */
         HELD,
-        /** The bar moved. */
+        /** The shared bar or independent working requirements changed. */
         COMMITTED,
         /** The stored bar was not the one expected: nothing was written; a new plan was asked for. */
         CONFLICT,
@@ -322,6 +323,35 @@ final class AutopilotRuntime {
         requestPlan(context, Trigger.NOTICE);
     }
 
+    /**
+     * The existing detector confirmed a personal standalone acceptance. Only its prospective live permit can stage
+     * a working-shape update; no history read, automatic request or attempted tap can create one. A queued update
+     * invalidates older plans and asks the scanner to commit it at its existing safe point.
+     */
+    static FilterStore.AutopilotAcceptance confirmedManualAcceptance(Context context,
+            FilterStore.AutopilotPermit permit, OfferSnapshot offer) {
+        Context app = app(context);
+        FilterStore.AutopilotAcceptance result;
+        synchronized (LOCK) {
+            result = FilterStore.queueAutopilotAcceptance(app, permit, offer, wallClock.getAsLong());
+            if (result == FilterStore.AutopilotAcceptance.QUEUED) {
+                goalEpoch.incrementAndGet();
+                latest.set(null);
+            }
+        }
+        log(app, "manual acceptance: " + (result == FilterStore.AutopilotAcceptance.QUEUED
+                ? "independent minimums queued for a safe point"
+                : result == FilterStore.AutopilotAcceptance.OFF ? "Autopilot is off or the notice is not accepted"
+                : result == FilterStore.AutopilotAcceptance.STALE ? "Autopilot evidence unavailable or stale"
+                : "no valid active Autopilot measure"));
+        if (result == FilterStore.AutopilotAcceptance.QUEUED) {
+            notifyListeners();
+            Runnable requester = commitRequester;
+            if (requester != null) requester.run();
+        }
+        return result;
+    }
+
     /** One plan, on the planning thread. */
     private static void plan(Context app) {
         // A request from now on asks for a plan of its own: this one may already have read its inputs.
@@ -463,12 +493,16 @@ final class AutopilotRuntime {
      * take too), the plan must still be the latest one, for the same generation, rules and pending jump, before the
      * bar, the change note and the jump's clearing are written. A jump is cleared only while it is still the one this
      * commit used, so one the user set meanwhile is never lost.
+     * A confirmed pending working shape is committed first by its own policy/consent compare-and-set, even when
+     * the scalar bar stays unchanged.
      */
     static Commit commitIfDue(Context context) {
         if (context == null) return Commit.NO_PLAN;
         Context app = app(context);
         try {
             if (!Consent.accepted(app)) return Commit.NO_PLAN;
+            FilterStore.PendingAutopilotAxes pendingAxes = FilterStore.pendingAutopilotAxes(app);
+            if (pendingAxes != null) return commitAcceptedAxes(app, pendingAxes);
             Autopilot.Plan plan = latest.get();
             if (plan == null) return Commit.NO_PLAN;
             FilterSettings rules = FilterStore.load(app);
@@ -538,6 +572,39 @@ final class AutopilotRuntime {
         }
     }
 
+    /** The complete accepted working shape lands together, even when the shared bar itself stays unchanged. */
+    private static Commit commitAcceptedAxes(Context app, FilterStore.PendingAutopilotAxes pendingAxes) {
+        Runnable hook = beforeWriteForTests;
+        if (hook != null) hook.run();
+        Commit result;
+        synchronized (LOCK) {
+            FilterSettings current = FilterStore.load(app);
+            if (!current.autopilot) return Commit.NO_PLAN;
+            if (!pendingAxes.matches(app, current)) {
+                FilterStore.discardAutopilotAxesIf(app, pendingAxes);
+                result = Commit.DISCARDED;
+            } else if (!FilterStore.commitAutopilotAxes(app, pendingAxes)) {
+                result = Commit.CONFLICT;
+            } else {
+                goalEpoch.incrementAndGet();
+                latest.set(null);
+                // A preceding learned-best update may have requested a jump. The new shape now expresses this
+                // acceptance exactly; an old jump must not immediately replace it with a market target.
+                AutopilotStore.clearJump(app);
+                AutopilotStore.recordChange(app, current.minimumScalePercent, current.minimumScalePercent,
+                        Autopilot.Reason.ACCEPTED_AXES.name(), wallClock.getAsLong(), false);
+                lastCommitElapsed = elapsedClock.getAsLong();
+                lastRaiseElapsed = lastCommitElapsed;
+                result = Commit.COMMITTED;
+            }
+        }
+        if (result == Commit.COMMITTED) log(app, "commit: Autopilot minimums followed your accepted offer, measure by measure");
+        else log(app, "accepted minimums discarded: a newer acceptance, your rules or consent changed");
+        notifyListeners();
+        requestPlan(app, Trigger.COMMIT);
+        return result;
+    }
+
     /**
      * Drops a plan that can no longer be committed from and asks for a new one; {@code stale} is its log line, null
      * when the plan is only behind the bar (its own last commit moved it), which is no news.
@@ -559,6 +626,7 @@ final class AutopilotRuntime {
         Context app = app(context);
         try {
             if (!Consent.accepted(app)) return false;
+            if (FilterStore.pendingAutopilotAxes(app) != null) return FilterStore.load(app).autopilot;
             Autopilot.Plan plan = latest.get();
             if (plan == null) return false;
             FilterSettings rules = FilterStore.load(app);
@@ -582,7 +650,8 @@ final class AutopilotRuntime {
     }
 
     private static boolean wanted(Context app, Autopilot.Plan plan) {
-        return jumpCause(app) != null || step(app, plan, null, elapsedClock.getAsLong()).next != plan.current;
+        return FilterStore.pendingAutopilotAxes(app) != null || jumpCause(app) != null
+                || step(app, plan, null, elapsedClock.getAsLong()).next != plan.current;
     }
 
     /**
@@ -591,7 +660,8 @@ final class AutopilotRuntime {
      */
     private static Autopilot.Step step(Context app, Autopilot.Plan plan, Autopilot.Reason jump, long elapsed) {
         AutopilotStore.Change last = AutopilotStore.lastChange(app);
-        boolean floorHeld = last != null && Autopilot.Reason.ACCEPTED.name().equals(last.why)
+        boolean floorHeld = last != null && (Autopilot.Reason.ACCEPTED.name().equals(last.why)
+                || Autopilot.Reason.ACCEPTED_AXES.name().equals(last.why))
                 && last.to == plan.current;
         return Autopilot.step(plan.current, plan.target, jump != null, elapsed - lastCommitElapsed,
                 elapsed - lastRaiseElapsed, plan.offersSinceRaise, plan.barShare, plan.floor, floorHeld);
@@ -774,7 +844,12 @@ final class AutopilotRuntime {
                 latest.set(null);
                 AutopilotStore.resetGoalState(app);
             }
-            if (change.restartsFloor) AutopilotStore.restartFloor(app, wallClock.getAsLong());
+            if (change.restartsFloor) {
+                AutopilotStore.restartFloor(app, wallClock.getAsLong());
+                // The corresponding FilterStore write atomically cleared the prior working shape. Clearing again
+                // here could erase a newer confirmation queued by the scanner under those newly saved rules.
+                latest.set(null);
+            }
             if (change == UserChange.TURNED_OFF) {
                 AutopilotStore.clearJump(app);
                 // The bar is exactly 100 again: the note of Autopilot's last move no longer explains it.
@@ -802,6 +877,7 @@ final class AutopilotRuntime {
             generation.incrementAndGet();
             latest.set(null);
             AutopilotStore.clear(app);
+            FilterStore.clearAutopilotAxes(app, true);
             if (FilterStore.load(app).autopilot) AutopilotStore.setJump(app, Autopilot.Reason.CLEARED.name());
             lastQuestion = null;
             loggedTarget = -1;
@@ -901,7 +977,7 @@ final class AutopilotRuntime {
         if (plan != null && plan.generation != generation.get()) plan = null;
         return new AutopilotText.Status(rules, readerConnected, plan, AutopilotStore.reading(app, wallNow),
                 AutopilotStore.lastChange(app), AutopilotStore.recovering(app), AutopilotStore.extra(app),
-                AutopilotStore.lastGrowth(app), wallNow);
+                AutopilotStore.lastGrowth(app), wallNow, FilterStore.pendingAutopilotAxes(app) != null);
     }
 
     // ---- Logging and listeners ----

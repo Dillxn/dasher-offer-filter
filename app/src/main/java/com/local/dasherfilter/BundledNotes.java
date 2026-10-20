@@ -93,6 +93,15 @@ final class BundledNotes {
             "If yours was Strict, it moved to Area with this update. Tap the word in the radar's middle to choose "
                     + "Strict, which checks every minimum."};
 
+    /** Notice 30 and 0.6.29: each accepted offer sets independent working minimums in either direction. */
+    private static final String[] ACCEPTED_AXES = {
+            "With Autopilot on, each offer you accept yourself sets every readable active minimum to that offer's "
+                    + "value, up or down.",
+            "Your newest acceptance replaces earlier levels. Saved minimums and learned bests stay separate; unread "
+                    + "and disabled measures stay as they are.",
+            "Tap Auto for the working minimums. The bar can still move them together; turning Autopilot off uses "
+                    + "your saved and learned minimums again."};
+
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
                     + "pay line and the 100% line.";
@@ -202,6 +211,7 @@ final class BundledNotes {
         notice(28, HOLD_GROWTH_MAP);
         // 0.6.27 (the owner, 17 October 2026: "it should be on area score mode by default").
         notice(29, AREA_BY_DEFAULT);
+        notice(30, ACCEPTED_AXES);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -372,6 +382,7 @@ final class BundledNotes {
                 + "them: if even pay plus the +$ misses your minimums, they're declined.",
                 "Dasher's add-on card, such as +$9.40 for +1 stop and +7 min, is read as an add-on to your route; one "
                 + "paying too little for its minutes is declined.");
+        release("0.6.29", ACCEPTED_AXES);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

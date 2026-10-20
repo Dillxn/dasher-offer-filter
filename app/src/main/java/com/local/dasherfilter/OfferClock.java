@@ -53,8 +53,9 @@ final class OfferClock {
     /** The slot the clock was made in, and the time zone its offers were sorted into slots by. */
     final int now;
     final ZoneId zone;
+    final boolean autopilotScore;
 
-    private OfferClock(List<List<Integer>> scores, int now, ZoneId zone) {
+    private OfferClock(List<List<Integer>> scores, int now, ZoneId zone, boolean autopilotScore) {
         int sum = 0;
         for (int i = 0; i < SLOTS; i++) {
             List<Integer> slot = scores.get(i);
@@ -72,6 +73,7 @@ final class OfferClock {
         total = sum;
         this.now = now;
         this.zone = zone;
+        this.autopilotScore = autopilotScore;
     }
 
     /**
@@ -93,7 +95,7 @@ final class OfferClock {
             counted.add(entry);
             scores.get(slot(entry.at, zone)).add(score);
         }
-        OfferClock clock = new OfferClock(scores, slot(nowMillis, zone), zone);
+        OfferClock clock = new OfferClock(scores, slot(nowMillis, zone), zone, rules.hasAutopilotAxes());
         return clock.total < LEAST_OFFERS ? null : clock;
     }
 
@@ -119,7 +121,9 @@ final class OfferClock {
 
     /** The clock in words, for screen readers. */
     String said() {
-        StringBuilder words = new StringBuilder(TITLE).append(", as a percent of your minimums now. ");
+        StringBuilder words = new StringBuilder(TITLE).append(autopilotScore
+                ? ", using Autopilot scores under your working minimums now. "
+                : ", as a percent of your minimums now. ");
         for (int i = 0; i < SLOTS; i++) {
             String start = SAID_STARTS[i];
             words.append(Character.toUpperCase(start.charAt(0))).append(start, 1, start.length()).append(" to ")
@@ -132,6 +136,13 @@ final class OfferClock {
             words.append(i == now ? ", now. " : ". ");
         }
         return words.append("History, not a promise.").toString();
+    }
+
+    String details() {
+        return autopilotScore ? "Each bar is the middle Autopilot score of your recent offers that came in those "
+                + "three hours, recomputed under the current working minimums. Compare the score with Autopilot's "
+                + "bar. Hollow bars have fewer than " + FEWEST + " offers. The hours marked now are the three you "
+                + "are in. This is history, not a promise." : DETAILS;
     }
 
     /** Each slot on a line of its own, for the clock's details: "6 pm–9 pm  150% · 4 offers (now)". */

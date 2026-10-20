@@ -1203,8 +1203,7 @@ public final class OfferNotificationService extends NotificationListenerService 
             return DecisionLog.Action.NATIVE_ALERT;
         }
         String detail = review ? reviewText(facts, decision, peeking)
-                : belowMinimums ? AutopilotText.belowMinimumsCard(facts, decision.scorePercent,
-                        decision.minimumScalePercent)
+                : belowMinimums ? AutopilotText.belowMinimumsCard(facts, decision)
                 // A passing card in the words Peek's cards use, never the engine's ("KEEP: required at least …").
                 : decision.result == OfferRule.Result.KEEP ? Peek.cardText(OfferRule.Result.KEEP, facts, "")
                 : facts.summary() + "; " + decision.summary();

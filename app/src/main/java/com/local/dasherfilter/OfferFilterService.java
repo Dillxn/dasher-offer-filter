@@ -670,6 +670,7 @@ public final class OfferFilterService extends AccessibilityService {
     private OfferSnapshot learningObservedOffer;
     private boolean learningObservedAddOn;
     private FilterStore.LearningPermit learningPermit;
+    private FilterStore.AutopilotPermit autopilotAcceptancePermit;
     private final AutoAccept autoAccept = new AutoAccept();
     /** Any user touch during the quiet interval cancels automatic acceptance of that offer, including in split. */
     private final AtomicLong autoAcceptActions = new AtomicLong();
@@ -6328,7 +6329,7 @@ public final class OfferFilterService extends AccessibilityService {
             // adds), never "unclear": every figure was read.
             String text = decision.belowMinimums
                     ? AutopilotText.belowMinimumsCard(addOn != null ? Peek.addOnFacts(addOn.incremental)
-                            : Peek.cardFacts(read), decision.scorePercent, decision.minimumScalePercent)
+                            : Peek.cardFacts(read), decision)
                     : addOn != null ? Peek.addOnCardText(result, addOn.incremental, reason)
                     : Peek.cardText(result, read, reason);
             OfferSnapshot facts = addOn != null ? addOn.incremental : read;
@@ -8566,6 +8567,7 @@ public final class OfferFilterService extends AccessibilityService {
             if (noRoute && !acceptedTracker.acceptTapPending()) {
                 learningObservedOffer = null;
                 learningPermit = null;
+                autopilotAcceptancePermit = null;
             }
             captureOtherScreen(scan, now, OfferEvidence.isPaused(scan.text) ? "dash paused" : "idle");
         }
@@ -9003,10 +9005,12 @@ public final class OfferFilterService extends AccessibilityService {
             if (learned != null) step(accepted.line, learned, "Confirmed manual standalone acceptance");
             // Every lesson's fate, in fixed words and no amounts, so a report says why an accept taught nothing.
             DiagnosticLog.log(this, "learner", "manual acceptance: " + lessonWords(lesson, permitted));
+            AutopilotRuntime.confirmedManualAcceptance(this, autopilotAcceptancePermit, accepted.acceptedOffer);
         } else {
             DiagnosticLog.log(this, "learner", "acceptance not taught: " + (automatic ? "automatic" : "an add-on"));
         }
         learningPermit = null;
+        autopilotAcceptancePermit = null;
         learningObservedOffer = null;
         ActiveRouteStore.save(this, accepted.routeAfter);
         status("Acceptance observed.");
@@ -9156,7 +9160,12 @@ public final class OfferFilterService extends AccessibilityService {
             learningObservedOffer = learn;
             learningObservedAddOn = isAddOn;
             learningPermit = isAddOn ? null : FilterStore.captureLearning(this, learn);
+            autopilotAcceptancePermit = isAddOn ? null : FilterStore.captureAutopilotAcceptance(this, learn,
+                    OfferRule.SKIP_LIST.equals(decision.reason));
         }
+        // A later read can reveal the store name that was missing from the first one. That same showing must not
+        // retain calibration authority after it is known to be excluded by the user's skip list.
+        if (OfferRule.SKIP_LIST.equals(decision.reason)) autopilotAcceptancePermit = null;
         acceptedTracker.observeOffer(learn, routeAfter, isAddOn, decision.basis, secondsLeft, routeStored, now);
         offerAcceptTarget = scan.accept;
         offerDeclineTarget = scan.decline;
@@ -9615,7 +9624,7 @@ public final class OfferFilterService extends AccessibilityService {
             return "offer_rules_or_deadline_changed";
         }
         // As the candidate was armed: never below 100% of the user's own minimums, whatever Autopilot's bar is.
-        if (OfferRule.evaluate(offer, AutoAccept.acceptRules(current)).result != OfferRule.Result.KEEP) {
+        if (!AutoAccept.meetsRequirements(offer, current)) {
             return "offer_no_longer_passes";
         }
         return null;

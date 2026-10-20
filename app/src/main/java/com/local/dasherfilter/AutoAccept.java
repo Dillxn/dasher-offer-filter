@@ -28,7 +28,7 @@ final class AutoAccept {
                 && offer.stops != null && offer.stops >= 2
                 && (!offer.itemCountApplicable || offer.items != null)
                 && countdown > MIN_REMAINING_MS / 1000
-                && OfferRule.evaluate(offer, acceptRules(settings)).result == OfferRule.Result.KEEP;
+                && meetsRequirements(offer, settings);
     }
 
     /**
@@ -36,7 +36,22 @@ final class AutoAccept {
      * bar to protect the acceptance rate, but never what an automatic Accept asks.
      */
     static FilterSettings acceptRules(FilterSettings settings) {
-        return settings.withScoreByArea(false).withMinimumScalePercent(Math.max(FilterSettings.BAR_AT_MINIMUMS, settings.minimumScalePercent));
+        return settings.withoutAutopilotAxes().withScoreByArea(false)
+                .withMinimumScalePercent(Math.max(FilterSettings.BAR_AT_MINIMUMS, settings.minimumScalePercent));
+    }
+
+    /**
+     * Both arming and the final dispatch recheck require every original saved/enabled-learned axis at max(100, bar), and
+     * every current Autopilot working axis at its current bar. An independent lowered axis cannot lower the former,
+     * and a raised axis cannot be skipped merely because the saved baseline passed. Area compensation never applies.
+     */
+    static boolean meetsRequirements(OfferSnapshot offer, FilterSettings settings) {
+        if (!settings.hasAutopilotAxes()) {
+            return OfferRule.evaluate(offer, acceptRules(settings)).result == OfferRule.Result.KEEP;
+        }
+        FilterSettings baseline = acceptRules(settings);
+        return OfferRule.evaluate(offer, baseline).result == OfferRule.Result.KEEP
+                && OfferRule.evaluate(offer, settings.withScoreByArea(false)).result == OfferRule.Result.KEEP;
     }
 
     State observe(OfferSnapshot offer, String offerKey, FilterSettings settings, int countdown,

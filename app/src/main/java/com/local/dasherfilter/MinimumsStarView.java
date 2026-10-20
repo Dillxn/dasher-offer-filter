@@ -36,8 +36,8 @@ import java.util.Locale;
  * right) and per hour of trip time (down and to the right, the clock). Distance from the middle is the pay each asks of
  * one fixed comparison route, so the three share a dollar scale, and the set minimums are the solid blue shape through their
  * stars. Down and to the left the per-stop spoke's pin is kept only to anchor the max stops badge ("≤3"; hollow, "≤∞",
- * while there is none): a tap steps it off, 2, 3 … 10, a drag across it steps it either way. While Autopilot holds its
- * bar anywhere but 100%, a dashed purple shape at that share of each minimum shows what it asks now (purple means
+ * while there is none): a tap steps it off, 2, 3 … 10, a drag across it steps it either way. While Autopilot has
+ * independent working minimums, or its bar differs from 100%, a dashed purple shape shows what it asks now (purple means
  * Autopilot). The latest or skyline-selected offer has small marks on each spoke at what its pay, its pay per mile and
  * its pay per hour would pay for the example (● passed, ✕ declined, ○ review): a mark outside a minimum beat it. The
  * shapes glide to new values; with Android's animations off they rest. By day the stars are drawn in ink on the morning
@@ -152,7 +152,7 @@ final class MinimumsStarView extends View {
     private final double[] setCents = new double[NAMES.length];
     private final double[] learnedCents = new double[NAMES.length];
     private final double[] effectiveCents = new double[NAMES.length];
-    /** Cents Autopilot's bar asks on each spoke ({@code bar × setCents ÷ 100}); NaN where none, or at a bar of 100. */
+    /** Cents Autopilot asks on each spoke; NaN without an adjustment, including an uncalibrated bar of 100. */
     private final double[] barCents = new double[NAMES.length];
     /** The same as drawn: the set shape and Autopilot's dashed one, in cents of the example offer; NaN for none. */
     private final double[] set = new double[NAMES.length];
@@ -543,7 +543,7 @@ final class MinimumsStarView extends View {
     void setAutopilot(boolean on, int bar, boolean belowGoal) {
         int clamped = Math.max(1, Math.min(200, bar));
         if (on == autopilotOn && clamped == autopilotBar && belowGoal == this.belowGoal) return;
-        boolean moved = clamped != autopilotBar;
+        boolean moved = clamped != autopilotBar || on != autopilotOn;
         autopilotOn = on;
         autopilotBar = clamped;
         this.belowGoal = belowGoal;
@@ -554,10 +554,12 @@ final class MinimumsStarView extends View {
         invalidate();
     }
 
-    /** Autopilot's dashed shape: the bar's share of each set minimum; none at exactly 100%. */
+    /** Independent working asks stay visible at 100%; only the unchanged baseline needs no duplicate shape. */
     private void barShape() {
+        boolean adjusted = autopilotOn && (autopilotBar != FilterSettings.BAR_AT_MINIMUMS
+                || shownRules.hasAutopilotAxes());
         for (int i = 0; i < NAMES.length; i++) {
-            barCents[i] = autopilotBar == FilterSettings.BAR_AT_MINIMUMS || Double.isNaN(effectiveCents[i]) ? Double.NaN
+            barCents[i] = !adjusted || Double.isNaN(effectiveCents[i]) ? Double.NaN
                     : effectiveCents[i] * autopilotBar / 100.0;
         }
     }
@@ -713,12 +715,15 @@ final class MinimumsStarView extends View {
         if (rules.maxStops > 0 && example.stops > rules.maxStops) {
             return like + " is declined: at most " + rules.maxStops + (rules.maxStops == 1 ? " stop." : " stops.");
         }
+        boolean adjusted = rules.hasAutopilotAxes();
         OfferRule.Decision decision = OfferRule.evaluate(
                 new OfferSnapshot(ANY_PAY, example.miles, example.minutes, example.stops),
-                rules.withMinimumScalePercent(FilterSettings.BAR_AT_MINIMUMS));
+                adjusted ? rules : rules.withMinimumScalePercent(FilterSettings.BAR_AT_MINIMUMS));
         if (decision.result == OfferRule.Result.DECLINE) return like + " is declined by your rules.";
         if (decision.requiredCents > 0 && decision.requiredCents < ANY_PAY) {
-            return like + " needs " + DecisionLog.money(decision.requiredCents) + " at your minimums.";
+            return like + " needs " + DecisionLog.money(decision.requiredCents) + (adjusted
+                    ? " at Autopilot's working minimums (bar " + rules.minimumScalePercent + "%)."
+                    : " at your minimums.");
         }
         return like + (decision.result == OfferRule.Result.REVIEW ? " needs more offer details." : " passes at any pay.");
     }
@@ -760,19 +765,24 @@ final class MinimumsStarView extends View {
         int chosen = strongShape();
         if (chosen >= 0 && markScores.get(chosen) >= 0) {
             described += " " + (markTimes.get(chosen) == newestEntryAt ? "The newest offer" : "The chosen offer")
-                    + " scores " + markScores.get(chosen) + "% "
-                    + (shownRules.scoreByArea ? "area fitness." : "of your resolved minimums.");
+                    + (shownRules.hasAutopilotAxes() ? " has an Autopilot score of " : " scores ")
+                    + markScores.get(chosen) + "% "
+                    + (shownRules.hasAutopilotAxes() ? "under the current working minimums."
+                            : shownRules.scoreByArea ? "area fitness." : "of your resolved minimums.");
             DecisionLog.Entry entry = markEntries.get(chosen);
             if (entry.model >= 2 && entry.scorePercent >= 0
                     && entry.scorePercent != markScores.get(chosen)) {
-                described += " At decision it scored " + entry.scorePercent + "%.";
+                described += (AutopilotText.usesAutopilotScore(entry) ? " At decision its Autopilot score was "
+                        : " At decision it scored ") + entry.scorePercent + "%.";
             }
         }
         described += " " + (shownRules.scoreByArea ? "Area mode permits compensation between active measures."
                 : "Strict mode checks every active minimum.")
                 + " Farther out means higher pay or pay rates. Solid blue is saved minimums; "
                 + (shownRules.acceptanceLearning ? "teal is learned bests in use" : "gray is learned bests stored but off")
-                + "; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. Learned bests do "
+                + (shownRules.hasAutopilotAxes() ? "; dashed purple is Autopilot's independent working requirement, "
+                        + "including at a 100% bar. Learned bests do "
+                        : "; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. Learned bests do ")
                 + "not move saved knobs. Colored shapes are offers.";
         if (marks.isEmpty()) return described;
         return described + " The constellation shows the latest or selected offer. Choose an older offer on the skyline.";
@@ -1548,8 +1558,8 @@ final class MinimumsStarView extends View {
         if (!dragging || held < 0) return markScores.get(chosen);
         int[] rates = shownRules.minimums();
         rates[held] = dragValue;
-        return AreaScore.scorePercent(shownRules.withMinimums(rates[AreaScore.PAY], rates[AreaScore.MILE],
-                rates[AreaScore.MINUTE]), markFacts.get(chosen));
+        return AreaScore.scorePercent(shownRules.withoutAutopilotAxes().withMinimums(rates[AreaScore.PAY],
+                rates[AreaScore.MILE], rates[AreaScore.MINUTE]), markFacts.get(chosen));
     }
 
     /**
@@ -2788,12 +2798,14 @@ final class MinimumsStarView extends View {
                     : result == OfferRule.Result.DECLINE ? "decline" : "review"));
         }
         if (markScores.get(m) >= 0) {
-            parts.add("scores " + markScores.get(m) + "% "
-                    + (shownRules.scoreByArea ? "area fitness now" : "of your minimums now"));
+            parts.add((shownRules.hasAutopilotAxes() ? "Autopilot score " : "scores ") + markScores.get(m) + "% "
+                    + (shownRules.hasAutopilotAxes() ? "under the working minimums now"
+                            : shownRules.scoreByArea ? "area fitness now" : "of your minimums now"));
             DecisionLog.Entry entry = markEntries.get(m);
             if (entry.model >= 2 && entry.scorePercent >= 0
                     && entry.scorePercent != markScores.get(m)) {
-                parts.add("scored " + entry.scorePercent + "% when decided");
+                parts.add((AutopilotText.usesAutopilotScore(entry) ? "Autopilot score " : "scored ")
+                        + entry.scorePercent + "% when decided");
             }
         }
         return String.join(", ", parts);

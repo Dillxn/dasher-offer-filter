@@ -369,6 +369,8 @@ final class DecisionLog {
             if (model >= MODEL) {
                 json.put("scoreKind", scoreKind);
                 if (scoringRules != null) json.put("rules", rulesJson(scoringRules));
+                // A fixed category survives report redaction of the local exact policy. It reveals no rates.
+                if (scoringRules != null && scoringRules.hasAutopilotAxes()) json.put("scoreReference", "autopilot");
             }
             if (peeked) json.put("peeked", true);
             if (notification != null) json.put("notification", notification.toJson());
@@ -436,12 +438,14 @@ final class DecisionLog {
             AcceptedFloors proof = rules.accepted;
             // "payPer":"stops" (0.6.14): "flat" is the pay-per-stop minimum counting every stop, the pickup included,
             // and the pay best has its stops. 0.6.12's rule C (max(1, stops − 1)) wrote "stop".
-            return new JSONObject().put("flat", rules.flatCents).put("payPer", "stops").put("mile", rules.perMileCents)
+            JSONObject json = new JSONObject().put("flat", rules.flatCents).put("payPer", "stops").put("mile", rules.perMileCents)
                     .put("minute", rules.perMinuteCents).put("maxStops", rules.maxStops)
                     .put("area", rules.scoreByArea).put("learning", rules.acceptanceLearning)
                     .put("accepted", new JSONObject().put("pay", proof.highestPayCents)
                             .put("payUnits", proof.payUnits).put("milePay", proof.milePay).put("miles", proof.miles)
                             .put("minutePay", proof.minutePay).put("minutes", proof.minutes));
+            if (rules.hasAutopilotAxes()) json.put("autopilotAxes", rules.autopilotAxes.encode());
+            return json;
         }
 
         /**
@@ -454,12 +458,15 @@ final class DecisionLog {
                     || !json.has("maxStops") || !json.has("area") || !json.has("learning")) return null;
             JSONObject proof = json.optJSONObject("accepted");
             if (proof == null) return null;
+            AutopilotAxes axes = AutopilotAxes.decode(json.optString("autopilotAxes", ""));
+            // A damaged adjusted reference cannot be replayed as though the original baseline produced its score.
+            if (json.has("autopilotAxes") && (axes.isEmpty() || !autopilot)) return null;
             return new FilterSettings(true, json.optInt("flat"), json.optInt("mile"), json.optInt("minute"),
                     json.optInt("maxStops"), autopilot, FilterSettings.GOAL_TOP_TIER, bar,
                     json.optBoolean("area"), json.optBoolean("learning"),
                     new AcceptedFloors(proof.optInt("pay"), proof.optInt("payUnits", 1), proof.optInt("milePay"),
                             proof.optDouble("miles", 0),
-                            proof.optInt("minutePay"), proof.optInt("minutes")));
+                            proof.optInt("minutePay"), proof.optInt("minutes")), axes);
         }
 
         /** An observed count is a positive integer, never a coerced string, fractional value or inferred zero. */
@@ -949,6 +956,9 @@ final class DecisionLog {
      */
     static String score(Entry entry) {
         if (entry.scorePercent < 0) return "";
+        if (entry.scoringRules != null && entry.scoringRules.hasAutopilotAxes()) {
+            return " | Autopilot score " + entry.scorePercent + "%";
+        }
         return ("area".equals(entry.scoreKind) ? " | area score " : " | score ") + entry.scorePercent + "%";
     }
 

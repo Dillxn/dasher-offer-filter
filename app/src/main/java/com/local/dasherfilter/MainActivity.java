@@ -2369,7 +2369,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (offerClock == null) return;
         OwnWindowTouches.show(new AlertDialog.Builder(this)
                 .setTitle(OfferClock.TITLE)
-                .setMessage(OfferClock.DETAILS + "\n\n" + offerClock.table())
+                .setMessage(offerClock.details() + "\n\n" + offerClock.table())
                 .setPositiveButton("OK", null));
     }
 
@@ -2577,7 +2577,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
         // Passed only because Autopilot lowered the bar: left to the user, never auto-accepted.
         if (AutopilotText.passedBelowMinimums(entry)) {
-            TextView below = ui.text(AutopilotText.ticketBelowMinimums(entry.barPercent), 14, ui.ink, true);
+            TextView below = ui.text(AutopilotText.ticketBelowMinimums(entry), 14, ui.ink, true);
             below.setPadding(0, ui.dp(6), 0, 0);
             ticket.addView(below);
         }

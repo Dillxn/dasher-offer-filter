@@ -130,6 +130,7 @@ public class BundledNotesTest {
         both.addAll(notice(27));
         both.addAll(notice(28));
         both.addAll(notice(29));
+        both.addAll(notice(30));
         assertEquals("a reader of notice 13: all later notices in order", both, BundledNotes.noticeChanges(13));
 
         List<String> news = BundledNotes.whatsNew("0.5.1");
@@ -349,7 +350,8 @@ public class BundledNotesTest {
         since19.addAll(notice(27));
         since19.addAll(notice(28));
         since19.addAll(notice(29));
-        assertEquals("a reader of notice 19 sees 20's lines, then 21's to 29's", since19,
+        since19.addAll(notice(30));
+        assertEquals("a reader of notice 19 sees 20's lines, then each later notice", since19,
                 BundledNotes.noticeChanges(19, true));
         for (String wrong : new String[] {"identifier", "track", "location", "earn more", "guarantee",
                 "only daily totals"}) {
@@ -589,9 +591,7 @@ public class BundledNotesTest {
      * 0.6.28 (the owner's two reports of 16 October 2026: "was +1 didnt read it", of Dasher's add-on card, and a "+$3"
      * offer it "didnt read" through several showings): two lines. Nothing the notice says changed, so it stays 29.
      */
-    @Test public void theCurrentReleaseSaysWhatChanged() {
-        assertEquals("0.6.28", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(29, Consent.VERSION);
+    @Test public void release0628KeepsItsOriginalWords() {
         List<String> lines = BundledNotes.whatsNew("0.6.28");
         assertEquals(Arrays.asList("Offers with a +$ amount are read again when Dasher shows \"orders completed\" "
                 + "under them: if even pay plus the +$ misses your minimums, they're declined.",
@@ -603,10 +603,26 @@ public class BundledNotesTest {
         }
     }
 
+    /** 0.6.29 renews the notice for working requirements that can follow an acceptance in either direction. */
+    @Test public void currentReleaseAndNoticeExplainIndependentWorkingMinimums() {
+        assertEquals("0.6.29", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(30, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.29");
+        assertEquals(3, lines.size());
+        assertEquals(lines, notice(30));
+        assertEquals(lines, BundledNotes.noticeChanges(29));
+        String words = String.join(" ", lines);
+        for (String fact : new String[] {"With Autopilot on", "accept yourself", "readable active minimum",
+                "up or down", "newest acceptance replaces earlier", "Saved minimums and learned bests stay separate",
+                "unread and disabled", "Tap Auto", "bar can still move them together", "turning Autopilot off"}) {
+            assertTrue(fact, words.contains(fact));
+        }
+        for (String line : lines) assertTrue(line, line.length() <= 160);
+    }
+
     /** 0.6.27's notice (29): offers are scored by area by default; Strict is a pick in the radar's middle. */
     @Test public void notice29SaysAreaIsTheDefault() {
-        List<String> lines = BundledNotes.noticeChanges(28);
-        assertEquals(notice(29), lines);
+        List<String> lines = notice(29);
         assertEquals(lines.toString(), 2, lines.size());
         assertTrue(String.join(" ", lines).contains("scored by Area by default"));
     }
@@ -663,6 +679,7 @@ public class BundledNotesTest {
         List<String> since26 = new ArrayList<>(lines);
         since26.addAll(notice(28));
         since26.addAll(notice(29));
+        since26.addAll(notice(30));
         assertEquals(since26, BundledNotes.noticeChanges(26));
         assertEquals(lines.toString(), 3, lines.size());
         String notice = String.join(" ", lines);
@@ -689,6 +706,7 @@ public class BundledNotesTest {
         since25.addAll(notice(27));
         since25.addAll(notice(28));
         since25.addAll(notice(29));
+        since25.addAll(notice(30));
         assertEquals(since25, BundledNotes.noticeChanges(25));
         assertEquals(lines.toString(), 6, lines.size());
         String notice = String.join(" ", lines);

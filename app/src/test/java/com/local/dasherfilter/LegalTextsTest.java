@@ -20,7 +20,7 @@ public final class LegalTextsTest {
                 "An offer permitted by the filter is not an accepted delivery", "confirmed manual standalone",
                 "Unknown facts do not teach their axes", "strictly meets every active saved and enabled learned",
                 "Add-on filtering stays strict against saved minimums", "it is conditional and cannot overwrite later changes",
-                "what offers must meet otherwise rises only through acceptance learning"})
+                "Autopilot never changes your saved minimums or learned bests"})
             assertTrue(fact, terms.contains(fact));
         String privacy = LegalTexts.Doc.PRIVACY.text();
         for (String fact : new String[] {"Learned evidence starts empty", "Raw learned-best snapshots and adoption receipts are not sent",
@@ -41,18 +41,18 @@ public final class LegalTextsTest {
      * The beta texts' effective identities, also read by ConsentGateTest. Only a text changed in substance gets
      * a new identity in its header; then tools/legal_texts.py regenerates the app's matching copy.
      */
-    static final String TERMS_EFFECTIVE = "17 October 2026";
+    static final String TERMS_EFFECTIVE = "19 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.27";
+    static final String TERMS_VERSION = "0.6.29";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
      * 0.6.21 both (an accept holds the bar for the 24 offers after it; Autopilot no longer grows the minimums; the
      * divider for a map in either half); 0.6.27 both (area scoring is the default, and whether the mode was picked is
-     * kept).
+     * kept); 0.6.29 both (independent working minimums, prospective personal evidence and local snapshots).
      */
-    static final String PRIVACY_EFFECTIVE = "17 October 2026";
-    static final String PRIVACY_VERSION = "0.6.27";
+    static final String PRIVACY_EFFECTIVE = "19 October 2026";
+    static final String PRIVACY_VERSION = "0.6.29";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -125,23 +125,19 @@ public final class LegalTextsTest {
                         + "decline this offer?\"), seen in the developer's own reports; any other question, or one "
                         + "saying declines are limited or that another decline would end your dash, is left to you and "
                         + "auto-decline pauses until you resume it.",
-                // 0.6.18: a hand accept holds the bar across dashes; 0.6.21: for the 24 offers after it (the owner:
-                // "24h may b too aggressive. We may have to do it by like two dozen orders or something").
-                "keeps it at least at that score for the next 24 offers, across dashes however long they take (from "
-                        + "0.6.21; from 0.6.18, the best such score of the last 7 days; before, for the rest of that "
-                        + "dash)",
-                // 0.6.19: turning Autopilot off and on keeps that hold.
-                "An accept stops holding the bar once 24 offers have come after it (from 0.6.21; from 0.6.19, 7 days "
-                        + "after it, even after newer offers had pushed it out of the decision history); a change of "
-                        + "your goal (turning Autopilot on with another goal included), minimums, max stops, mode or "
-                        + "learning ends that hold; turning Autopilot off and on again (from 0.6.19; before, turning it "
-                        + "on ended it) and Adopt keep it.",
-                "An offer you accept yourself can also hold Autopilot's bar above what the goal allows, for the next "
-                        + "24 offers (from 0.6.21; for up to 7 days before).",
+                // 0.6.29: a latest acceptance replaces the old score hold with its own working shape and bar.
+                "each readable active working minimum to that offer's own pay per stop, pay per mile or pay per "
+                        + "hour, independently up or down",
+                "The newest acceptance replaces earlier accepted levels and holds the bar at least at the value "
+                        + "it had at that acceptance for the next 24 counted offers, across dashes",
+                "A change of your goal (turning Autopilot on with another goal included), minimums, max stops, "
+                        + "mode or learning ends that hold and clears the working adjustments",
+                "a pause, turning Autopilot off and on again with the same goal, and Adopt keep them, including "
+                        + "an already confirmed pending update",
+                "a newer acceptance replaces those levels and that hold",
                 "using your recent offers, how often they come and the acceptance rate Dasher shows when you decline",
-                // OfferRule.evaluate: a bar above 100% declines what meets the minimums but not the bar.
-                "Above 100% it declines offers that meet your minimums.",
-                "Offers it lets through below your minimums are left to you.",
+                "Autopilot can permit offers below your saved or learned minimums, or decline offers that meet them",
+                "Offers it permits only below your saved or learned minimums are left to you and never auto-accepted",
                 "a complete standalone offer that strictly meets every active saved and enabled learned minimum at 100% or any higher Autopilot bar",
                 "Autopilot's default goal, pay first, does not try to keep your acceptance rate up.",
                 "An acceptance-rate goal you choose instead is a best effort, not a promise: Autopilot cannot accept "
@@ -156,13 +152,12 @@ public final class LegalTextsTest {
                 "It never wakes or unlocks the phone; the power button still turns the screen off. This uses more "
                         + "battery.",
                 "if nothing of a dash is seen for 8 hours while Dasher is not in front and the screen is off",
-                // 0.5.1 to 0.6.20: the minimums grew (Growth), with its limits, Undo and the switch; from 0.6.21 Autopilot
-                // never changes them ("autopilot is the buffer"), and only an earlier growth's note and Undo are left.
-                "Autopilot never changes your minimums, only its bar (from 0.6.21; from 0.5.1 to 0.6.20 it also raised "
-                        + "them, at most 10% at a time, once its bar had stayed at 103% or more for 30 offers over at "
-                        + "least 2 days, with Let my minimums grow to turn that off)",
-                "what offers must meet otherwise rises only through acceptance learning, below, as you accept offers "
-                        + "that beat your best.",
+                // Saved minimums still do not grow automatically; Autopilot has separate working requirements.
+                "Autopilot never changes your saved minimums or learned bests; it changes only its separate "
+                        + "working requirements",
+                "From 0.5.1 to 0.6.20 Autopilot also raised saved minimums, at most 10% at a time, with Let my "
+                        + "minimums grow to turn that off; that growth and its switch were removed in 0.6.21",
+                "Acceptance learning keeps its separate best-ever rates",
                 "A growth made before 0.6.21 keeps its note on the homepage, with Undo, until you tap it or your "
                         + "minimums change another way."}) {
             assertTrue(fact, terms.contains(fact));
@@ -276,8 +271,8 @@ public final class LegalTextsTest {
                 "The fingerprint kept with a reading never leaves the phone.",
                 "Report this offer leaves it out.",
                 "Clear history removes the reading, Autopilot's working figures, the accepted offers it keeps, its "
-                        + "last-change note, the note of its last growth (and with it the Undo) and its other notes "
-                        + "above.",
+                        + "independent working minimums and any pending adjustment, its last-change note, the note "
+                        + "of its last growth (and with it the Undo) and its other notes above.",
                 // 0.6.19: the hand accepts kept for the accepted floor (AutopilotStore.keepAccepts).
                 "The offers you accept yourself while Autopilot is on (from 0.6.19): for each, its pay in cents, "
                         + "miles, minutes, stops and item count, and when you accepted it",
@@ -291,10 +286,13 @@ public final class LegalTextsTest {
                 "Autopilot's settings: whether it is on, your goal (pay first, the default from 0.6.18, or an "
                         + "acceptance rate of 70% or 50%) and whether you picked it yourself in its goal question, its "
                         + "current bar",
-                "the scores of offers you accepted yourself, each for the 24 offers after it, across dashes, from "
-                        + "0.6.21; in the last 7 days from 0.6.18",
-                "so an accept still counts after newer offers have pushed it out of the decision history: it holds "
-                        + "the bar until 24 offers have come after it (from 0.6.21; before, for 7 days).",
+                "The latest acceptance replaces earlier accepted levels and starts the bar's next-24-offers hold again",
+                "Each old score can hold the legacy bar until 24 offers have come after it",
+                "its newest acceptance and anchor bar then replace their highest-score hold",
+                "at most three exact numeric rate pairs", "one pending copy with numeric consent and policy markers",
+                "The latest 200 decision snapshots retain the exact adjustments used for their original decision",
+                "not included in reports, automatic summaries or the timing study",
+                "fixed category Autopilot, without exporting the working rates",
                 "the bar it was judged at and whether Autopilot set that bar",
                 "whether Dasher said declining it does not lower your acceptance rate",
                 "used for the wait estimate and by Autopilot to estimate how often offers arrive",
@@ -317,15 +315,14 @@ public final class LegalTextsTest {
         for (String fact : new String[] {"and when your current minimums took effect",
                 "(until 0.6.21, also whether Let my minimums grow was on; that choice is removed from the phone with "
                         + "the growth it switched)",
-                "Autopilot never changes your minimums (from 0.6.21; from 0.5.1 to 0.6.20, while Let my minimums grow "
-                        + "was on, it raised them, at most 10% at a time, once the bars it recorded had stayed at 103% "
-                        + "or more for 30 offers over at least 2 days)",
+                "Autopilot never changes saved minimums or the learner's independent bests",
+                "Its earlier growth of saved minimums ended in 0.6.21",
                 "If Autopilot raised your minimums before 0.6.21, the app keeps a note of that last growth: when, by "
                         + "how much, how many offers on how many days it rested on, your minimums and Autopilot's bar "
                         + "before and after, and whether its note on the homepage (with Undo) is still waiting",
                 "and the Undo of such a growth (your minimums before and after)",
                 "the note of its last growth (and with it the Undo)",
-                "From 0.6.21 nothing grows your saved minimums."}) {
+                "Autopilot never writes the saved minimums or learned bests"}) {
             assertTrue(fact, privacy.contains(fact));
         }
         for (String retired : new String[] {"whether Let my minimums grow is on", "Turn off Let my minimums grow",
@@ -466,7 +463,7 @@ public final class LegalTextsTest {
         assertEquals(50, FilterStore.BAR_MIN);
         assertEquals(150, FilterStore.BAR_MAX);
         assertTrue(terms.contains("between 50% and 150%"));
-        assertTrue(privacy.contains("from 50% to 150%"));
+        assertTrue(privacy.contains("between 50% and 150%"));
         assertEquals(10, AutopilotStore.EXTRA_MAX);
         assertTrue(privacy.contains("a correction of at most 10 points"));
         assertEquals(25, Autopilot.CHECK_EVERY);

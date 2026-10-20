@@ -1,5 +1,7 @@
 package com.local.dasherfilter;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -35,8 +37,8 @@ final class AutopilotText {
      * the starter's "Use these" and the first resume, when no one asked for Autopilot by name; from 0.6.2 that is with
      * Autopilot already on by default, {@link #CHOOSER_ON_BY_DEFAULT}).
      */
-    static final String CHOOSER_TURNS_ON = "Choosing one turns on Autopilot, which adjusts how much of your minimums "
-            + "an offer must meet. Not now leaves it off.";
+    static final String CHOOSER_TURNS_ON = "Choosing one turns on Autopilot, which adjusts the working minimums "
+            + "offers must meet. Not now leaves it off.";
     /**
      * Under the choices while Autopilot is on by default and no goal was chosen yet (0.6.2): it is already on, with the
      * suggested goal checked, and Not now keeps it so.
@@ -150,6 +152,8 @@ final class AutopilotText {
         final boolean recovering;
         final int extra;
         final long wallNow;
+        /** A confirmed acceptance waiting for the scanner's safe point; no working rate changed yet. */
+        final boolean axesPending;
         /** The acceptance rate in hundredths of a percent (-1 unknown): the plan's, else Dasher's latest reading. */
         final int arHundredths;
         final Autopilot.ArSource arSource;
@@ -172,6 +176,13 @@ final class AutopilotText {
         Status(FilterSettings rules, boolean readerConnected, Autopilot.Plan plan, AutopilotStore.Reading reading,
                AutopilotStore.Change lastChange, boolean storedRecovering, int storedExtra,
                AutopilotStore.Grew lastGrowth, long wallNow) {
+            this(rules, readerConnected, plan, reading, lastChange, storedRecovering, storedExtra, lastGrowth, wallNow,
+                    false);
+        }
+
+        Status(FilterSettings rules, boolean readerConnected, Autopilot.Plan plan, AutopilotStore.Reading reading,
+               AutopilotStore.Change lastChange, boolean storedRecovering, int storedExtra,
+               AutopilotStore.Grew lastGrowth, long wallNow, boolean axesPending) {
             if (rules == null) throw new IllegalArgumentException("rules");
             this.rules = rules;
             this.on = rules.autopilot;
@@ -186,6 +197,7 @@ final class AutopilotText {
             this.recovering = this.plan != null ? this.plan.recovering : storedRecovering;
             this.extra = this.plan != null ? this.plan.extra : Math.max(0, Math.min(Autopilot.EXTRA_MAX, storedExtra));
             this.wallNow = wallNow;
+            this.axesPending = on && axesPending;
             if (this.plan != null) {
                 arHundredths = this.plan.arHundredths;
                 arSource = this.plan.arSource;
@@ -458,7 +470,9 @@ final class AutopilotText {
      */
     static String statusSaid(Status s) {
         if (showsRise(s)) {
-            return barSaid(s) + " Rising to " + risingTo(s) + " percent, the score of an offer you accepted.";
+            return barSaid(s) + " Rising to " + risingTo(s) + (s.rules.hasAutopilotAxes()
+                    ? " percent, the bar held by your latest acceptance."
+                    : " percent, the score of an offer you accepted.");
         }
         switch (s.kind) {
             case OFF:
@@ -560,6 +574,10 @@ final class AutopilotText {
     static List<String> detailsLines(Status s) {
         List<String> lines = new ArrayList<>();
         lines.add(detailsBar(s));
+        String axes = detailsAxes(s);
+        if (axes != null) lines.add(axes);
+        if (s.axesPending) lines.add("Your latest acceptance will update each readable active minimum as soon as "
+                + "no offer is up.");
         String floor = detailsFloor(s);
         if (floor != null) lines.add(floor);
         if (s.on) lines.add("Goal: " + goalLabel(s.goal) + ".");
@@ -577,7 +595,9 @@ final class AutopilotText {
         if (change != null) lines.add(change);
         String grew = detailsGrowth(s);
         if (grew != null) lines.add(grew);
-        if (s.on) lines.add(DETAILS_AUTO_ACCEPT);
+        if (s.on) lines.add(s.rules.hasAutopilotAxes() ? "Auto-accept requires every saved and enabled learned "
+                + "minimum at 100% or any higher bar, and Autopilot's working minimums wherever they ask more."
+                : DETAILS_AUTO_ACCEPT);
         String pinned = detailsPinned(s);
         if (pinned != null) lines.add(pinned);
         return Collections.unmodifiableList(lines);
@@ -586,8 +606,54 @@ final class AutopilotText {
     /** "Bar: 82% of your minimums (100% = exactly your minimums)."; while off, that offers meet exactly them. */
     static String detailsBar(Status s) {
         if (!s.on) return DETAILS_OFF;
+        if (s.rules.hasAutopilotAxes()) return "Bar: " + s.bar + "%. Each acceptance sets Autopilot's working "
+                + "minimums separately; later bar changes move them together.";
         return "Bar: " + s.bar + "% of your minimums (100% = exactly your minimums).";
     }
+
+    /** The actual rates in force, including the current bar, without rounding the rule itself. */
+    static String detailsAxes(Status s) {
+        if (!s.rules.hasAutopilotAxes()) return null;
+        return "Working minimums now: " + workingMinimums(s.rules) + ". Your confirmed personal acceptance "
+                + ago(s.wallNow - s.rules.autopilotAxes.acceptedAt) + " set each readable active minimum to that "
+                + "offer's value, up or down. Unread and disabled measures stay as they are. Saved minimums and "
+                + "learned bests stay separate. ≈ marks a rate rounded up for display.";
+    }
+
+    static String workingMinimums(FilterSettings rules) {
+        List<String> rates = new ArrayList<>();
+        for (int axis : new int[] {AreaScore.PAY, AreaScore.MILE, AreaScore.MINUTE}) {
+            if (!AutopilotAxes.active(rules, axis)) continue;
+            rates.add(workingAxisRate(rules, axis) + (axis == AreaScore.PAY ? "/stop" : axis == AreaScore.MILE
+                    ? "/mi" : "/hr"));
+        }
+        return rates.isEmpty() ? "none" : String.join(" · ", rates);
+    }
+
+    /** Currency per stop, mile or hour. A repeating accepted ratio is rounded only after the bar cancels exactly. */
+    static String workingAxisRate(FilterSettings rules, int axis) {
+        if (!AutopilotAxes.active(rules, axis)) return "off";
+        AutopilotAxes.Rate rate = rules.autopilot ? rules.autopilotAxes.rate(axis) : null;
+        if (rate != null) {
+            BigInteger numerator = rate.numerator.multiply(BigInteger.valueOf(rules.minimumScalePercent))
+                    .multiply(BigInteger.valueOf(axis == AreaScore.MINUTE ? 60 : 1));
+            BigInteger denominator = rate.denominator.multiply(BigInteger.valueOf(100));
+            BigInteger[] divided = numerator.divideAndRemainder(denominator);
+            boolean rounded = divided[1].signum() != 0;
+            BigInteger cents = rounded ? divided[0].add(BigInteger.ONE) : divided[0];
+            return cents.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) >= 0 ? "out of range"
+                    : (rounded ? "≈" : "") + DecisionLog.money(cents.longValue());
+        }
+        BigDecimal cents = AreaScore.floors(rules, RATE_EXAMPLE).effectiveCents()[axis];
+        if (cents == null) return "unread";
+        BigDecimal used = cents.multiply(BigDecimal.valueOf(rules.minimumScalePercent)).movePointLeft(2);
+        long rounded = AreaScore.roundedCents(used, FilterSettings.BAR_AT_MINIMUMS);
+        return rounded == Long.MAX_VALUE ? "out of range" : (used.compareTo(BigDecimal.valueOf(rounded)) == 0
+                ? "" : "≈") + DecisionLog.money(rounded);
+    }
+
+    /** Display conversion only: one stop, one mile, one hour; never observed offer evidence. */
+    private static final OfferSnapshot RATE_EXAMPLE = new OfferSnapshot(null, 1.0, 60, 1);
 
     /**
      * While an offer the user accepted by hand holds the bar (0.6.11, {@link Autopilot.Plan#floorBinds}; across dashes
@@ -606,6 +672,9 @@ final class AutopilotText {
                 ? "The bar rises to " + plan.floor + "% as soon as no offer is up, and stays at " + plan.floor
                         + "% or more" + next
                 : "The bar stays at " + plan.floor + "% or more" + next;
+        if (s.rules.hasAutopilotAxes()) return holds + ": your latest personal acceptance set the working minimums "
+                + "at this bar. A newer acceptance replaces those levels and this hold. Changing your goal or "
+                + "minimums lets it go sooner.";
         return holds + ": you accepted an offer that scored " + plan.floor + "% of your minimums. Changing your goal "
                 + "or minimums lets it go sooner.";
     }
@@ -687,6 +756,9 @@ final class AutopilotText {
     static String detailsLastChange(Status s) {
         AutopilotStore.Change change = s.lastChange;
         if (change == null) return null;
+        if (Autopilot.Reason.ACCEPTED_AXES.name().equals(change.why)) return "Last change "
+                + ago(s.wallNow - change.at) + ": Autopilot's working minimums followed each readable measure of "
+                + "your accepted offer.";
         String words = reasonWords(change.why);
         return "Last change " + ago(s.wallNow - change.at) + ": " + change.from + "% → " + change.to + "%"
                 + (words.isEmpty() ? "" : " (" + words + ")") + ".";
@@ -830,6 +902,8 @@ final class AutopilotText {
 
     static String ticketScoreLine(DecisionLog.Entry entry) {
         if (entry.scorePercent < 0) return null;
+        if (usesAutopilotScore(entry)) return "Autopilot score " + entry.scorePercent + "% · bar "
+                + entry.barPercent + "%";
         if (entry.model >= 3 && "area".equals(entry.scoreKind)) {
             return "Area score " + entry.scorePercent + "% · bar " + entry.barPercent + "%";
         }
@@ -839,6 +913,16 @@ final class AutopilotText {
     /** A passing offer below 100% of the minimums: why it passed, and that it is never auto-accepted. */
     static String ticketBelowMinimums(int barPercent) {
         return "Below your minimums: passed by Autopilot's " + barPercent + "% bar. Never auto-accepted.";
+    }
+
+    static String ticketBelowMinimums(DecisionLog.Entry entry) {
+        return usesAutopilotScore(entry) ? "Below your saved or learned minimums: permitted by Autopilot's working "
+                + "minimums. Never auto-accepted." : ticketBelowMinimums(entry.barPercent);
+    }
+
+    /** Read the decision's own snapshot: a later calibration never relabels an earlier score. */
+    static boolean usesAutopilotScore(DecisionLog.Entry entry) {
+        return entry != null && entry.scoringRules != null && entry.scoringRules.hasAutopilotAxes();
     }
 
     /**
@@ -853,8 +937,9 @@ final class AutopilotText {
      * as an add-on's does): left to the user, never auto-accepted. Only a line this version decided.
      */
     static boolean passedBelowMinimums(DecisionLog.Entry entry) {
-        if (entry == null || entry.result != OfferRule.Result.KEEP || entry.model < 2
-                || entry.barPercent >= FilterSettings.BAR_AT_MINIMUMS) return false;
+        if (entry == null || entry.result != OfferRule.Result.KEEP || entry.model < 2) return false;
+        if (usesAutopilotScore(entry)) return entry.reason != null && entry.reason.contains("below your minimums");
+        if (entry.barPercent >= FilterSettings.BAR_AT_MINIMUMS) return false;
         return (entry.scorePercent >= 0 && entry.scorePercent < FilterSettings.BAR_AT_MINIMUMS)
                 || entry.reason.contains("below your minimums");
     }
@@ -880,7 +965,25 @@ final class AutopilotText {
         return belowMinimumsCard((facts == null ? OfferSnapshot.UNKNOWN : facts).summary(), scorePercent, barPercent);
     }
 
+    static String belowMinimumsCard(String facts, OfferRule.Decision decision) {
+        return decision.scoringRules != null && decision.scoringRules.hasAutopilotAxes()
+                ? (facts == null ? "" : facts) + "; below your saved or learned minimums, permitted by Autopilot's "
+                        + "working minimums. Yours to accept."
+                : belowMinimumsCard(facts, decision.scorePercent, decision.minimumScalePercent);
+    }
+
+    static String belowMinimumsCard(OfferSnapshot facts, OfferRule.Decision decision) {
+        return belowMinimumsCard((facts == null ? OfferSnapshot.UNKNOWN : facts).summary(), decision);
+    }
+
     // ---- The skyline ----
+
+    static String skylineDescription(boolean hasAutopilotScores) {
+        return hasAutopilotScores ? "Building height is pay in dollars. Each tree is the score recorded under that "
+                + "offer's rules; 100% is its scoring reference. Adjusted offers use an Autopilot score. Building "
+                + "colour is what happened: green passed, amber passed below your minimums or left for review, red "
+                + "filtered." : SKYLINE_DESCRIPTION;
+    }
 
     /** The dashed rail at the bar: "Bar 82%". */
     static String skylineBarRail(int barPercent) {

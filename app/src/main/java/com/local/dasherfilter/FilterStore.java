@@ -61,6 +61,14 @@ final class FilterStore {
     private static final String AUTOPILOT_GOAL_CHOSEN = "autopilot_goal_chosen";
     /** The bar while Autopilot is on, in percent of the minimums; ignored (exactly 100) while it is off. */
     private static final String AUTOPILOT_BAR = "autopilot_bar_percent";
+    /** Exact independent working references; never written back to the saved or learned minimums. */
+    private static final String AUTOPILOT_AXES = "autopilot_axes_v1";
+    /** One confirmed acceptance waiting for the scanner's next safe point. */
+    private static final String AUTOPILOT_AXES_PENDING = "autopilot_axes_pending_v1";
+    private static final String AUTOPILOT_AXES_EPOCH = "autopilot_axes_epoch_v1";
+    private static final String AUTOPILOT_RESUME_BAR = "autopilot_axes_resume_bar_v1";
+    private static long autopilotObservationSequence;
+    private static long lastAutopilotAcceptanceSequence;
     /** The lowest and highest bar Autopilot may set. */
     static final int BAR_MIN = 50;
     static final int BAR_MAX = 150;
@@ -346,7 +354,8 @@ final class FilterStore {
         return new FilterSettings(prefs.getBoolean(ENABLED, false), prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
                 prefs.getInt(PER_MINUTE, 0), prefs.getInt(MAX_STOPS, 0), autopilot,
                 FilterSettings.sanitizedGoal(prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_DEFAULT)), bar,
-                prefs.getBoolean(AREA_MODE, false), prefs.getBoolean(ACCEPTANCE_LEARNING, true), accepted(prefs));
+                prefs.getBoolean(AREA_MODE, false), prefs.getBoolean(ACCEPTANCE_LEARNING, true), accepted(prefs),
+                AutopilotAxes.decode(prefs.getString(AUTOPILOT_AXES, "")));
     }
 
     /**
@@ -898,6 +907,13 @@ final class FilterStore {
                 edit.putLong(MINIMUMS_SINCE, wallClock.getAsLong());
                 minimaRevised(prefs, edit);
             }
+            int maxStops = base == null || next.maxStops != base.maxStops ? next.maxStops : stored.maxStops;
+            if (flat != stored.flatCents || mile != stored.perMileCents || minute != stored.perMinuteCents
+                    || maxStops != stored.maxStops || learning != stored.acceptanceLearning || area != stored.scoreByArea) {
+                // The user's new requirements must be visible immediately, not hidden behind an old working shape.
+                // An offer already on screen may still teach when the user subsequently accepts it.
+                edit.remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR);
+            }
             edit.apply();
         }
     }
@@ -923,7 +939,27 @@ final class FilterStore {
                     .putInt(AUTOPILOT_GOAL, FilterSettings.sanitizedGoal(goal))
                     .putBoolean(AUTOPILOT_GOAL_ASKED, true);
             if (on) edit.putBoolean(AUTOPILOT_GOAL_CHOSEN, true);
-            if (!on || !wasOn) edit.putInt(AUTOPILOT_BAR, FilterSettings.BAR_AT_MINIMUMS);
+            if (on != wasOn) {
+                // A toggle cancels unconfirmed observations. A choice already confirmed while Autopilot was on
+                // remains pending across a same-goal pause, ready for the next safe point after resuming.
+                edit.putLong(AUTOPILOT_AXES_EPOCH, prefs.getLong(AUTOPILOT_AXES_EPOCH, 0) + 1);
+                if (!on) {
+                    edit.putInt(AUTOPILOT_RESUME_BAR, bar(prefs));
+                    edit.putInt(AUTOPILOT_BAR, FilterSettings.BAR_AT_MINIMUMS);
+                } else {
+                    boolean shaped = !AutopilotAxes.decode(prefs.getString(AUTOPILOT_AXES, "")).isEmpty()
+                            || pendingAutopilotAxes(context) != null;
+                    edit.putInt(AUTOPILOT_BAR, shaped
+                            ? clamp(prefs.getInt(AUTOPILOT_RESUME_BAR, FilterSettings.BAR_AT_MINIMUMS), BAR_MIN, BAR_MAX)
+                            : FilterSettings.BAR_AT_MINIMUMS);
+                }
+            }
+            if (FilterSettings.sanitizedGoal(prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_DEFAULT))
+                    != FilterSettings.sanitizedGoal(goal)) {
+                edit.remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR);
+                advanceAutopilotEvidence(prefs, edit);
+                if (on && !wasOn) edit.putInt(AUTOPILOT_BAR, FilterSettings.BAR_AT_MINIMUMS);
+            }
             edit.apply();
         }
     }
@@ -956,6 +992,178 @@ final class FilterStore {
         }
     }
 
+    // ---- Prospective personal acceptances calibrate Autopilot's independent working axes (0.6.29) ----
+
+    /** Live, one-use evidence. A restart never reconstructs an unconfirmed acceptance from history. */
+    static final class AutopilotPermit {
+        final long epoch, consentAt, observedAt, sequence;
+        final int consentVersion;
+        final OfferSnapshot observed;
+        private boolean consumed;
+
+        private AutopilotPermit(SharedPreferences prefs, SharedPreferences consent, OfferSnapshot observed) {
+            epoch = prefs.getLong(AUTOPILOT_AXES_EPOCH, 0);
+            consentVersion = consent.getInt(Consent.ACCEPTED_VERSION, 0);
+            consentAt = consent.getLong(Consent.ACCEPTED_AT, 0);
+            observedAt = SystemClock.elapsedRealtime();
+            sequence = ++autopilotObservationSequence;
+            this.observed = observed;
+        }
+    }
+
+    /** Captured only at the first observation of a standalone offer, independently of the Learn switch. */
+    static AutopilotPermit captureAutopilotAcceptance(Context context, OfferSnapshot observed, boolean skipped) {
+        if (observed == null || skipped) return null;
+        load(context);
+        synchronized (FilterStore.class) {
+            SharedPreferences prefs = prefs(context);
+            FilterSettings rules = read(prefs);
+            if (!Consent.accepted(context) || !rules.autopilot || !rules.hasMonetaryRule()
+                    || rules.maxStops > 0 && observed.stops != null && observed.stops > rules.maxStops) return null;
+            return new AutopilotPermit(prefs, context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE), observed);
+        }
+    }
+
+    enum AutopilotAcceptance { QUEUED, OFF, STALE, UNKNOWN }
+
+    /** A confirmed acceptance staged as one atomic update; its effective values do not change until a safe point. */
+    static final class PendingAutopilotAxes {
+        final AutopilotAxes axes;
+        final String rulesKey, selectionKey, encoded;
+        final int bar, consentVersion;
+        final long consentAt;
+
+        private PendingAutopilotAxes(AutopilotAxes axes, FilterSettings before, SharedPreferences consent)
+                throws JSONException {
+            this.axes = axes;
+            rulesKey = pricingKey(before);
+            selectionKey = selectionKey(before);
+            bar = before.minimumScalePercent;
+            consentVersion = consent.getInt(Consent.ACCEPTED_VERSION, 0);
+            consentAt = consent.getLong(Consent.ACCEPTED_AT, 0);
+            encoded = new JSONObject().put("axes", axes.encode()).put("rules", rulesKey)
+                    .put("selection", selectionKey).put("bar", bar)
+                    .put("consent", consentVersion).put("consentAt", consentAt).toString();
+        }
+
+        private PendingAutopilotAxes(String encoded) throws JSONException {
+            JSONObject json = new JSONObject(encoded);
+            this.encoded = encoded;
+            axes = AutopilotAxes.decode(json.getString("axes"));
+            rulesKey = json.getString("rules");
+            selectionKey = json.getString("selection");
+            bar = json.getInt("bar");
+            consentVersion = json.getInt("consent");
+            consentAt = json.getLong("consentAt");
+        }
+
+        boolean matches(Context context, FilterSettings current) {
+            return compatibleForMerge(context, current) && rulesKey.equals(pricingKey(current));
+        }
+
+        /** A later confirmed offer may add a learned best before it fills in the previous pending working axes. */
+        boolean compatibleForMerge(Context context, FilterSettings current) {
+            SharedPreferences consent = context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE);
+            return current.autopilot && Consent.accepted(context) && bar == current.minimumScalePercent
+                    && selectionKey.equals(selectionKey(current))
+                    && consentVersion == consent.getInt(Consent.ACCEPTED_VERSION, 0)
+                    && consentAt == consent.getLong(Consent.ACCEPTED_AT, 0);
+        }
+
+        private static String pricingKey(FilterSettings rules) {
+            // Pausing auto-decline changes no minimum and cannot cancel a choice already confirmed.
+            return rules.withEnabled(true).rulesKey();
+        }
+
+        private static String selectionKey(FilterSettings rules) {
+            return rules.withEnabled(true).withoutAutopilotAxes().withAccepted(AcceptedFloors.NONE).rulesKey();
+        }
+    }
+
+    /** Only the service's confirmed personal standalone branch calls this through AutopilotRuntime. */
+    static AutopilotAcceptance queueAutopilotAcceptance(Context context, AutopilotPermit permit,
+                                                       OfferSnapshot offer, long acceptedAt) {
+        synchronized (FilterStore.class) {
+            SharedPreferences prefs = prefs(context);
+            FilterSettings before = read(prefs);
+            if (!Consent.accepted(context) || !before.autopilot) return AutopilotAcceptance.OFF;
+            SharedPreferences consent = context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE);
+            long elapsed = SystemClock.elapsedRealtime();
+            if (permit == null || permit.consumed || permit.sequence <= lastAutopilotAcceptanceSequence
+                    || permit.epoch != prefs.getLong(AUTOPILOT_AXES_EPOCH, 0)
+                    || permit.consentVersion != consent.getInt(Consent.ACCEPTED_VERSION, 0)
+                    || permit.consentAt != consent.getLong(Consent.ACCEPTED_AT, 0)
+                    || elapsed < permit.observedAt || elapsed - permit.observedAt > 5 * 60_000L
+                    || offer == null || offer.contradicts(permit.observed)) return AutopilotAcceptance.STALE;
+            permit.consumed = true;
+            lastAutopilotAcceptanceSequence = permit.sequence;
+            if (before.maxStops > 0 && offer.stops != null && offer.stops > before.maxStops) {
+                return AutopilotAcceptance.UNKNOWN;
+            }
+            PendingAutopilotAxes pending = pendingAutopilotAxes(context);
+            AutopilotAxes previous = pending != null && pending.compatibleForMerge(context, before)
+                    ? pending.axes : before.autopilotAxes;
+            AutopilotAxes next = previous.withOffer(before, offer, acceptedAt);
+            if (next == previous || next.isEmpty()) return AutopilotAcceptance.UNKNOWN;
+            try {
+                PendingAutopilotAxes update = new PendingAutopilotAxes(next, before, consent);
+                prefs.edit().putString(AUTOPILOT_AXES_PENDING, update.encoded).apply();
+                return AutopilotAcceptance.QUEUED;
+            } catch (JSONException impossible) {
+                return AutopilotAcceptance.UNKNOWN;
+            }
+        }
+    }
+
+    static PendingAutopilotAxes pendingAutopilotAxes(Context context) {
+        synchronized (FilterStore.class) {
+            String raw = prefs(context).getString(AUTOPILOT_AXES_PENDING, "");
+            if (raw.isEmpty() || raw.length() > 16_384) return null;
+            try {
+                PendingAutopilotAxes pending = new PendingAutopilotAxes(raw);
+                return pending.axes.isEmpty() ? null : pending;
+            } catch (JSONException | IllegalArgumentException invalid) {
+                return null;
+            }
+        }
+    }
+
+    /** Compare-and-set of the entire working shape, preserving the bar, saved minimums and learned bests. */
+    static boolean commitAutopilotAxes(Context context, PendingAutopilotAxes pending) {
+        synchronized (FilterStore.class) {
+            SharedPreferences prefs = prefs(context);
+            if (pending == null || !pending.encoded.equals(prefs.getString(AUTOPILOT_AXES_PENDING, ""))
+                    || !pending.matches(context, read(prefs))) return false;
+            prefs.edit().putString(AUTOPILOT_AXES, pending.axes.encode()).remove(AUTOPILOT_AXES_PENDING).apply();
+            return true;
+        }
+    }
+
+    static void discardAutopilotAxesIf(Context context, PendingAutopilotAxes pending) {
+        synchronized (FilterStore.class) {
+            SharedPreferences prefs = prefs(context);
+            if (pending != null && pending.encoded.equals(prefs.getString(AUTOPILOT_AXES_PENDING, ""))) {
+                prefs.edit().remove(AUTOPILOT_AXES_PENDING).apply();
+            }
+        }
+    }
+
+    /** A deliberate change of requirements or Clear history removes the derived working shape. */
+    static void clearAutopilotAxes(Context context, boolean invalidateEvidence) {
+        synchronized (FilterStore.class) {
+            SharedPreferences prefs = prefs(context);
+            SharedPreferences.Editor edit = prefs.edit().remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING)
+                    .remove(AUTOPILOT_RESUME_BAR);
+            if (invalidateEvidence) advanceAutopilotEvidence(prefs, edit);
+            edit.apply();
+        }
+    }
+
+    private static void advanceAutopilotEvidence(SharedPreferences prefs, SharedPreferences.Editor edit) {
+        edit.putLong(AUTOPILOT_AXES_EPOCH, prefs.getLong(AUTOPILOT_AXES_EPOCH, 0) + 1)
+                .remove(AUTOPILOT_AXES_PENDING);
+    }
+
     // ---- The minimums grew (0.5.1 to 0.6.20): the Undo of a growth made then ----
 
     /**
@@ -975,7 +1183,8 @@ final class FilterStore {
                 return false;
             }
             SharedPreferences.Editor edit = prefs.edit().putInt(FLAT, grown.flatBefore).putInt(PER_MILE, grown.mileBefore)
-                    .putInt(PER_MINUTE, grown.minuteBefore).putLong(MINIMUMS_SINCE, wall);
+                    .putInt(PER_MINUTE, grown.minuteBefore).putLong(MINIMUMS_SINCE, wall)
+                    .remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR);
             minimaChanged(prefs, edit);
             edit.apply();
             return true;
@@ -1073,6 +1282,7 @@ final class FilterStore {
         synchronized (FilterStore.class) {
             SharedPreferences.Editor edit = prefs.edit();
             advanceEpoch(prefs, edit);
+            advanceAutopilotEvidence(prefs, edit);
             edit.apply();
         }
     }
@@ -1087,10 +1297,12 @@ final class FilterStore {
         SharedPreferences prefs = prefs(context);
         initializeLearning(prefs);
         synchronized (FilterStore.class) {
-            SharedPreferences.Editor edit = prefs.edit().remove(ADOPTION).remove(LEARNED_RAISE);
+            SharedPreferences.Editor edit = prefs.edit().remove(ADOPTION).remove(LEARNED_RAISE)
+                    .remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR);
             policyChangedSince(prefs, edit);
             writeAccepted(edit, AcceptedFloors.NONE);
             advanceEpoch(prefs, edit);
+            advanceAutopilotEvidence(prefs, edit);
             edit.apply();
         }
     }
@@ -1143,6 +1355,22 @@ final class FilterStore {
             long wall = wallClock.getAsLong();
             SharedPreferences.Editor edit = prefs.edit().putInt(FLAT, flat).putInt(PER_MILE, mile)
                     .putInt(PER_MINUTE, minute).putLong(MINIMUMS_SINCE, wall);
+            // Adopt keeps the accepted working rates. Preserve an eligible confirmed update even if it has not
+            // reached the safe point yet, including one retained while Autopilot is off. Never revive stale policy.
+            PendingAutopilotAxes pending = pendingAutopilotAxes(context);
+            FilterSettings pricing = before.autopilot ? before
+                    : before.withAutopilot(true, before.autopilotGoalPercent).withMinimumScalePercent(
+                            clamp(prefs.getInt(AUTOPILOT_RESUME_BAR, FilterSettings.BAR_AT_MINIMUMS), BAR_MIN, BAR_MAX));
+            if (pending != null && pending.matches(context, pricing)) {
+                try {
+                    PendingAutopilotAxes rebound = new PendingAutopilotAxes(pending.axes,
+                            pricing.withMinimums(flat, mile, minute),
+                            context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE));
+                    edit.putString(AUTOPILOT_AXES_PENDING, rebound.encoded);
+                } catch (JSONException impossible) {
+                    throw new IllegalStateException(impossible);
+                }
+            }
             long revision = minimaChanged(prefs, edit);
             Adoption adoption = new Adoption(prefs.getLong(LEARNING_EPOCH, 0) + 1, wall, revision,
                     before, flat, mile, minute);
@@ -1179,7 +1407,8 @@ final class FilterStore {
             Adoption a = pendingAdoption(context);
             if (a == null || a.id != id) return false;
             SharedPreferences prefs = prefs(context);
-            SharedPreferences.Editor edit = prefs.edit().putLong(MINIMUMS_SINCE, wallClock.getAsLong());
+            SharedPreferences.Editor edit = prefs.edit().putLong(MINIMUMS_SINCE, wallClock.getAsLong())
+                    .remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR);
             if (a.flatBefore != a.flatAfter) edit.putInt(FLAT, a.flatBefore);
             if (a.mileBefore != a.mileAfter) edit.putInt(PER_MILE, a.mileBefore);
             if (a.minuteBefore != a.minuteAfter) edit.putInt(PER_MINUTE, a.minuteBefore);

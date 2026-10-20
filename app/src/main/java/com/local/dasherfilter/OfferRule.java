@@ -94,6 +94,8 @@ final class OfferRule {
 
     /** The rules applied to a standalone offer. */
     static Decision evaluate(OfferSnapshot offer, FilterSettings settings) {
+        // The narrow +$ ceiling is only the original baseline policy, never newly raised working rates.
+        if (offer.payCents == null && offer.payAtMostCents != null) settings = settings.withoutAutopilotAxes();
         return evaluateAt(offer, settings).withRules(settings);
     }
 
@@ -143,8 +145,13 @@ final class OfferRule {
         if (asks.missing || (settings.maxStops > 0 && offer.stops == null)) {
             return new Decision(Result.REVIEW, required, VALUE_NOT_FOUND, offer, score, bar, false, autopilot);
         }
-        boolean below = bar < FilterSettings.BAR_AT_MINIMUMS && score >= 0 && score < FilterSettings.BAR_AT_MINIMUMS;
-        String reason = bar > FilterSettings.BAR_AT_MINIMUMS ? "meets the " + bar + "% bar"
+        int baselineScore = settings.hasAutopilotAxes() ? AreaScore.baselineScorePercent(settings, offer) : score;
+        boolean below = (bar < FilterSettings.BAR_AT_MINIMUMS || settings.hasAutopilotAxes())
+                && baselineScore >= 0 && baselineScore < FilterSettings.BAR_AT_MINIMUMS;
+        String reason = settings.hasAutopilotAxes()
+                ? below ? "below your minimums; passes Autopilot's current minimums"
+                        : "meets Autopilot's current minimums"
+                : bar > FilterSettings.BAR_AT_MINIMUMS ? "meets the " + bar + "% bar"
                 : below ? "below your minimums; passes the " + bar + "% bar"
                 : settings.scoreByArea ? "meets your area requirement" : MEETS_MINIMUMS;
         return new Decision(Result.KEEP, required, reason, offer, score, bar, below, autopilot);
@@ -166,7 +173,7 @@ final class OfferRule {
      * minimum is set. With the bar below 100, a KEEP that would not pass at 100 is marked below the minimums.
      */
     static Decision evaluateAddOn(AddOnOffer addOn, FilterSettings settings) {
-        FilterSettings strict = settings.withScoreByArea(false).withAcceptanceLearning(false);
+        FilterSettings strict = settings.withoutAutopilotAxes().withScoreByArea(false).withAcceptanceLearning(false);
         return evaluateAddOnStrict(addOn, strict).withRules(strict);
     }
 

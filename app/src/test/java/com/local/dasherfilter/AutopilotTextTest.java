@@ -645,7 +645,7 @@ public final class AutopilotTextTest {
                 AutopilotText.ABOUT_ACCEPTANCE_RATE);
         assertEquals("Not now", AutopilotText.CHOOSER_NOT_NOW);
         assertEquals("named under the choices while Autopilot is off", "Choosing one turns on Autopilot, which adjusts "
-                + "how much of your minimums an offer must meet. Not now leaves it off.",
+                + "the working minimums offers must meet. Not now leaves it off.",
                 AutopilotText.CHOOSER_TURNS_ON);
         assertEquals("Autopilot on · goal: acceptance rate 70% or more", AutopilotText.toastTurnedOn(70));
         assertEquals("Autopilot on · goal: acceptance rate 50% or more", AutopilotText.toastTurnedOn(50));
@@ -668,7 +668,8 @@ public final class AutopilotTextTest {
                 {"PASS_FLOOR", "keeping at least 1 in 5 offers coming to you"},
                 {"AT_MINIMUMS", "holding at your minimums"}, {"VALUE_UP", "offers are coming often"},
                 {"VALUE_DOWN", "offers are slower"}, {"MINIMUMS_GREW", "your minimums grew"},
-                {"LEARNED", "your learned minimums rose"}, {"ACCEPTED", "you accepted an offer at this score"}};
+                {"LEARNED", "your learned minimums rose"}, {"ACCEPTED", "you accepted an offer at this score"},
+                {"ACCEPTED_AXES", "you accepted an offer; Autopilot minimums followed each measure"}};
         assertEquals(Autopilot.Reason.values().length, words.length);
         for (String[] reason : words) {
             assertEquals(reason[1], AutopilotText.reasonWords(Autopilot.Reason.valueOf(reason[0])));

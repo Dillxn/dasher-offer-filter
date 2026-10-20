@@ -18,9 +18,8 @@ import java.util.List;
  * auto-accepted. ≈ means rounded up to the next cent.
  * </pre>
  *
- * Worked out from the minimums as they are now (a line does not keep them) at the bar the line recorded; where the pay
- * it needed then differs, it says so. A line an older version decided (score by area, learned minimums, the minimums
- * scale) says that first, with what it needs now, and is then worked out at the current bar.
+ * Uses the decision's saved, learned and Autopilot rule snapshot when present. Older lines without that snapshot
+ * name their recorded score model before a current-rule explanation; their original score is never relabeled.
  */
 final class MinimumsDetails {
     static final String LEGACY = "Decided under earlier area or learned rules.";
@@ -39,11 +38,11 @@ final class MinimumsDetails {
 
     private MinimumsDetails() {}
 
-    /** How {@code entry} was judged against {@code rules} (the minimums as they are now). */
+    /** How {@code entry} was judged, using its recorded rules where available and otherwise the current rules. */
     static String describe(FilterSettings rules, DecisionLog.Entry entry) {
         OfferSnapshot facts = entry == null ? OfferSnapshot.UNKNOWN : entry.facts;
         FilterSettings recorded = entry == null ? null : entry.scoringRules;
-        if (rules.scoreByArea || rules.acceptanceLearning || !rules.accepted.isEmpty()
+        if (rules.scoreByArea || rules.acceptanceLearning || !rules.accepted.isEmpty() || rules.hasAutopilotAxes()
                 || recorded != null) {
             return resolvedDescription(recorded == null ? rules : recorded, entry, facts, recorded != null);
         }
@@ -111,13 +110,14 @@ final class MinimumsDetails {
             String kind = entry.model < 2 ? "earlier area rules" : entry.model == 2 ? "strict rules"
                     : "area".equals(entry.scoreKind) ? "area rules" : "strict rules";
             lines.add("Recorded decision: " + kind + (entry.scorePercent >= 0
-                    ? ", score " + entry.scorePercent + "%" : ", score unread") + ", bar " + entry.barPercent + "%.");
+                    ? (AutopilotText.usesAutopilotScore(entry) ? ", Autopilot score " : ", score ")
+                            + entry.scorePercent + "%" : ", score unread") + ", bar " + entry.barPercent + "%.");
         }
         lines.add((recorded ? "Recorded" : "Current") + " requirements · " + (rules.scoreByArea ? "Area" : "Strict")
                 + " · bar " + rules.minimumScalePercent + "%" + (rules.autopilot ? " (Autopilot)" : ""));
         if (entry != null && entry.addOn) {
             lines.add(rates(rules));
-            lines.add(ADD_ON + " Learned standalone bests do not apply to add-ons.");
+            lines.add(ADD_ON + " Learned standalone bests and Autopilot's independent minimums do not apply to add-ons.");
             return String.join("\n", lines);
         }
         AreaScore.Floors floors = AreaScore.floors(rules, facts);
@@ -133,7 +133,9 @@ final class MinimumsDetails {
             lines.add(name + " — saved " + projection(floors.fixedCents()[axis], approximate)
                     + " · learned " + projection(floors.acceptedCents()[axis], approximate)
                     + (rules.acceptanceLearning ? "" : " (off)")
-                    + " · resolved " + projection(floors.effectiveCents()[axis], approximate));
+                    + " · resolved " + projection(floors.baselineCents()[axis], approximate)
+                    + (rules.hasAutopilotAxes() ? " · Autopilot used "
+                            + projectedAsk(floors.axisRequiredCents(axis, judgedBar)) : ""));
         }
         long required = AreaScore.requiredPay(rules, facts, judgedBar);
         lines.add(required < 0 ? rules.scoreByArea && floors.degenerateArea()
@@ -142,12 +144,19 @@ final class MinimumsDetails {
                 : "Required " + money(required) + " under the " + (recorded ? "recorded " : "current ")
                         + (rules.scoreByArea ? "area" : "strict")
                         + " model at " + judgedBar + "% (one final cent rounding).");
+        if (rules.hasAutopilotAxes()) lines.add("Autopilot's working minimums replace the active resolved minimums "
+                + "for filtering, each adjusted independently from a confirmed personal acceptance. The used "
+                + "amounts include the bar and are rounded to cents for display; saved minimums and learned bests "
+                + "are unchanged by this adjustment.");
         if (rules.scoreByArea) lines.add("Stronger measures can compensate for weaker ones; no individual money "
                 + "minimum is a hard floor in area mode. Max stops stays hard.");
-        else lines.add("Every active resolved minimum must be met at the bar.");
+        else lines.add(rules.hasAutopilotAxes() ? "Every active working minimum must be met at the bar."
+                : "Every active resolved minimum must be met at the bar.");
         lines.add("Permitted by the filter does not mean accepted. Automatic acceptance separately requires strict "
-                + "saved and enabled learned minimums at 100% or any higher bar. Add-ons use strict saved minimums "
-                + "at the current bar; learned standalone bests do not apply until adopted as saved minimums.");
+                + "saved and enabled learned minimums at 100% or any higher bar"
+                + (rules.hasAutopilotAxes() ? ", and Autopilot's working minimums whenever stricter" : "")
+                + ". Add-ons use strict saved minimums at the current bar; learned standalone bests do not apply "
+                + "until adopted as saved minimums.");
         if (rules.maxStops > 0) lines.add("Max stops " + rules.maxStops + " (never scaled).");
         if (approximate[0]) lines.add(ROUNDED);
         return String.join("\n", lines);
@@ -155,6 +164,10 @@ final class MinimumsDetails {
 
     private static String projection(BigDecimal cents, boolean[] approximate) {
         return cents == null ? "off or unread" : amount(cents, approximate);
+    }
+
+    private static String projectedAsk(long cents) {
+        return cents < 0 ? "off or unread" : money(cents);
     }
 
     /**
