@@ -24,10 +24,10 @@ final class AcceptedFloors {
     AcceptedFloors(int highestPayCents, int payUnits, int milePay, double miles, int minutePay, int minutes) {
         this.highestPayCents = Math.max(0, highestPayCents);
         this.payUnits = this.highestPayCents > 0 ? Math.max(1, payUnits) : 1;
-        boolean validMile = milePay > 0 && Double.isFinite(miles) && miles >= 2;
+        boolean validMile = milePay > 0 && Double.isFinite(miles) && miles >= OfferSanity.PLAUSIBLE_MILES;
         this.milePay = validMile ? milePay : 0;
         this.miles = validMile ? miles : 0;
-        boolean validMinute = minutePay > 0 && minutes >= 10;
+        boolean validMinute = minutePay > 0 && minutes >= OfferSanity.PLAUSIBLE_MINUTES;
         this.minutePay = validMinute ? minutePay : 0;
         this.minutes = validMinute ? minutes : 0;
     }
@@ -46,15 +46,16 @@ final class AcceptedFloors {
         int nextMilePay = milePay, nextMinutePay = minutePay, nextMinutes = minutes;
         double nextMiles = miles;
         // Known implausible figures reject the whole lesson; missing optional measures are not invented.
-        boolean ratePlausible = (offer.miles == null || Double.isFinite(offer.miles) && offer.miles >= .5)
-                && (offer.minutes == null || offer.minutes >= 5) && (offer.stops == null || offer.stops >= 2);
+        boolean ratePlausible = !OfferSanity.looksMisread(offer)
+                && (offer.miles == null || Double.isFinite(offer.miles));
         if (!ratePlausible) return this;
-        if (ratePlausible && offer.miles != null && offer.miles >= 2
+        // Every readable plausible rate can establish a high; a short trip is not a separate exclusion.
+        if (offer.miles != null
                 && (!hasPerMile() || BigDecimal.valueOf(pay).multiply(BigDecimal.valueOf(miles))
                 .compareTo(BigDecimal.valueOf(milePay).multiply(BigDecimal.valueOf(offer.miles))) > 0)) {
             nextMilePay = pay; nextMiles = offer.miles;
         }
-        if (ratePlausible && offer.minutes != null && offer.minutes >= 10
+        if (offer.minutes != null
                 && (!hasPerMinute() || (long) pay * minutes > (long) minutePay * offer.minutes)) {
             nextMinutePay = pay; nextMinutes = offer.minutes;
         }

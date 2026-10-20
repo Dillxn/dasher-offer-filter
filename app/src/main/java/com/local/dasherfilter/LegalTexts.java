@@ -138,14 +138,16 @@ final class LegalTexts {
             Autopilot may apply its separate working adjustment while on. Your saved minimums stay as you set them. \
             A note on the homepage says what rose, with Adopt, which makes those learned minimums your saved ones; \
             OK closes the note. Undo of an adoption is in Learned minimums; it is conditional and cannot overwrite \
-            later changes. Pay per mile learns only from trips of at least 2 miles and pay per minute from at least \
-            10 minutes. Automatic accepts, declines, add-ons and ambiguous outcomes do not teach it. Unknown facts \
-            do not teach their axes; any known implausible figure rejects the lesson. Learned bests can activate an \
-            unset money minimum. Off or paused retains learned bests without new learning. Confirmed Reset clears \
-            active bests and Undo; prior decision snapshots remain until Clear history. Clear history clears both \
-            active learning and that history. Adopt raises only lower saved minimums, which then apply to add-ons \
-            too. Reset and Clear history keep your minimums as they are. Learning is local and makes no promise \
-            about earnings or future offers.
+            later changes. Readable short trips can teach new highs too: pay per mile needs at least half a mile \
+            and pay per minute at least five minutes. With Learn on, the dashed green triangle shows the calculated \
+            learned minimums: the higher saved or learned requirement on every active axis. Automatic accepts, \
+            declines, add-ons and ambiguous outcomes do not teach it. Unknown facts do not teach their axes; any \
+            known implausible figure rejects the lesson. Learned bests can activate an unset money minimum. Off or \
+            paused retains learned bests without new learning. Confirmed Reset clears active bests and Undo; prior \
+            decision snapshots remain until Clear history. Clear history clears both active learning and that \
+            history. Adopt raises only lower saved minimums, which then apply to add-ons too. Reset and Clear \
+            history keep your minimums as they are. Learning is local and makes no promise about earnings or future \
+            offers.
             - If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, \
             it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
             checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \

@@ -31,8 +31,8 @@ import org.robolectric.shadows.ShadowSystemClock;
  * The owner's 15 October 2026 accept at 4:56 AM ($9.45, 0.6 mi, 13 min, 2 stops; store and address made up), against
  * the learned bests his homepage showed then: $9.88 a stop (one order of $19.75; the chart's "Pay $21.54 ref" at
  * Autopilot's 109%), $3.73 a mile and $41.84 an hour, over his own $4.50 a stop, $2.70 a mile and $42 an hour, in area
- * mode. Its pay per stop is under the learned best and its 0.6 mi teaches no rate per mile, but its $43.62 an hour beats
- * both, so its acceptance raises the learned per hour. He asked "since I have learn on shouldn't a 109% offer raise my
+ * mode. Its pay per stop is under the learned best; its $43.62 an hour beats both hourly minimums. Since 0.6.29 the
+ * readable 0.6 mi also teaches its higher mileage rate. He asked "since I have learn on shouldn't a 109% offer raise my
  * mins, not just autopilot?": the 109% offer was his $7.45 at 4:23 AM, which beat no learned best; this one came right
  * after two of the app's declines and went uncounted ("Dasher's wait for offers wasn't seen before it"), so it taught
  * nothing. Taken with a seen Accept tap it teaches, full screen, in split screen and with Autopilot on; taken without one
@@ -61,9 +61,10 @@ public class AcceptanceLearningFieldTest {
         FilterStore.save(app, FilterSettings.of(true, 450, 270, 70, 0));
         FilterStore.setScoreByArea(app, true);
         FilterStore.setAcceptanceLearning(app, true);
-        teach(new OfferSnapshot(1975, 1.0, 8, 2));   // $9.875 a stop; too short and quick to teach a rate
-        teach(new OfferSnapshot(1492, 4.0, 9, 2));   // $3.73 a mile
-        teach(new OfferSnapshot(1534, 1.0, 22, 2));  // 69.7¢ a minute: $41.84 an hour
+        // Seed the observed historical bests, not invented short trips that now also teach their rates.
+        teach(new OfferSnapshot(1975, null, null, 2));  // $9.875 a stop
+        teach(new OfferSnapshot(1492, 4.0, null, null)); // $3.73 a mile
+        teach(new OfferSnapshot(1534, null, 22, null)); // 69.7¢ a minute: $41.84 an hour
         OfferFilterService.scanLooperForTests = Looper.getMainLooper();
         controller = Robolectric.buildService(OfferFilterService.class).create();
         ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
@@ -219,7 +220,8 @@ public class AcceptanceLearningFieldTest {
         assertEquals("its $43.62 an hour beats the $41.84 learned", 945, learned.minutePay);
         assertEquals(13, learned.minutes);
         assertEquals("pay per stop keeps its best", 1975, learned.highestPayCents);
-        assertEquals("0.6 mi teaches no rate per mile", 1492, learned.milePay);
+        assertEquals("the readable short trip teaches its higher mileage rate too", 945, learned.milePay);
+        assertEquals(0.6, learned.miles, 0);
         assertArrayEquals("his own minimums stay", new int[] {450, 270, 70, 0, 0, 0}, FilterStore.load(app).minimums());
         assertTrue(DiagnosticLog.read(app).contains(
                 "[learner] manual acceptance: learned; the learned minimums rose (Adopt on the homepage)"));

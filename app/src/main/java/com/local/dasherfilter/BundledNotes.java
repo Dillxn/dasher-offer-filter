@@ -95,12 +95,12 @@ final class BundledNotes {
 
     /** Notice 30 and 0.6.29: each accepted offer sets independent working minimums in either direction. */
     private static final String[] ACCEPTED_AXES = {
-            "With Autopilot on, each offer you accept yourself sets every readable active minimum to that offer's "
-                    + "value, up or down.",
-            "Your newest acceptance replaces earlier levels. Saved minimums and learned bests stay separate; unread "
-                    + "and disabled measures stay as they are.",
-            "Tap Auto for the working minimums. The bar can still move them together; turning Autopilot off uses "
-                    + "your saved and learned minimums again."};
+            "With Autopilot on, your newest confirmed personal acceptance sets each readable active minimum up or "
+                    + "down. Tap Auto for its working minimums.",
+            "With Learn on, the dashed green triangle covers the higher saved or learned value on every active axis. Readable short "
+                    + "trips can teach new highs.",
+            "Saved minimums and learned bests stay separate. The bar still moves working minimums together; unread "
+                    + "and disabled measures stay as they are."};
 
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
