@@ -32,11 +32,11 @@ rm -rf "$work"
 mkdir -p "$work/compiled" "$work/generated" "$work/classes" "$work/dex" "$(dirname "$output")"
 "$tools/aapt2" compile --dir app/src/main/res -o "$work/compiled"
 flat_files=(); while IFS= read -r -d '' file; do flat_files+=("$file"); done < <(find "$work/compiled" -type f -name '*.flat' -print0)
-"$tools/aapt2" link -o "$work/unsigned.apk" --java "$work/generated" --manifest app/src/main/AndroidManifest.xml -I "$platform" --min-sdk-version 26 --target-sdk-version 35 --version-code "$code" --version-name "$version" --auto-add-overlay -R "${flat_files[@]}"
+"$tools/aapt2" link -o "$work/unsigned.apk" --java "$work/generated" --manifest app/src/main/AndroidManifest.xml -I "$platform" --min-sdk-version 35 --target-sdk-version 35 --version-code "$code" --version-name "$version" --auto-add-overlay -R "${flat_files[@]}"
 sources=(); while IFS= read -r -d '' file; do sources+=("$file"); done < <(find app/src/main/java "$work/generated" -type f -name '*.java' -print0)
 "$JAVA_HOME/bin/javac" -source 17 -target 17 -classpath "$platform" -d "$work/classes" "${sources[@]}"
 classes=(); while IFS= read -r -d '' file; do classes+=("$file"); done < <(find "$work/classes" -type f -name '*.class' -print0)
-"$tools/d8" --lib "$platform" --min-api 26 --output "$work/dex" "${classes[@]}"
+"$tools/d8" --lib "$platform" --min-api 35 --output "$work/dex" "${classes[@]}"
 (cd "$work/dex" && zip -q -j '../unsigned.apk' classes.dex)
 "$tools/zipalign" -f 4 "$work/unsigned.apk" "$work/aligned.apk"
 if [[ -n "$unsigned_output" ]]; then
@@ -45,5 +45,5 @@ if [[ -n "$unsigned_output" ]]; then
     exit 0
 fi
 "$tools/apksigner" sign --ks "$key" --ks-pass "$key_store_pass" --key-pass "$key_pass" --ks-key-alias "$key_alias" --out "$output" "$work/aligned.apk"
-"$tools/apksigner" verify --min-sdk-version 26 "$output"
+"$tools/apksigner" verify --min-sdk-version 35 "$output"
 echo "Built $output version=$version code=$code"
