@@ -29,6 +29,7 @@ public final class ParserSafetyCases {
                 c.eq(null, total.combined.payCents, "rate is not a total " + rate);
                 c.eq(null, parse("+$1", "Decline", rate, "2 stops").payAtMostCents,
                         "rate cannot create a decline ceiling " + rate);
+                c.eq(null, parse("+$1", "Decline", rate, "2 stops").payCents, "rate is no busy total " + rate);
             }
         }
         for (String label : Arrays.asList("$12.00", "$12,00", "$12 Guaranteed", "Total pay $12",
@@ -200,12 +201,14 @@ public final class ParserSafetyCases {
         OfferSnapshot hotspot = parse("Nearest hotspot", "2.5 mi", "30 min", "$12", "2 stops (7 mi) • 21 min");
         c.eq(Double.valueOf(7), hotspot.miles, "hotspot is not route distance");
         c.eq(Integer.valueOf(21), hotspot.minutes, "hotspot is not route time");
+        // Dasher's busy offer: its total is its whole pay, the "+$" included (the owner's "Included", 0.6.30).
         OfferSnapshot bonus = parse("+$1", "Decline", "$5.75", "2 stops");
-        c.eq(null, bonus.payCents, "bonus ceiling not exact pay");
-        c.eq(Integer.valueOf(675), bonus.payAtMostCents, "two-stop ceiling preserved");
+        c.eq(Integer.valueOf(575), bonus.payCents, "busy offer's total is its pay");
+        c.eq(null, bonus.payAtMostCents, "no ceiling beside known pay");
         OfferSnapshot stack = parse("+$1", "Decline", "$5.75", "Pick up 2 orders", "Multiple dropoffs (2 stops)", "3 stops");
-        c.eq(null, stack.payCents, "stack bonus not exact pay");
-        c.eq(Integer.valueOf(775), stack.payAtMostCents, "stack ceiling preserved");
+        c.eq(Integer.valueOf(575), stack.payCents, "busy bundle's total is its pay");
+        c.eq(null, stack.payAtMostCents, "no stacked ceiling");
+        c.eq(null, parse("Add to route", "+$1", "$5.75", "2 stops").payCents, "an add-on's total is no busy pay");
         c.eq(null, parse("Add to route", "+$1", "$5.75", "2 stops").payAtMostCents, "no standalone addon ceiling");
         c.eq(null, parse("$12", "$14").payCents, "conflicting pay unknown");
         c.eq(null, parse("6 items", "7 items").items, "conflicting item readings unknown");
