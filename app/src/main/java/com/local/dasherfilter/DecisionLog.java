@@ -261,7 +261,8 @@ final class DecisionLog {
         static Entry of(Source source, boolean addOn, OfferSnapshot facts, OfferRule.Decision decision,
                         Action action, boolean autoDecline, List<String> labels) {
             return new Entry(System.currentTimeMillis(), source, addOn, facts, decision.requiredCents,
-                    decision.result, decision.reason, action, autoDecline, evidence(labels)).withScore(
+                    decision.result, decision.reason, action, autoDecline,
+                    source == Source.SCREEN ? offerEvidence(labels) : evidence(labels)).withScore(
                     addOn ? -1 : decision.scorePercent).withBar(decision.minimumScalePercent, decision.autopilot)
                     .withScoringRules(decision.scoringRules);
         }
@@ -420,7 +421,8 @@ final class DecisionLog {
             for (int i = 0; lines != null && i < lines.length(); i++) {
                 evidence.add(lines.getString(i));
             }
-            evidence = PersonalText.accountScreen(evidence) ? new ArrayList<>() : PersonalText.mask(evidence);
+            evidence = PersonalText.accountScreen(evidence) ? PersonalText.notKeptNotes(evidence)
+                    : PersonalText.mask(evidence);
             // A line without "model" was written before 0.5.0; one without "bar" was decided at the minimums.
             int model = json.has("model") ? json.optInt("model", LEGACY_MODEL) : LEGACY_MODEL;
             int bar = json.has("bar") ? json.optInt("bar", FilterSettings.BAR_AT_MINIMUMS)
@@ -991,6 +993,32 @@ final class DecisionLog {
             String clean = PersonalText.mask(OfferEvidence.normalize(label));
             out.add(clean.length() > MAX_EVIDENCE_CHARS ? clean.substring(0, MAX_EVIDENCE_CHARS) + "…" : clean);
             if (out.size() == MAX_EVIDENCE_LINES) break;
+        }
+        return out;
+    }
+
+    /**
+     * An offer screen's lines worth keeping ({@link #evidence}) from what a log may keep of it
+     * ({@link PersonalText#offerPart}), and a note naming the account word when the screen below the offer, or the
+     * offer with its Accept, is left out ({@link PersonalText#notKeptNote}). A payment screen with no Accept keeps
+     * nothing, as before.
+     */
+    static List<String> offerEvidence(List<String> labels) {
+        List<String> out = new ArrayList<>();
+        if (labels == null) return out;
+        List<String> part = PersonalText.offerPart(labels);
+        if (part == null) {
+            if (PersonalText.showsAccept(labels)) {
+                out.add(PersonalText.notKeptNote(PersonalText.accountWord(labels), false));
+            }
+            return out;
+        }
+        out = evidence(part);
+        if (part.size() < labels.size()) {
+            String note = PersonalText.notKeptNote(PersonalText.accountWord(labels.subList(part.size(), labels.size())),
+                    true);
+            if (out.size() == MAX_EVIDENCE_LINES) out.set(MAX_EVIDENCE_LINES - 1, note);
+            else out.add(note);
         }
         return out;
     }

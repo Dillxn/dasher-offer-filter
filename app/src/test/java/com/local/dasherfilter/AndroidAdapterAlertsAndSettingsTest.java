@@ -249,7 +249,8 @@ public class AndroidAdapterAlertsAndSettingsTest extends AndroidAdapterTestBase 
 
     @Test
     public void aBackgroundOfferWithAPlusAmountBesideATotalIsNeverHiddenOrDeclined() {
-        // A notification's text may be cut short: the "+$" bound that can decline a screen offer is never used here.
+        // A notification's text may be cut short: the "+$" reading that judges a screen offer at its total is never
+        // used here (0.6.30), as the bound before it never was.
         FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         ServiceController<OfferNotificationService> controller =
                 Robolectric.buildService(OfferNotificationService.class).create();

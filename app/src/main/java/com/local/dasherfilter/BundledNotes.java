@@ -383,6 +383,12 @@ final class BundledNotes {
                 "Dasher's add-on card, such as +$9.40 for +1 stop and +7 min, is read as an add-on to your route; one "
                 + "paying too little for its minutes is declined.");
         release("0.6.29", ACCEPTED_AXES);
+        // 0.6.30 (the owner's reports of 20 October 2026, "seems like the app isn't reading them", and his choice of
+        // 21 October that Dasher's total already includes its +$ amount).
+        release("0.6.30", "On busy offers with a +$ amount, Dasher's total is now read as the whole pay, the +$ "
+                + "included, so they're judged like any other offer.",
+                "Reports and your history now keep a full-screen offer's own lines; nothing of Dasher's screen below "
+                + "the offer is kept.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

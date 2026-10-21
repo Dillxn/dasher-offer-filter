@@ -742,9 +742,9 @@ public final class OfferNotificationService extends NotificationListenerService 
                 return;
             }
 
-            // A notification's text may be cut short: its pay is never bounded, so nothing is declined or hidden on a
-            // bound.
-            OfferSnapshot facts = OfferParser.parse(metricLabels(labels)).withoutPayBound();
+            // A notification's text may be cut short: its pay beside a "+$" amount is never read, so nothing is declined
+            // or hidden on it (OfferParser.parseNotification).
+            OfferSnapshot facts = OfferParser.parseNotification(metricLabels(labels)).withoutPayBound();
             FilterSettings settings = FilterStore.load(this);
             OfferRule.Decision decision = decide(facts, labels, settings);
             String signature = labels + "|" + decision.summary();

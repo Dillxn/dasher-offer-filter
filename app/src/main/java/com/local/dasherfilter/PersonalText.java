@@ -289,6 +289,128 @@ final class PersonalText {
         return text != null && ACCOUNT_MARKER.matcher(text).find();
     }
 
+    /** Each marker as a note may name it: lower case, one space between words. */
+    private static final Set<String> ACCOUNT_WORDS = accountWords();
+    private static final String OTHER_ACCOUNT_WORD = "other";
+
+    private static Set<String> accountWords() {
+        Set<String> words = new HashSet<>();
+        for (String marker : ACCOUNT_MARKERS) words.add(marker.toLowerCase(Locale.US));
+        words.addAll(Arrays.asList("dasher direct", "exp date", "valid through", "taxes", "balances", "payouts",
+                "wallets", "earnings"));
+        return words;
+    }
+
+    /**
+     * The first payment, account or earnings word among the labels, as the marker list spells it in lower case
+     * ("earnings", "pin"): fixed words, never the label around it. Null when none shows.
+     */
+    static String accountWord(Collection<String> labels) {
+        if (labels == null) return null;
+        for (String label : labels) {
+            if (label == null) continue;
+            Matcher marker = ACCOUNT_MARKER.matcher(label);
+            if (!marker.find()) continue;
+            String word = marker.group().toLowerCase(Locale.US).replaceAll("[\\p{Z}\\s]+", " ");
+            if (word.startsWith("1099")) word = "1099";
+            return ACCOUNT_WORDS.contains(word) ? word : OTHER_ACCOUNT_WORD;
+        }
+        return null;
+    }
+
+    /**
+     * What a log may keep of an offer screen: every label when no payment, account or earnings word shows. Dasher
+     * draws a full-screen offer above its own screen, and a word there, below the offer's Accept, hid every full-screen
+     * offer from the decision history and the reports (0.6.30, the owner's reports of 20 October 2026): with words only
+     * below the first Accept, the labels down to that Accept, never one below it. Null when a word shows on the offer
+     * itself, or no Accept is drawn to cut at: nothing of the screen is kept.
+     */
+    static List<String> offerPart(List<String> labels) {
+        if (labels == null) return null;
+        if (!accountScreen(labels)) return labels;
+        int accept = acceptAt(labels);
+        if (accept < 0) return null;
+        List<String> part = new ArrayList<>(labels.subList(0, accept + 1));
+        return accountScreen(part) ? null : part;
+    }
+
+    /**
+     * Whether what {@link #offerPart} kept of a screen is a recognized Dasher screen ({@link #recognizedDashScreen}):
+     * an offer cut at its Accept is, when its Decline shows anywhere on the screen (below the Accept too).
+     */
+    static boolean recognizedOfferPart(List<String> part, List<String> labels) {
+        if (part == null) return false;
+        if (recognizedDashScreen(part)) return true;
+        if (labels == null || part.size() >= labels.size()) return false;
+        for (String label : labels) if (label != null && OfferControls.isButton(label, "decline")) return true;
+        return false;
+    }
+
+    /** Whether an offer's Accept is drawn among the labels: a screen {@link #offerPart} could cut, or an offer's. */
+    static boolean showsAccept(List<String> labels) {
+        return acceptAt(labels) >= 0;
+    }
+
+    private static int acceptAt(List<String> labels) {
+        for (int i = 0; labels != null && i < labels.size(); i++) {
+            String label = labels.get(i);
+            if (label != null && OfferControls.isButton(label, "accept")) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * The note a log keeps in place of an offer's text it may not keep (the screen below the offer, or all of it). It
+     * names only the account word that kept it out, spelled out ("e-a-r-n-i-n-g-s") so that the note is never itself
+     * taken for an account screen, and so a report can say why it carries no text.
+     */
+    static String notKeptNote(String word, boolean below) {
+        return (below ? NOTE_BELOW : NOTE_OFFER) + " (account word: "
+                + spelled(word == null || !ACCOUNT_WORDS.contains(word) ? OTHER_ACCOUNT_WORD : word) + ")";
+    }
+
+    private static final String NOTE_BELOW = "screen below the offer not kept";
+    private static final String NOTE_OFFER = "offer text not kept";
+    private static final Pattern NOT_KEPT_NOTE = Pattern.compile(
+            "(?:" + NOTE_BELOW + "|" + NOTE_OFFER + ") \\(account word: ([a-z0-9 .-]{1,60})\\)");
+
+    /** "fast pay" as "f-a-s-t p-a-y": each word's letters joined by hyphens. */
+    private static String spelled(String word) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < word.length(); i++) {
+            char c = word.charAt(i);
+            if (i > 0 && c != ' ' && word.charAt(i - 1) != ' ') out.append('-');
+            out.append(c);
+        }
+        return out.toString();
+    }
+
+    /** Whether a kept line is a {@link #notKeptNote}: fixed words that name one marker, no screen text. */
+    static boolean isNotKeptNote(String line) {
+        if (line == null) return false;
+        Matcher note = NOT_KEPT_NOTE.matcher(line);
+        if (!note.matches()) return false;
+        if (note.group(1).equals(spelled(OTHER_ACCOUNT_WORD))) return true;
+        for (String word : ACCOUNT_WORDS) if (note.group(1).equals(spelled(word))) return true;
+        return false;
+    }
+
+    /** The {@link #notKeptNote}s among kept lines, in order: what is left of them once their screen text goes. */
+    static List<String> notKeptNotes(List<String> lines) {
+        List<String> out = new ArrayList<>();
+        if (lines == null) return out;
+        for (String line : lines) if (isNotKeptNote(line)) out.add(line);
+        return out;
+    }
+
+    /** Kept lines without their {@link #notKeptNote}s: what the screen itself showed. */
+    static List<String> withoutNotKeptNotes(List<String> lines) {
+        List<String> out = new ArrayList<>();
+        if (lines == null) return out;
+        for (String line : lines) if (!isNotKeptNote(line)) out.add(line);
+        return out;
+    }
+
     /**
      * Labels as a log line carries them: masked ({@link #mask(List, boolean)}), or {@link #LABELS_NOT_KEPT} when they
      * show a payment, account or earnings screen.
@@ -369,8 +491,8 @@ final class PersonalText {
         boolean instructions = false;
         for (int i = 0; i < labels.size(); i++) {
             String label = labels.get(i);
-            if (label == null) {
-                out.add(null);
+            if (label == null || isNotKeptNote(label)) {
+                out.add(label);
                 continue;
             }
             String trimmed = label.trim();
@@ -441,6 +563,7 @@ final class PersonalText {
 
     private static String apply(String text, boolean wholeLabel, boolean navigation) {
         if (text == null || text.isEmpty()) return text == null ? "" : text;
+        if (isNotKeptNote(text)) return text;
         String out = EMAIL_ADDRESS.matcher(text).replaceAll(Matcher.quoteReplacement(EMAIL));
         if (wholeLabel) {
             out = QUOTED_LABEL.matcher(out).replaceAll("$1" + Matcher.quoteReplacement(INSTRUCTIONS));

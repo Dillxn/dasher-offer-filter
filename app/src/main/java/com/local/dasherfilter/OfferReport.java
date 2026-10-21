@@ -254,11 +254,13 @@ final class OfferReport {
     /**
      * Each read line masked twice: names, addresses, phone numbers, emails and a customer's own words, as the phone
      * keeps them ({@link PersonalText}), then every word that is not offer vocabulary to its shape. A payment, account
-     * or earnings screen leaves nothing.
+     * or earnings screen leaves nothing but the fixed notes that say so ({@link PersonalText#notKeptNote}), which stay
+     * as they are.
      */
     static List<String> redact(List<String> labels) {
         List<String> out = new ArrayList<>();
-        if (labels == null || PersonalText.accountScreen(labels)) return out;
+        if (labels == null) return out;
+        if (PersonalText.accountScreen(labels)) return PersonalText.notKeptNotes(labels);
         for (String label : PersonalText.mask(labels)) {
             if (label != null) out.add(redact(label));
         }
@@ -266,6 +268,7 @@ final class OfferReport {
     }
 
     static String redact(String line) {
+        if (PersonalText.isNotKeptNote(line)) return line;
         Matcher digits = LONG_NUMBER.matcher(line);
         StringBuffer numbersMasked = new StringBuffer();
         while (digits.find()) digits.appendReplacement(numbersMasked, digits.group().replaceAll("\\d", "#"));

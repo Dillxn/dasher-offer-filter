@@ -661,7 +661,7 @@ public final class OfferRuleTest {
         assertNull(OfferParser.parse(labels).payCents);
     }
 
-    // ---- A "+$X" amount beside a total "$Y" (seen while on a delivery, so possibly an add-on) ----
+    // ---- Dasher's busy offer: a "+$X" amount beside its total "$Y", the total its pay (0.6.30) ----
 
     /** The report's rules: $10 minimum, $1.00 a mile, at most 3 stops. */
     private static final FilterSettings REPORT_RULES = FilterSettings.of(true, 500, 100, 0, 3);
@@ -673,90 +673,70 @@ public final class OfferRuleTest {
     }
 
     @Test
-    public void aPlusAmountBesideATotalDeclinesWhenEvenTheirSumFailsTheMinimums() {
-        // Reported: +$1 beside $7.35, 7.1 mi. Pay is $7.35, $8.35 or (as an add-on) $1: all below $10.
+    public void aBusyOffersTotalIsItsPayAndIsJudgedAsAnyOffer() {
+        // Reported: +$1 beside $7.35, 7.1 mi. Dasher's total is the pay, the +$1 included: below $10.
         OfferSnapshot offer = plusOffer("+$1", "$7.35", "2 stops (7.1 mi) • 23 min");
-        assertNull("pay itself stays unknown", offer.payCents);
+        assertEquals(Integer.valueOf(735), offer.payCents);
+        assertNull("no ceiling", offer.payAtMostCents);
         OfferRule.Decision decision = evaluate(offer, REPORT_RULES);
         assertEquals(OfferRule.Result.DECLINE, decision.result);
         assertEquals(1000, decision.requiredCents);
-        assertEquals("pay at most $8.35 with its +$ amount; dollars per stop", decision.reason);
-        assertEquals("a hypothetical payout is not a score", -1, decision.scorePercent);
-        assertEquals("⌊100 × 835 ÷ 1000⌋", 83, AreaScore.passThreshold(REPORT_RULES, offer));
+        assertEquals("dollars per stop", decision.reason);
+        assertEquals("a score of its own, as any offer's", 73, decision.scorePercent);
     }
 
     @Test
-    public void aPlusAmountBesideATotalThatMayPassIsReviewedNeverKept() {
-        // Reported: +$1 beside $10.10 (7.5 mi) and beside $10.60 (5.3 mi). The sum passes, so the offer might.
+    public void aBusyOfferMeetingTheRulesAtItsTotalPasses() {
+        // Reported: +$1 beside $10.10 (7.5 mi) and beside $10.60 (5.3 mi): each total meets the rules.
         for (OfferSnapshot offer : new OfferSnapshot[] {
                 plusOffer("+$1", "$10.10", "2 stops (7.5 mi) • 23 min"),
                 plusOffer("+$1", "$10.60", "2 stops (5.3 mi) • 30 min")}) {
             OfferRule.Decision decision = evaluate(offer, REPORT_RULES);
-            assertEquals(OfferRule.Result.REVIEW, decision.result);
-            assertEquals("pay unclear beside a +$ amount", decision.reason);
+            assertEquals(OfferRule.Result.KEEP, decision.result);
             assertEquals(1000, decision.requiredCents);
-            assertEquals(Integer.MAX_VALUE, AreaScore.passThreshold(REPORT_RULES, offer));
         }
     }
 
     @Test
-    public void aPlusAmountDeclinesOnlyBelowTheExactSum() {
-        OfferRule.Decision short1Cent = evaluate(plusOffer("+$1", "$8.99", "2 stops (5.0 mi) • 20 min"),
+    public void aBusyOfferDeclinesACentBelowItsRules() {
+        OfferRule.Decision short1Cent = evaluate(plusOffer("+$1", "$9.99", "2 stops (5.0 mi) • 20 min"),
                 REPORT_RULES);
         assertEquals(OfferRule.Result.DECLINE, short1Cent.result);
-        assertEquals("pay at most $9.99 with its +$ amount; dollars per stop", short1Cent.reason);
-        OfferRule.Decision exact = evaluate(plusOffer("+$1", "$9.00", "2 stops (5.0 mi) • 20 min"), REPORT_RULES);
-        assertEquals(OfferRule.Result.REVIEW, exact.result);
-        assertEquals("pay unclear beside a +$ amount", exact.reason);
+        assertEquals("dollars per stop", short1Cent.reason);
+        assertEquals(OfferRule.Result.KEEP,
+                evaluate(plusOffer("+$1", "$10.00", "2 stops (5.0 mi) • 20 min"), REPORT_RULES).result);
     }
 
     @Test
-    public void aPlusAmountDeclinesWhenEvenTheSumMissesARate() {
-        OfferRule.Decision decision = evaluate(plusOffer("+$1", "$10.10", "2 stops (12.0 mi) • 30 min"),
+    public void aBusyOfferDeclinesWhenItsTotalMissesARate() {
+        OfferRule.Decision decision = evaluate(plusOffer("+$1", "$11.10", "2 stops (12.0 mi) • 30 min"),
                 REPORT_RULES);
         assertEquals(OfferRule.Result.DECLINE, decision.result);
         assertEquals(1200, decision.requiredCents);
-        assertEquals("pay at most $11.10 with its +$ amount; dollars per mile", decision.reason);
+        assertEquals("dollars per mile", decision.reason);
 
         FilterSettings perHour = FilterSettings.of(true, 0, 0, 50, 3);
-        OfferRule.Decision hours = evaluate(plusOffer("+$1", "$10.00", "2 stops (5.0 mi) • 30 min"), perHour);
+        OfferRule.Decision hours = evaluate(plusOffer("+$1", "$11.00", "2 stops (5.0 mi) • 30 min"), perHour);
         assertEquals(OfferRule.Result.DECLINE, hours.result);
         assertEquals(1500, hours.requiredCents);
-        assertEquals("pay at most $11.00 with its +$ amount; dollars per hour", hours.reason);
+        assertEquals("dollars per hour", hours.reason);
     }
 
     @Test
-    public void thePlusCeilingIsJudgedAtTheLowerOfTheBarAndTheMinimums() {
-        // $8.35 against $10.00: it declines at 100% and under any bar from 84% up, never from a raised bar alone.
-        OfferSnapshot offer = plusOffer("+$1", "$7.35", "2 stops (7.1 mi) • 23 min");
-        assertEquals("⌊83500 ÷ 1000⌋", 83, AreaScore.passThreshold(REPORT_RULES, offer));
-        OfferRule.Decision at84 = evaluate(offer, REPORT_RULES.withMinimumScalePercent(84));
-        assertEquals(OfferRule.Result.DECLINE, at84.result);
-        assertEquals("pay at most $8.35 with its +$ amount; 84% bar: dollars per stop", at84.reason);
-        assertEquals(840, at84.requiredCents);
-        OfferRule.Decision at83 = evaluate(offer, REPORT_RULES.withMinimumScalePercent(83));
-        assertEquals(OfferRule.Result.REVIEW, at83.result);
-        assertEquals("pay unclear beside a +$ amount", at83.reason);
-        // At 120% a ceiling that meets 100% of the minimums stays review: never stricter than the user's minimums.
-        OfferSnapshot meets = plusOffer("+$1", "$9.00", "2 stops (5.0 mi) • 20 min");
-        OfferRule.Decision at120 = evaluate(meets, REPORT_RULES.withMinimumScalePercent(120));
-        assertEquals(OfferRule.Result.REVIEW, at120.result);
-        assertEquals("pay unclear beside a +$ amount", at120.reason);
-        assertEquals("the bar still sets what review shows as needed", 1200, at120.requiredCents);
-        OfferRule.Decision short120 = evaluate(plusOffer("+$1", "$8.99", "2 stops (5.0 mi) • 20 min"),
+    public void aBusyOfferIsJudgedAtTheBarAsAnyOffer() {
+        // $9.00 against $10.00: it passes under a 90% bar and declines under 100% or a raised one.
+        OfferSnapshot offer = plusOffer("+$1", "$9.00", "2 stops (5.0 mi) • 20 min");
+        assertEquals(OfferRule.Result.KEEP, evaluate(offer, REPORT_RULES.withMinimumScalePercent(90)).result);
+        assertEquals(OfferRule.Result.DECLINE, evaluate(offer, REPORT_RULES).result);
+        OfferRule.Decision at120 = evaluate(plusOffer("+$1", "$11.00", "2 stops (5.0 mi) • 20 min"),
                 REPORT_RULES.withMinimumScalePercent(120));
-        assertEquals(OfferRule.Result.DECLINE, short120.result);
-        assertEquals("pay at most $9.99 with its +$ amount; dollars per stop", short120.reason);
-        assertEquals(1000, short120.requiredCents);
-        // Never a pass at any bar.
-        for (int bar = 1; bar <= 200; bar++) {
-            assertFalse(evaluate(meets, REPORT_RULES.withMinimumScalePercent(bar)).result == OfferRule.Result.KEEP);
-        }
+        assertEquals(OfferRule.Result.DECLINE, at120.result);
+        assertEquals(1200, at120.requiredCents);
     }
 
     @Test
-    public void plusAmountShapesOutsideTheNarrowCaseStayPayNotFound() {
-        // Each keeps a sum ($6.00) below the $10 minimum, so a missing guard would show as a decline.
+    public void plusAmountShapesOutsideTheBusyOfferStayPayNotFound() {
+        // Each total ($5.00) is below the $10 minimum, so a missing guard would show as a decline.
         String route = "2 stops (7.1 mi) • 23 min";
         String[][] cases = {
                 {"+$1", "$5.00", "incl. tips", route, "+$2"},                        // two amounts added
@@ -771,9 +751,6 @@ public final class OfferRuleTest {
                 {"+$1", "$5.00", "incl. tips", route, "2x"},
                 {"+$1", "incl. tips", "$5.00", route},                               // not side by side
                 {"+$1", "5", "$5.00", route},                                        // a split digit between
-                {"+$1", "$5.00", "incl. tips", "3 stops (7.1 mi) • 23 min"},         // stacked: "+$" per delivery?
-                {"+$1", "$5.00", "incl. tips", route, "Multiple dropoffs (2 stops)"},
-                {"+$1", "$5.00", "incl. tips", "7.1 mi • 23 min"},                   // stops not read
                 {"+$1", "$5.00", "incl. tips", "+2 stops (3.8 mi) • +12 min"},       // added travel
                 {"Add to route", "+$1", "$5.00", "incl. tips", route},               // an add-on
                 {"+$1", "$5.00 Guaranteed", "$6.00 Guaranteed", route},              // conflicting labeled pay
@@ -784,6 +761,13 @@ public final class OfferRuleTest {
             OfferRule.Decision decision = evaluate(parse(labels), REPORT_RULES);
             assertEquals(Arrays.toString(labels), OfferRule.Result.REVIEW, decision.result);
             assertEquals(Arrays.toString(labels), "pay not found", decision.reason);
+        }
+        // Stops, stacked deliveries and their counts change nothing: the total is the pay.
+        for (String[] labels : new String[][] {
+                {"+$1", "$5.00", "incl. tips", "3 stops (7.1 mi) • 23 min"},
+                {"+$1", "$5.00", "incl. tips", route, "Multiple dropoffs (2 stops)"},
+                {"+$1", "$5.00", "incl. tips", "7.1 mi • 23 min"}}) {
+            assertEquals(Arrays.toString(labels), Integer.valueOf(500), parse(labels).payCents);
         }
     }
 
@@ -800,23 +784,26 @@ public final class OfferRuleTest {
     }
 
     @Test
-    public void theRealScreenWithDeclineBetweenThePlusAmountAndTheTotalDeclinesBelowTheSum() {
+    public void theRealScreenWithDeclineBetweenThePlusAmountAndTheTotalIsReadAtItsTotal() {
         OfferSnapshot offer = realPlusScreen("$5.75", "2 stops (3.4 mi) • 17 min");
-        assertNull("pay itself stays unknown", offer.payCents);
-        assertEquals(Integer.valueOf(675), offer.payAtMostCents);
+        assertEquals(Integer.valueOf(575), offer.payCents);
+        assertNull(offer.payAtMostCents);
         OfferRule.Decision decision = evaluate(offer, USER_RULES_0441);
         assertEquals(OfferRule.Result.DECLINE, decision.result);
-        assertEquals("pay at most $6.75 with its +$ amount; dollars per stop", decision.reason);
+        assertEquals("dollars per stop", decision.reason);
         assertEquals(1000, decision.requiredCents);
+        // At $10.00 it meets them.
+        assertEquals(OfferRule.Result.KEEP, evaluate(realPlusScreen("$10.00", "incl. tips",
+                "2 stops (3.7 mi) • 17 min"), USER_RULES_0441).result);
     }
 
     /**
      * The owner's 16 October 2026 "+$3" offers, a name and a lifetime "N orders completed" drawn under them (addresses
-     * replaced): read with that count, never this offer's, set aside, each misses his rules even at its ceiling. His
-     * rules then: $4.50 a stop, $16.20 a mile, $0.70 a minute, Autopilot's bar at 62%, scored by area.
+     * replaced): read at their totals, each misses his rules. His rules then: $4.50 a stop, $16.20 a mile, $0.70 a
+     * minute, Autopilot's bar at 62%, scored by area.
      */
     @Test
-    public void theOwnersPlusOffersWithALifetimeOrderCountUnderThemDeclineBelowTheirCeilings() {
+    public void theOwnersPlusOffersWithALifetimeOrderCountUnderThemDeclineAtTheirTotals() {
         FilterSettings rules = FilterSettings.of(true, 450, 1620, 70, 0).withScoreByArea(true).withAutopilot(true, 0)
                 .withMinimumScalePercent(62);
         String[] under = {"Pat", "312 orders completed", "Rising Shopper", "trailing_icon", "Home", "Schedule",
@@ -828,24 +815,16 @@ public final class OfferRuleTest {
                 {"Very busy", "+$3", "Decline", "$11.80", "2 stops (9.4 mi) • 25 min", "Chick-fil-A", "100 Main St",
                         "200 Oak Ave", "Customer dropoff", "Guaranteed earnings for completing the offer.", "Accept",
                         "0:41"}};
-        String[] ceilings = {"$12.90", "$14.80"};
+        int[] pay = {990, 1180};
         for (int i = 0; i < screens.length; i++) {
             java.util.List<String> labels = new java.util.ArrayList<>(Arrays.asList(screens[i]));
             labels.addAll(Arrays.asList(under));
-            OfferRule.Decision decision = evaluate(OfferParser.parse(labels), rules);
+            OfferSnapshot offer = OfferParser.parse(labels);
+            assertEquals(labels.toString(), Integer.valueOf(pay[i]), offer.payCents);
+            OfferRule.Decision decision = evaluate(offer, rules);
             assertEquals(labels.toString(), OfferRule.Result.DECLINE, decision.result);
-            assertEquals("pay at most " + ceilings[i] + " with its +$ amount; 62% bar: area requirement",
-                    decision.reason);
+            assertEquals("62% bar: area requirement", decision.reason);
         }
-    }
-
-    @Test
-    public void theRealScreenWhoseSumMayPassIsReviewed() {
-        OfferSnapshot offer = realPlusScreen("$9.00", "incl. tips", "2 stops (3.7 mi) • 17 min");
-        assertEquals("$9.00 + $1", Integer.valueOf(1000), offer.payAtMostCents);
-        OfferRule.Decision decision = evaluate(offer, USER_RULES_0441);
-        assertEquals(OfferRule.Result.REVIEW, decision.result);
-        assertEquals("pay unclear beside a +$ amount", decision.reason);
     }
 
     @Test
@@ -859,7 +838,7 @@ public final class OfferRuleTest {
                 {"+$1", "Busy", "$5.00", route},
                 {"+$1", "Decline offer", "0:47", "$5.00", route}}) {
             OfferSnapshot offer = parse(labels);
-            assertEquals(Arrays.toString(labels), Integer.valueOf(600), offer.payAtMostCents);
+            assertEquals(Arrays.toString(labels), Integer.valueOf(500), offer.payCents);
             assertEquals(Arrays.toString(labels), OfferRule.Result.DECLINE, evaluate(offer, REPORT_RULES).result);
         }
         // Anything else between them keeps them apart, as before.

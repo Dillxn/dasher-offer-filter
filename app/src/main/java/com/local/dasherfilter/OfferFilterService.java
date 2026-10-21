@@ -924,7 +924,7 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     static boolean sameForegroundNotice(List<String> notice, OfferSnapshot facts, List<String> screen, long age) {
-        OfferSnapshot seen = OfferParser.parse(notice).withoutPayBound();
+        OfferSnapshot seen = OfferParser.parseNotification(notice).withoutPayBound();
         if (seen.contradicts(facts) || age < 0 || age > OfferPairing.OFFER_MS) return false;
         if (seen.payCents != null) return seen.agreesWith(facts) && age <= OfferPairing.NOTICE_LAG_MS;
         String store = OfferNotificationService.store(notice).toLowerCase(java.util.Locale.US);
@@ -8857,10 +8857,10 @@ public final class OfferFilterService extends AccessibilityService {
         }
         String facts = (offer.miles != null ? ",distance" : "") + (offer.minutes != null ? ",duration" : "")
                 + (offer.stops != null ? ",stops" : "");
-        String noCeiling = OfferParser.noCeilingReason(scan.text, scan.metricParts);
+        String notBusy = OfferParser.noBusyTotalReason(scan.text, scan.metricParts);
         String line = "pay not found: money labels whole=" + whole + " bare-$=" + bare + " digits=" + digits
                 + " dot=" + dot + "; controls=both; facts=" + facts.substring(1)
-                + (noCeiling == null ? "" : "; no +$ ceiling: " + noCeiling);
+                + (notBusy == null ? "" : "; no +$ offer total: " + notBusy);
         if (line.equals(lastPayNotFound)) return;
         lastPayNotFound = line;
         DiagnosticLog.log(this, "screen", line);
@@ -10509,7 +10509,9 @@ public final class OfferFilterService extends AccessibilityService {
     /**
      * "{@code head} labels=[…] metricParts=[…]" for a log, built and masked ({@link PersonalText}) on the log's own
      * thread from copies taken here, so the screen reader never waits for it. Decisions use the raw labels. A
-     * payment, account or earnings screen gives {@link DiagnosticLog#NOT_KEPT} alone: none of its words are kept.
+     * payment, account or earnings screen gives {@link DiagnosticLog#NOT_KEPT} alone: none of its words are kept. An
+     * offer drawn above Dasher's own screen keeps its labels down to its Accept when such a word shows only below it
+     * ({@link PersonalText#offerPart}, 0.6.30), with a note naming the word in place of the rest and no metric parts.
      *
      * @param navigation whether the screen is known to be turn-by-turn navigation, whose streets are masked too (else
      *     the log's thread tells from the labels)
@@ -10529,15 +10531,25 @@ public final class OfferFilterService extends AccessibilityService {
         // An unrecognised screen keeps no word, only counts from the read already made (no call into Dasher).
         String counts = "; nodes " + scan.visited + ", clickable " + scan.clickable + ", with text " + text.size();
         return () -> {
-            if (PersonalText.accountScreen(text) || PersonalText.accountScreen(parts)) return DiagnosticLog.NOT_KEPT;
-            List<String> all = new ArrayList<>(text);
-            all.addAll(parts);
-            if (!PersonalText.recognizedDashScreen(all) && !(delivery && PersonalText.namesDirections(text))) {
+            List<String> shown = PersonalText.offerPart(text);
+            if (shown == null || PersonalText.accountScreen(parts)) return DiagnosticLog.NOT_KEPT;
+            boolean cut = shown.size() < text.size();
+            List<String> metrics = cut ? new ArrayList<>() : parts;
+            List<String> all = new ArrayList<>(shown);
+            all.addAll(metrics);
+            boolean recognized = cut ? PersonalText.recognizedOfferPart(shown, text)
+                    : PersonalText.recognizedDashScreen(all);
+            if (!recognized && !(delivery && PersonalText.namesDirections(shown))) {
                 return PersonalText.UNKNOWN_NOT_KEPT + counts;
             }
             boolean streets = navigation || DasherScene.showsNavigation(all);
-            return head + " labels=" + PersonalText.mask(text, streets) + " metricParts="
-                    + PersonalText.mask(parts, streets);
+            List<String> labels = new ArrayList<>(shown);
+            if (cut) {
+                labels.add(PersonalText.notKeptNote(PersonalText.accountWord(text.subList(shown.size(), text.size())),
+                        true));
+            }
+            return head + " labels=" + PersonalText.mask(labels, streets) + " metricParts="
+                    + PersonalText.mask(metrics, streets);
         };
     }
 

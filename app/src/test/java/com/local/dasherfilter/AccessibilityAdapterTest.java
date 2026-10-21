@@ -1310,8 +1310,8 @@ public class AccessibilityAdapterTest {
     }
 
     @Test
-    public void anOfferWhoseTotalAndPlusAmountTogetherStillFailIsDeclinedAtOnce() {
-        // The report's rules and its "+$1 · $7.35" screen: pay is $7.35, $8.35 or $1, all below $10.
+    public void aBusyOfferBelowTheRulesAtItsTotalIsDeclinedAtOnce() {
+        // The report's rules and its "+$1 · $7.35" screen: the total, $7.35, is the pay (0.6.30), below $10.
         FilterStore.save(app, FilterSettings.of(true, 500, 100, 0, 3));
         show(partialOffer("+$1", "$7.35", "incl. tips", "2 stops (7.1 mi) • 23 min",
                 "Guaranteed earnings for completing the offer."));
@@ -1320,27 +1320,25 @@ public class AccessibilityAdapterTest {
         DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
         assertEquals(OfferRule.Result.DECLINE, entry.result);
         assertEquals(DecisionLog.Action.DECLINE_TAPPED, entry.action);
-        assertNull("pay is still unknown", entry.facts.payCents);
+        assertEquals(Integer.valueOf(735), entry.facts.payCents);
     }
 
     @Test
-    public void anOfferWithAPlusAmountThatMayPassIsLeftToTheDasher() {
+    public void aBusyOfferMeetingTheRulesAtItsTotalIsLeftToTheDasherAndTakenAsAnyOffer() {
         FilterSettings rules = FilterSettings.of(true, 500, 100, 0, 3);
         FilterStore.save(app, rules);
         show(partialOffer("+$1", "$10.60", "incl. tips", "2 stops (5.3 mi) • 30 min"));
         assertTrue(Shadows.shadowOf(decline).getPerformedActions().isEmpty());
         DecisionLog.Entry entry = DecisionLog.recent(app, 1).get(0);
-        assertEquals(OfferRule.Result.REVIEW, entry.result);
-        assertEquals("pay unclear beside a +$ amount", entry.reason);
+        assertEquals(OfferRule.Result.KEEP, entry.result);
+        assertEquals(Integer.valueOf(1060), entry.facts.payCents);
 
-        // Accepting it records no acceptance of its own and keeps no route: its pay was never read.
+        // Accepting it records its acceptance and keeps its route, at its total.
         userTaps("Accept");
         show(node("Arrived at store", false));
         DecisionLog.Entry line = DecisionLog.recent(app, 1).get(0);
-        assertFalse(DecisionLog.hasStep(line, DecisionLog.StepKind.ACCEPTED));
-        assertNull("no route kept from unread pay", ActiveRouteStore.load(app));
-        assertTrue(DecisionLog.report(app, 5), DecisionLog.report(app, 5).contains("its pay was not read"));
-        assertNoLesson(line);
+        assertTrue(DecisionLog.hasStep(line, DecisionLog.StepKind.ACCEPTED));
+        assertEquals(Integer.valueOf(1060), ActiveRouteStore.load(app).payCents);
         assertRulesUnchanged(rules);
     }
 }

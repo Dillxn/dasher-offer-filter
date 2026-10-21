@@ -2637,8 +2637,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
             notice.setPadding(0, ui.dp(4), 0, 0);
             ticket.addView(notice);
         }
-        if (!entry.evidence.isEmpty()) {
-            TextView read = ui.text("Read: " + String.join("  ·  ", entry.evidence), 12, ui.inkMuted, false);
+        // What the screen showed; a note that the screen below the offer was not kept is for reports alone.
+        List<String> shown = PersonalText.withoutNotKeptNotes(entry.evidence);
+        if (!shown.isEmpty()) {
+            TextView read = ui.text("Read: " + String.join("  ·  ", shown), 12, ui.inkMuted, false);
             read.setPadding(0, ui.dp(4), 0, 0);
             read.setTextIsSelectable(true);
             ticket.addView(read);

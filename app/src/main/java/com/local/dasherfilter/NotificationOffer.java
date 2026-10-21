@@ -24,7 +24,7 @@ final class NotificationOffer {
         String text = String.join(" ", labels).toLowerCase(Locale.US);
         if (containsAny(text, NOT_OFFER_PHRASES)) return false;
         if (containsAny(text, OFFER_PHRASES) || AddOnOffer.isLikely(labels)) return true;
-        OfferSnapshot offer = OfferParser.parse(labels);
+        OfferSnapshot offer = OfferParser.parseNotification(labels);
         return offer.payCents != null && (offer.miles != null || offer.stops != null);
     }
 

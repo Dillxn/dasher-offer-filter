@@ -38,19 +38,6 @@ final class OfferParser {
     /** "Multiple dropoffs (2 stops)": a count of one kind of stop, not the route's total. */
     private static final Pattern STOP_BREAKDOWN = Pattern.compile(
             "(?i)(?:pick[ -]?ups?|drop[ -]?offs?)\\s*\\(\\s*\\d{1,2}\\s+stops?\\s*\\)");
-    /** These complete labels establish all orders at one pickup, not shopping item quantities. */
-    private static final Pattern PICKUP_ORDERS = Pattern.compile(
-            "(?i)^pick[ -]?up\\s+([1-9]\\d?)\\s+orders?$");
-    private static final Pattern DROPOFF_STOPS = Pattern.compile(
-            "(?i)^(?:multiple\\s+)?(?:customer\\s+)?drop[ -]?offs?\\s*\\(\\s*([1-9]\\d?)\\s+stops?\\s*\\)$");
-    private static final Pattern ORDER_WORD = Pattern.compile("(?i)\\borders?\\b");
-    /**
-     * A lifetime count drawn under the offer, beside a name ("N orders completed" below the offer's Accept and
-     * countdown, the owner's 16 October 2026 report): never a count of this offer's orders.
-     */
-    private static final Pattern COMPLETED_ORDERS = Pattern.compile("(?i)\\d[\\d,]*\\s+orders?\\s+completed");
-    private static final Pattern PICKUP_WORD = Pattern.compile("(?i)\\bpick[ -]?ups?\\b");
-    private static final Pattern DROPOFF_WORD = Pattern.compile("(?i)\\bdrop[ -]?offs?\\b");
     private static final Pattern METRIC_NUMBER = Pattern.compile("\\d{1,3}(?:\\.\\d{1,2})?");
     private static final Pattern METRIC_UNIT = Pattern.compile(
             "(?i)(?:mi\\.?|miles?|stops?|items?|pick[ -]?ups?|(?:customer\\s+)?drop[ -]?offs?)[:=]?");
@@ -76,10 +63,23 @@ final class OfferParser {
     }
 
     /**
-     * @param visibleText normalized screen or notification labels; pay and duration are read only from these
+     * @param visibleText normalized screen labels; pay and duration are read only from these
      * @param metricParts distance/stop phrases re-assembled from sibling nodes by {@link #joinMetricSiblings}
      */
     static OfferSnapshot parse(List<String> visibleText, List<String> metricParts) {
+        return parse(visibleText, metricParts, true);
+    }
+
+    /**
+     * A notification's text, as {@link #parse(List)} reads a screen's but for Dasher's busy offer ({@link #busyTotal}):
+     * a notification's text may be cut short, losing a second amount or a qualifier beside its "+$" one, so pay
+     * beside a "+$" amount stays unread there, and nothing is declined or hidden on it.
+     */
+    static OfferSnapshot parseNotification(List<String> labels) {
+        return parse(labels, Collections.emptyList(), false);
+    }
+
+    private static OfferSnapshot parse(List<String> visibleText, List<String> metricParts, boolean busy) {
         if (!OfferEvidence.bounded(visibleText) || !OfferEvidence.bounded(metricParts)) {
             return OfferSnapshot.UNKNOWN;
         }
@@ -94,19 +94,18 @@ final class OfferParser {
         List<String> metrics = distinctNormalized(safeParts, new ArrayList<>(routeLines));
         boolean malformed = OfferEvidence.malformedMoney(lines);
         Integer pay = malformed ? null : parsePay(lines);
-        Integer stops = parseStops(metrics);
-        Integer payAtMost = malformed || pay != null ? null : payWithPlusAmount(lines, metrics, stops);
+        if (pay == null && !malformed && busy) pay = busyTotal(lines, metrics, null);
         // Item totals do not borrow travel context or add together counts from different labels/orders.
         ItemCount items = ItemCount.parse(distinctNormalized(metricParts, new ArrayList<>(lines)));
-        return new OfferSnapshot(pay, parseMiles(metrics), parseMinutes(routeLines), stops, payAtMost)
+        return new OfferSnapshot(pay, parseMiles(metrics), parseMinutes(routeLines), parseStops(metrics), null)
                 .withItems(items.count, items.applicable);
     }
 
     /**
-     * For the log only: why a screen whose pay was not read got no "+$" ceiling either ({@link #payWithPlusAmount}),
-     * in fixed words, never the screen's own; null when it has pay or a ceiling.
+     * For the log only: why a screen whose pay was not read is no busy offer whose total is its pay either
+     * ({@link #busyTotal}), in fixed words, never the screen's own; null when it has pay.
      */
-    static String noCeilingReason(List<String> visibleText, List<String> metricParts) {
+    static String noBusyTotalReason(List<String> visibleText, List<String> metricParts) {
         if (!OfferEvidence.bounded(visibleText) || !OfferEvidence.bounded(metricParts)) return "too many labels";
         List<String> lines = distinctNormalized(visibleText, new ArrayList<>());
         List<String> routeLabels = routeMetricLabels(visibleText);
@@ -117,7 +116,7 @@ final class OfferParser {
         if (OfferEvidence.malformedMoney(lines)) return "a malformed or ranged amount";
         if (parsePay(lines) != null) return null;
         String[] why = new String[1];
-        return plusCeiling(lines, metrics, parseStops(metrics), why) != null ? null : why[0];
+        return busyTotal(lines, metrics, why) != null ? null : why[0];
     }
 
     /**
@@ -227,7 +226,7 @@ final class OfferParser {
     /**
      * A single amount on a "Guaranteed"/"Total pay" line (or the line right after a bare label) wins. Otherwise
      * the screen must show exactly one amount and no "+$" increment. Rate figures ("/hr", "per mile", ...) and
-     * increments are never pay; {@link #payWithPlusAmount} only bounds pay from above.
+     * increments are never pay; Dasher's busy offer, a "+$" amount beside its total, is read by {@link #busyTotal}.
      */
     private static Integer parsePay(List<String> lines) {
         Set<Integer> labeled = new HashSet<>();
@@ -256,34 +255,27 @@ final class OfferParser {
             }
         }
         if (!labeled.isEmpty()) return onlyValue(labeled);
-        // Whether an unlabeled amount already includes a "+$" bonus is unknown, so neither is taken as pay (the two
-        // only bound it from above: payWithPlusAmount).
+        // Beside a "+$" amount, an unlabeled amount is pay only in Dasher's busy shape (busyTotal).
         return sawIncrement ? null : onlyValue(all);
     }
 
     /**
-     * The most an offer can pay when its pay is unknown only because one bare "+$X" label sits directly beside its
-     * one unlabeled total "$Y" (only the offer's Decline or Accept control, a countdown or the busy badge may come
-     * between them, as on Dasher's screen: "Very busy, +$1, Decline, $5.75"). A legacy two-stop offer without order
-     * counts uses Y + X. An explicitly counted single-pickup bundle uses Y + N*X: the bonus might apply to every
-     * observed order. Orders sharing a dropoff still count separately. Either amount is only a decline ceiling,
-     * never exact pay, a passing score, or evidence of an add-on's incremental economics. Explicit add-ons, added
-     * travel, partial/conflicting counts, rates, labeled pay or multiplier qualifiers have no such ceiling.
+     * Dasher's busy offer: one bare "+$X" label directly beside its one unlabeled total "$Y" (only the offer's Decline
+     * or Accept control, a countdown or the busy badge may come between them, as on Dasher's screen: "Very busy, +$3,
+     * Decline, $9.90"). Its pay is Y, the "+$" amount included: Dasher calls Y "Guaranteed earnings for completing the
+     * offer" (the owner's choice, 21 October 2026; before 0.6.30 Y + X, times the orders, was only a decline ceiling,
+     * and an offer of three stops or more without its order counts had no reading at all). However many stops or
+     * orders. Explicit add-ons, added travel, rates, labeled pay, a second total or "+$" amount, or a per-order or
+     * up-to qualifier leave the pay unread.
+     *
+     * @param why when given and there is no such total, why[0] says why in fixed words
      */
-    private static Integer payWithPlusAmount(List<String> lines, List<String> metrics, Integer stops) {
-        return plusCeiling(lines, metrics, stops, null);
-    }
-
-    /** {@link #payWithPlusAmount}; when there is no ceiling and {@code why} is given, why[0] says why in fixed words. */
-    private static Integer plusCeiling(List<String> lines, List<String> metrics, Integer stops, String[] why) {
-        if (stops == null) return none(why, "stops not read");
+    private static Integer busyTotal(List<String> lines, List<String> metrics, String[] why) {
         if (AddOnOffer.isLikely(lines)) return none(why, "add-on wording");
         for (String line : metrics) {
             if (ADDED_TRAVEL.matcher(line).find()) return none(why, "added travel");
             if (QUALIFIER.matcher(line).find()) return none(why, "a per-order or up-to qualifier");
         }
-        Integer orders = bonusOrderCeiling(metrics, stops);
-        if (orders == null) return none(why, "pickup, dropoff or order counts");
         Integer plus = null;
         Integer total = null;
         int plusAt = -1;
@@ -319,57 +311,12 @@ final class OfferParser {
             }
             return none(why, "+$ amount and total not side by side (" + between + " other labels between)");
         }
-        long ceiling = (long) total + (long) plus * orders;
-        return ceiling <= Integer.MAX_VALUE ? (int) ceiling : none(why, "too large");
+        return total;
     }
 
     private static Integer none(String[] why, String reason) {
         if (why != null) why[0] = reason;
         return null;
-    }
-
-    /**
-     * The total route must have exactly one pickup: S total stops = D observed dropoffs + 1. Its explicit pickup
-     * count N includes all orders there, with D <= N because several orders may share a dropoff. Stops alone cannot
-     * upper-bound per-order bonuses. Any partial/new count evidence also blocks the old two-stop fallback.
-     */
-    private static Integer bonusOrderCeiling(List<String> labels, int stops) {
-        Set<Integer> orders = new HashSet<>();
-        Set<Integer> dropoffs = new HashSet<>();
-        boolean countEvidence = false;
-        boolean separatePickup = false;
-        for (String label : labels) {
-            Matcher pickup = PICKUP_ORDERS.matcher(label);
-            Matcher dropoff = DROPOFF_STOPS.matcher(label);
-            if (pickup.matches()) {
-                countEvidence = true;
-                orders.add(Integer.parseInt(pickup.group(1)));
-            } else if (dropoff.matches()) {
-                countEvidence = true;
-                dropoffs.add(Integer.parseInt(dropoff.group(1)));
-            } else if (COMPLETED_ORDERS.matcher(label).matches()) {
-                // Neither a count nor partial count evidence: the two-stop fallback stands.
-                continue;
-            } else {
-                boolean pickupWord = PICKUP_WORD.matcher(label).find();
-                boolean dropoffWord = DROPOFF_WORD.matcher(label).find();
-                // Unknown/ranged/spelled-out quantities cannot quietly become a single-order fallback. Ordinary
-                // "Customer dropoff" or "Pick up" labels remain unchanged for the legacy two-stop shape.
-                String lower = label.toLowerCase(Locale.US);
-                if (ORDER_WORD.matcher(label).find()
-                        || pickupWord && !lower.matches("pick[ -]?up")
-                        || dropoffWord && !lower.matches("(?:customer\\s+)?drop[ -]?off")) return null;
-                // A second generic pickup label cannot establish that this is the only pickup of a bundle.
-                if (pickupWord) separatePickup = true;
-            }
-        }
-        if (!countEvidence) return stops == 2 ? 1 : null;
-        if (separatePickup) return null;
-        Integer orderCount = onlyValue(orders);
-        Integer dropoffCount = onlyValue(dropoffs);
-        if (orderCount == null || dropoffCount == null || stops != dropoffCount + 1
-                || dropoffCount > orderCount) return null;
-        return orderCount;
     }
 
     /** A countdown as Dasher shows it beside an offer ("0:35"). */

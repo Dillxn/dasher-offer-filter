@@ -27,8 +27,9 @@ import org.robolectric.shadows.ShadowSystemClock;
 /**
  * The owner's two reports of 16 October 2026, both screens the app "didnt read": a "+$3" offer whose ceiling a
  * lifetime "N orders completed" under it took away, through every showing, and Dasher's add-on card, which has no
- * add-on phrase ("+$9.40", "+1 stop (1.9 mi) • +7 min"). The first is now declined below its ceiling; the second is
- * read and judged as an add-on to the route under way.
+ * add-on phrase ("+$9.40", "+1 stop (1.9 mi) • +7 min"). The first is declined at its total, the "+$" amount
+ * included (0.6.30; in 0.6.28 below its ceiling, the two added); the second is read and judged as an add-on to the
+ * route under way.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {35, 36})
@@ -62,7 +63,7 @@ public class PlusOfferAndAddOnCardTest {
     }
 
     @Test
-    public void thePlusOfferWithALifetimeOrderCountUnderItIsDeclinedBelowItsCeiling() {
+    public void thePlusOfferWithALifetimeOrderCountUnderItIsDeclinedAtItsTotal() {
         AtomicInteger declines = new AtomicInteger();
         AccessibilityNodeInfo root = node(null, false);
         Shadows.shadowOf(root).addChild(node("+$3", false));
@@ -81,7 +82,8 @@ public class PlusOfferAndAddOnCardTest {
         assertEquals("declined, once", 1, declines.get());
         DecisionLog.Entry line = newest();
         assertEquals(DecisionLog.Action.DECLINE_TAPPED, line.action);
-        assertEquals("pay at most $12.90 with its +$ amount; area requirement", line.reason);
+        assertEquals(Integer.valueOf(990), line.facts.payCents);
+        assertEquals("area requirement", line.reason);
     }
 
     @Test

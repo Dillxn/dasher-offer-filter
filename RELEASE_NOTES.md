@@ -1,3 +1,14 @@
+## 0.6.30 — A busy offer's total is its whole pay, and reports keep a full-screen offer's lines
+
+Version 0.6.30 (code 122) answers the owner's three offer reports of 20 October 2026 from 0.6.29 (22:38 and 23:54 UTC), "seems like the app isn't reading them", and his choice on 21 October that Dasher's total already includes its +$ amount ("Included").
+
+- **A busy offer is judged at Dasher's total.** On Dasher's busy offer a bare +$ amount sits beside the total ("Very busy, +$3, Decline, $9.90"), and Dasher calls the total "Guaranteed earnings for completing the offer". The total is now the offer's pay, the +$ included, however many stops or orders it has: it is scored, declined, passed, learned from and auto-accepted like any other offer, and Autopilot's working minimums apply to it. Before, pay plus the +$ was only a ceiling: such an offer was declined only when even the sum missed the rules and otherwise left as "pay unclear beside a +$ amount" (two of the reports), and an offer of three stops or more without its order counts had no reading at all, "pay not found" (most likely the four-stop report too; its screen wasn't kept).
+- **What still leaves the pay unread.** A +$ amount with words ("+$2.00 Peak Pay"), two +$ amounts, a second total, a rate, labeled pay, a per-order or up-to qualifier, added travel, add-on wording, or any label but the offer's controls, its countdown or the busy badge between the +$ and the total. Dasher's notifications never use this reading (their text may be cut short): an offer known only from its notification stays "pay not found" beside a +$ amount, as before.
+- **Reports and history keep a full-screen offer's own lines.** Dasher draws a full-screen offer over its own screen, and a payment, account or earnings word there, below the offer's Accept, made every full-screen offer read as an account screen: the reports, the history's read lines and the screens log kept nothing of it (each of the three reports had no read lines). Such an offer now keeps its own lines down to its Accept, masked as ever, with a fixed note naming the word in place of the rest ("screen below the offer not kept (account word: …)", the word spelled out letter by letter). Nothing below the Accept is kept, a word on the offer itself keeps only the note, and a payment page with no Accept keeps nothing, as before. The ticket's Read line leaves the note out.
+- Nothing in the notice, the Terms or Privacy changed, so the notice stays 30. What's new says it in two lines.
+
+No phone has run this build.
+
 ## 0.6.29 — Each acceptance sets Autopilot's working minimums, up or down
 
 Version 0.6.29 (code 121) answers the owner's request of 19 October 2026: “with autopilot on, when I accept an offer lower than my autopilot mins then it should lower the autopilot mins on those axes to that new low; and when I accept an offer higher than that min the axes should raise to it.”

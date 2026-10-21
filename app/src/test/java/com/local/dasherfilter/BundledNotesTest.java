@@ -604,9 +604,7 @@ public class BundledNotesTest {
     }
 
     /** 0.6.29 renews the notice for working requirements that can follow an acceptance in either direction. */
-    @Test public void currentReleaseAndNoticeExplainIndependentWorkingMinimums() {
-        assertEquals("0.6.29", Updater.version(RuntimeEnvironment.getApplication()));
-        assertEquals(30, Consent.VERSION);
+    @Test public void release0629AndNotice30ExplainIndependentWorkingMinimums() {
         List<String> lines = BundledNotes.whatsNew("0.6.29");
         assertEquals(3, lines.size());
         assertEquals(lines, notice(30));
@@ -619,6 +617,25 @@ public class BundledNotesTest {
             assertTrue(fact, words.contains(fact));
         }
         for (String line : lines) assertTrue(line, line.length() <= 160);
+    }
+
+    /**
+     * 0.6.30 (the owner's reports of 20 October 2026, "seems like the app isn't reading them", and his choice of 21
+     * October that Dasher's total already includes its +$ amount): two lines. Nothing the notice says changed, so it
+     * stays 30.
+     */
+    @Test public void theCurrentReleaseSaysWhatChanged() {
+        assertEquals("0.6.30", Updater.version(RuntimeEnvironment.getApplication()));
+        assertEquals(30, Consent.VERSION);
+        List<String> lines = BundledNotes.whatsNew("0.6.30");
+        assertEquals(Arrays.asList("On busy offers with a +$ amount, Dasher's total is now read as the whole pay, "
+                + "the +$ included, so they're judged like any other offer.",
+                "Reports and your history now keep a full-screen offer's own lines; nothing of Dasher's screen below "
+                + "the offer is kept."), lines);
+        for (String line : lines) {
+            assertTrue(line, line.length() <= 160);
+            assertFalse(line, line.contains("Offer Filter"));
+        }
     }
 
     /** 0.6.27's notice (29): offers are scored by area by default; Strict is a pick in the radar's middle. */

@@ -99,12 +99,14 @@ public final class OfferParserTest {
         assertEquals(Integer.valueOf(4), offer.stops);
     }
 
-    @Test public void aPlusAmountBesideATotalBoundsPayButIsNeverPay() {
+    @Test public void aBarePlusAmountBesideATotalIsPartOfIt() {
+        // Dasher's busy offer: the total is the pay, the "+$" amount included (0.6.30).
         OfferSnapshot offer = OfferParser.parse(Arrays.asList(
                 "+$1", "$7.35", "incl. tips", "2 stops (7.1 mi) • 23 min"));
-        assertNull(offer.payCents);
-        assertEquals("Pay ? (at most $8.35), miles 7.1, minutes 23, stops 2", offer.summary());
-        // A worded bonus beside a labeled total gets no bound.
+        assertEquals(Integer.valueOf(735), offer.payCents);
+        assertNull(offer.payAtMostCents);
+        assertEquals("Pay $7.35, miles 7.1, minutes 23, stops 2", offer.summary());
+        // A worded bonus beside a labeled total is read by neither.
         assertTrue(OfferParser.parse(Arrays.asList("$9.90", "Guaranteed (incl. tips)", "+$2.00 Peak Pay",
                 "2 stops (7.2 mi) • 21 min")).summary().startsWith("Pay ?, "));
     }
@@ -117,13 +119,14 @@ public final class OfferParserTest {
         OfferSnapshot offer = OfferParser.parse(Arrays.asList("Very busy", "+$1", "Decline", "$13.00 incl. tips",
                 "3 stops (7.0 mi) • 33 min", "Pick up 2 orders", "Multiple dropoffs (2 stops)",
                 "Pick up 2 orders", "Multiple dropoffs (2 stops)", "Accept", "0:24"));
-        assertEquals(Integer.valueOf(1500), offer.payAtMostCents);
-        assertNull(offer.payCents);
+        assertEquals("the total, its +$ amount included", Integer.valueOf(1300), offer.payCents);
+        assertNull(offer.payAtMostCents);
         assertNull(offer.items);
         assertFalse(offer.itemCountApplicable);
         OfferSnapshot normalized = OfferParser.parse(Arrays.asList("+$1", "$13.00",
                 "3 stops (7.0 mi) • 33 min", "  PICK-UP   2   ORDERS ", "Multiple drop-offs ( 2 stops )"));
-        assertEquals(Integer.valueOf(1500), normalized.payAtMostCents);
+        assertEquals(Integer.valueOf(1300), normalized.payCents);
+        assertEquals(Integer.valueOf(3), normalized.stops);
     }
 
     @Test public void aBundleCountCannotRelaxMoneyOrAdjacencyGuards() {
@@ -134,6 +137,7 @@ public final class OfferParserTest {
                 {"+$1", "$13.00", "up to"}, {"+$1", "$13.00", "2x"}}) {
             java.util.List<String> labels = new java.util.ArrayList<>(Arrays.asList(prefix));
             labels.addAll(Arrays.asList("3 stops (7.0 mi) • 33 min", "Pick up 2 orders", "Multiple dropoffs (2 stops)"));
+            assertNull(Arrays.toString(prefix), OfferParser.parse(labels).payCents);
             assertNull(Arrays.toString(prefix), OfferParser.parse(labels).payAtMostCents);
         }
     }

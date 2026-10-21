@@ -244,11 +244,26 @@ final class DashSummary {
     /**
      * An offer's read lines as a summary keeps them: masked twice when recognized, else only a not-kept note; with
      * Dasher's decline question among them, or a label naming the acceptance rate, without a single number but money
-     * and clock times ({@link #withoutAcceptanceRate(List, List)}, decided on these raw labels).
+     * and clock times ({@link #withoutAcceptanceRate(List, List)}, decided on these raw labels). A full-screen offer
+     * keeps its own lines when an account word shows only below it ({@link PersonalText#offerPart}, 0.6.30), with a
+     * note naming the word; one on the offer itself keeps only that note.
      */
     static List<String> readLines(List<String> labels) {
-        return PersonalText.recognizedDashScreen(labels) ? withoutAcceptanceRate(labels, OfferReport.redact(labels))
-                : Collections.singletonList(PersonalText.UNKNOWN_NOT_KEPT);
+        List<String> part = PersonalText.offerPart(labels);
+        if (part == null) {
+            String note = PersonalText.showsAccept(labels)
+                    ? PersonalText.notKeptNote(PersonalText.accountWord(labels), false) : PersonalText.UNKNOWN_NOT_KEPT;
+            return Collections.singletonList(note);
+        }
+        if (!PersonalText.recognizedOfferPart(part, labels)) {
+            return Collections.singletonList(PersonalText.UNKNOWN_NOT_KEPT);
+        }
+        List<String> read = new ArrayList<>(withoutAcceptanceRate(part, OfferReport.redact(part)));
+        if (part.size() < labels.size()) {
+            List<String> below = labels.subList(part.size(), labels.size());
+            read.add(PersonalText.notKeptNote(PersonalText.accountWord(below), true));
+        }
+        return read;
     }
 
     /**
