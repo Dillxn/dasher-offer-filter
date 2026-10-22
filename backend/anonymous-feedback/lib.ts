@@ -1,5 +1,5 @@
 // Pure parts of the accountless feedback function: what a request must hold (a part of a submission, or a count),
-// and which network it came from. No I/O here, so they can be tested on their own (lib.test.ts).
+// and which network it came from. No I/O here.
 
 /** The website's origins. A request with any other Origin is refused; the app sends none. */
 export const ALLOWED_ORIGINS: ReadonlySet<string> = new Set([

@@ -11,9 +11,9 @@ Usage: tools/test-dev.sh TestClass[.method] [TestClass[.method] ...]
 Run selected local tests on API 35, or the complete daily suite with --all.
 Selectors may include the com.local.dasherfilter. package prefix; wildcards and Gradle options are not accepted.
 Examples:
-  tools/test-dev.sh BundledNotesTest
-  tools/test-dev.sh BundledNotesTest.theCurrentNoticeAndVersionHaveTheirEntry
-  tools/test-dev.sh OfferRuleTest AutopilotTest
+  tools/test-dev.sh PrivacyBoundaryTest
+  tools/test-dev.sh PrivacyBoundaryTest.paymentScreenNeverReachesEitherLogOrDecisionEvidence
+  tools/test-dev.sh ActionSafetyTest ConsentGateTest
 
 Results: app/build/test-results/devChecks/testDebugUnitTest/
 HTML:    app/build/reports/tests/devChecks/testDebugUnitTest/index.html

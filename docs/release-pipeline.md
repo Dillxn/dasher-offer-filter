@@ -236,10 +236,9 @@ refused without overwrite; recover a valid archive or start a new candidate.
 
 ## Validation
 
-Run `python3 -m unittest discover -s tools -p 'test_release_*.py'` locally.
-This covers environment profiles, real Git relocation, archive integrity,
-interrupted signing/acceptance, stale live proofs, publication races and retries.
-Fixtures are expressly synthetic and are not Android release evidence.
+These tools have no unit tests any more: the owner had the repository's unit
+tests removed on 22 October 2026 (the branch claude/last-with-unit-tests keeps
+the last commit that had them).
 
 The separate [recorded recovery experiment](release-pipeline-validation.json)
 uses the actual 0.5.8 source, 161 original JUnit files (3,382 tests), original lint

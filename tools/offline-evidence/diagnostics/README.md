@@ -42,9 +42,9 @@ No repository patch or app commit was produced: the deliverable consists of new 
 
 ## Verification
 
-`python3 -m unittest -v test_reduce_diagnostics.py` exercises numeric contracts, canonical duration formatting, count bounds, sensitive/injected text exclusion, timestamp validity, duplicate/navigation handling, missing evidence, clock reversal, pause/load ambiguity, masked Peek duration, output preservation, resource limits and fixed CLI errors. See `evidence/validation.json` and `evidence/unittest.txt` for the exact final run and file hashes. The initial fixture caught a missing literal `slowest`; independent review caught argparse's default argument echo. Both were corrected before final delivery. The final review is in `review/review.json`.
+The packet's `test_reduce_diagnostics.py` (removed with the repository's unit tests on 22 October 2026) exercised numeric contracts, canonical duration formatting, count bounds, sensitive/injected text exclusion, timestamp validity, duplicate/navigation handling, missing evidence, clock reversal, pause/load ambiguity, masked Peek duration, output preservation, resource limits and fixed CLI errors. See `evidence/validation.json` and `evidence/unittest.txt` for the exact final run and file hashes. The initial fixture caught a missing literal `slowest`; independent review caught argparse's default argument echo. Both were corrected before final delivery. The final review is in `review/review.json`.
 
-These are new local tooling tests, not Java application tests, Robolectric adapters or handset results. Java/javac were not on PATH; no installation, license action, alternative build venue or application test was attempted. No unchanged application gate was repeated.
+Those were local tooling tests, not Java application tests, Robolectric adapters or handset results. Java/javac were not on PATH; no installation, license action, alternative build venue or application test was attempted. No unchanged application gate was repeated.
 
 ## Remaining eleven-track work
 

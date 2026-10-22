@@ -30,18 +30,6 @@
       "sanitized": false
     },
     {
-      "path": "diagnostics/test_reduce_diagnostics.py",
-      "original": {
-        "sha256": "6fb61f0e9179e13f1cc2fb3e46d84fec3c9f4a9d30b9794f6e5ac1260d716ed3",
-        "bytes": 9355
-      },
-      "public": {
-        "sha256": "6fb61f0e9179e13f1cc2fb3e46d84fec3c9f4a9d30b9794f6e5ac1260d716ed3",
-        "bytes": 9355
-      },
-      "sanitized": false
-    },
-    {
       "path": "diagnostics/evidence/validation.json",
       "original": {
         "sha256": "1a23ec4743f500ecd0ed93c777356c96ab0f44d98834028ff6c78621d50acb9d",
@@ -112,18 +100,6 @@
         "bytes": 36037
       },
       "sanitized": true
-    },
-    {
-      "path": "pilot/tests/test_intake.py",
-      "original": {
-        "sha256": "45eb39ff9a658f3f3edd0a71b0c443973806b7657d5525c2fbefb25ffaf3b223",
-        "bytes": 21324
-      },
-      "public": {
-        "sha256": "45eb39ff9a658f3f3edd0a71b0c443973806b7657d5525c2fbefb25ffaf3b223",
-        "bytes": 21324
-      },
-      "sanitized": false
     },
     {
       "path": "pilot/live/pilot-state.json",

@@ -19,9 +19,7 @@ def usesDevCache = gradle.startParameter.projectCacheDir?.canonicalFile == devCa
 if (devChecks != usesDevCache) {
     throw new GradleException('Use tools/test-dev.sh: -PdevChecks and --project-cache-dir .gradle/dev-checks belong together.')
 }
-// Source-contract tests inspect these bytes directly, including comments and the repository's legal documents, and
-// ArtSpritesTest the pictures' own headers.
-def inspectedSources = fileTree('src/main') { include '**/*.java', '**/*.xml', 'res/drawable-nodpi/art_*.webp' }
+// LegalTextsTest compares the app's texts with the repository's legal documents, word for word.
 def inspectedLegalTexts = rootProject.files('TERMS.md', 'PRIVACY.md', 'LICENSE')
 
 android {
@@ -41,8 +39,6 @@ android {
     testOptions {
         unitTests.includeAndroidResources = true
         unitTests.all {
-            inputs.files(inspectedSources).withPropertyName('inspectedSources')
-                    .withPathSensitivity(PathSensitivity.RELATIVE)
             inputs.files(inspectedLegalTexts).withPropertyName('inspectedLegalTexts')
                     .withPathSensitivity(PathSensitivity.RELATIVE)
             if (devChecks) {
