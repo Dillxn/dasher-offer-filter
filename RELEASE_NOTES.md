@@ -7,7 +7,7 @@ Version 0.6.31 (code 123) answers the owner's message of 22 October 2026 (00:00 
 - **Total against total, never pay per stop times stops.** The total is the accepted offer's whole pay, compared with an offer's whole pay. It is never multiplied by stops and no radar spoke shows it; pay per stop still asks your number for every stop, pickups included. The skyline's solid pay line is now that acceptance's total at the bar ("Pay $22.70 ref" after his acceptance at 50%); before, it was a single order's working pay per stop times two.
 - **Where it doesn't apply.** Strict mode, Autopilot off, add-ons and automatic acceptance never use the total. Working minimums saved before 0.6.31 have no total until the next personal acceptance; nothing reconstructs one from history. The total stays on the phone, like the working rates: reports and summaries don't carry it.
 - **Where you see it.** Auto's details, How this offer was judged and the radar's spoken description say a quarter of the score is total pay against the latest acceptance's.
-- **Notice 31.** The notice's Autopilot point adds one sentence and stays at 420 words; Terms and Privacy say the total is kept and how it counts. What's new says it in three short lines.
+- **Notice 31.** The notice's Autopilot point adds one sentence (419 words in all, under the 420 cap); Terms and Privacy say the total is kept and how it counts. What's new says it in three short lines.
 
 No phone has run this build.
 
