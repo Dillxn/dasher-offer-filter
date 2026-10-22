@@ -10,7 +10,7 @@ Nothing here is deployed by CI. Deploy by hand, in the order below.
 | File | What it is |
 | --- | --- |
 | `index.ts` | The function. |
-| `lib.ts`, `lib.test.ts` | Its checks (feedback and counts) and network bucketing, and their tests. |
+| `lib.ts` | Its checks (feedback and counts) and network bucketing. |
 | `schema.sql` | The production schema as first deployed (for reference; do not re-run it). |
 | `supabase/migrations/20261006120000_feedback_hardening.sql` | The hardening the improved function needs. |
 | `supabase/migrations/20261012160000_offer_filter_counts.sql` | The counts' tables, function, views and retention. |
@@ -244,8 +244,8 @@ How to read them:
 
 ## Testing
 
-`node --experimental-strip-types --test lib.test.ts` (or `deno test lib.test.ts`) tests the checks (feedback and
-counts) and the network bucketing. The migrations were checked on a local PostgreSQL 16 with Supabase's roles, its
+The checks' unit tests (`lib.test.ts`) were removed with the repository's other unit tests on 22 October 2026. The
+migrations were checked on a local PostgreSQL 16 with Supabase's roles, its
 default grants to them and `cron.schedule` stubbed: the counts migration run twice; every outcome of
 `offer_filter_count_v1`; concurrent identical counts and downloads counted once, and a network's 50 daily counts
 held under concurrency; the cap, the retention and the grants. Never run checks that write against the production

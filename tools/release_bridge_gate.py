@@ -9,30 +9,19 @@ import re
 import subprocess
 import xml.etree.ElementTree as ET
 
-# Every test of the full dual-SDK suite (testDebugUnitTest -PallSdks) at its last recount: 3,646 in 175 suites on
-# 12 October 2026 for 0.6.1, its first on Android 15 and 16 (1,427 cases on Android 15 paired with Android 16, the rest
-# on Android 15 alone or the plain JVM). Before it, on Android 8 and 15: the fluid homepage after its review's fixes (3,272 in 156 suites on 8 October 2026: 1,271 cases on Android 8, the rest on
-# Android 15 or the plain JVM, FluidLayoutTest and FluidPageTest among them; 3,266 before them); the 0.5.1 candidate
-# with the minimums' growth had 3,242 in 154 suites, 1,261 on Android 8, after its review's fixes (3,240 before them);
-# 0.5.0's release candidate had 3,172 in 149 suites, 1,234 on Android 8, after its final review's fixes; 3,122 in 146
-# suites at the release integration before them, 2,358 after the accountless-feedback review fixes the day before.
-# Raise it as tests are added; a run below it is missing tests.
-MIN_TESTS = 3646
+# Every test of the dual-SDK suite (testDebugUnitTest -PallSdks): 320 in 13 suites on 22 October 2026, when the owner
+# had the unit tests removed ("let's remove all unit tests from the codebase") and chose to keep the safety, privacy
+# and consent suites, with LegalTextsTest, SameOfferAdapterTest and the helpers they use (4,209 tests in 218 files
+# before, at 0.6.30; the branch claude/last-with-unit-tests keeps them). A run below it is missing a kept suite's tests.
+MIN_TESTS = 320
 
-# The Android adapter suites a release must have run on both Android 15 and 16 (Android 8 and 15 until 0.6.1, when
-# Android 15 became the oldest supported: the owner, 11 October 2026), paired case by case. 0.5.0 retired the
-# adaptive minimum and deleted AdaptiveMinimumLifecycleTest with it; what took its place, the 0.5.0 migration that
-# retires the learned minimums and Autopilot moving the bar only at a safe point with the acceptance rate read from
-# Dasher's decline question, is held by the three suites after AutoAcceptSettingsTest. 0.5.1's minimums grow only at
-# that same safe point, never while an offer, a decline or a peek is under way: MinimumsGrowthAdapterTest, deleted with
-# that growth in 0.6.21 (the owner, 15 October 2026: "autopilot is the buffer"; Autopilot never changes the minimums).
+# The kept Android suites a release must have run on both Android 15 and 16, paired case by case (Android 15 is the
+# oldest supported: the owner, 11 October 2026): what the app does by itself around Dasher (taps, the user's own map
+# and touch), the first-run notice's consent and its reminder, the dispatch study's consent, and masking and the
+# privacy boundary.
 ADAPTERS = (
-    "AndroidAdapterAlertsAndSettingsTest", "AndroidAdapterChartTest",
-    "AndroidAdapterHomepageTest", "AndroidAdapterReportsAndUpdatesTest", "AccessibilityAdapterTest",
-    "AutoAcceptAdapterTest", "AutoAcceptSettingsTest", "ModelMigrationTest", "AutopilotCommitAdapterTest",
-    "ConfirmationArReadingAdapterTest", "ConsentGateTest",
-    "ScoringPolicyHistoryTest", "AcceptanceLearningStoreTest", "AcceptanceLearningAdapterTest",
-    "AreaLearningUiTest",
+    "ActionSafetyReviewTest", "ActionSafetyTest", "ConsentGateTest", "ConsentReminderTest",
+    "DispatchStudyConsentTest", "MaskedCaptureAdapterTest", "PrivacyBoundaryTest",
 )
 ADAPTER_SOURCES = "app/src/test/java/com/local/dasherfilter/"
 

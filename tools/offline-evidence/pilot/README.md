@@ -8,7 +8,6 @@ Use Python 3.10 or newer; only the standard library is required. No network, ins
 
 ```bash
 python3 pilot_intake.py live/pilot-state.json
-python3 -m unittest discover -s tests -v
 ```
 
 To save a fresh report, choose a new filename:
@@ -74,7 +73,7 @@ Hash matching establishes file identity, not truth, authenticity, identity of th
 
 The tool does not inspect APKs, read phones, verify app-update transport, test application code, independently authenticate consent, parse private reports, confirm retention/deletion, recover source/JUnit/lint, or assess legal/privacy compliance. Its 2 MB per-file bound is for minimized receipts, not a media archive. Original privacy exclusions and stop rules still apply. Numeric rules snapshots permitted in manual phone receipts are distinct from configured minimums prohibited in automatic study summaries. Typed text is not guaranteed masked.
 
-All test fixtures are explicitly synthetic and generated in temporary directories by `tests/test_intake.py`. Their positive paths test validator behavior, never actual release/phone/cohort success. Even a structurally complete synthetic scenario remains HELD. `live/` contains no populated fixture observations.
+The packet's test fixtures were explicitly synthetic, generated in temporary directories by `tests/test_intake.py` (removed with the repository's unit tests on 22 October 2026). Their positive paths tested validator behavior, never actual release/phone/cohort success. Even a structurally complete synthetic scenario remains HELD. `live/` contains no populated fixture observations.
 
 ## Evidence and ownership
 

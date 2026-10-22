@@ -31,14 +31,10 @@ MAX_TOOL_FILE = 128 * 1024 * 1024
 NOTICES = ('APKSIG-LICENSE.txt', 'APACHE-2.0.txt', 'CONSCRYPT-LICENSE.txt', 'SDK-NOTICE.txt', 'PROVENANCE.json')
 BUNDLE_FILES = {'OfferFilter-unsigned.apk', 'inputs.json', 'gate.json', 'evidence.json',
                 'tools/sign-local.sh', 'tools/split_release.py', 'tools/apksigner.jar'} | {'notices/' + x for x in NOTICES}
-# This portable verifier has no Android SDK or repository imports. A test binds
-# this set to the canonical, unchanged release gate; only that gate issues proof.
-ADAPTERS = ('AndroidAdapterAlertsAndSettingsTest', 'AndroidAdapterChartTest',
-            'AndroidAdapterHomepageTest', 'AndroidAdapterReportsAndUpdatesTest', 'AccessibilityAdapterTest',
-            'AutoAcceptAdapterTest', 'AutoAcceptSettingsTest', 'ModelMigrationTest', 'AutopilotCommitAdapterTest',
-            'ConfirmationArReadingAdapterTest', 'ConsentGateTest',
-            'ScoringPolicyHistoryTest', 'AcceptanceLearningStoreTest', 'AcceptanceLearningAdapterTest',
-            'AreaLearningUiTest')
+# This portable verifier has no Android SDK or repository imports. Keep this set and the test floor below equal to
+# tools/release_bridge_gate.py's ADAPTERS and MIN_TESTS; only that gate issues proof.
+ADAPTERS = ('ActionSafetyReviewTest', 'ActionSafetyTest', 'ConsentGateTest', 'ConsentReminderTest',
+            'DispatchStudyConsentTest', 'MaskedCaptureAdapterTest', 'PrivacyBoundaryTest')
 SHA = re.compile(r'[a-f0-9]{64}\Z')
 GIT_SHA = re.compile(r'[a-f0-9]{40}\Z')
 SIGNATURE_ENTRY = re.compile(r'META-INF/(?:MANIFEST\.MF|[A-Z0-9_-]+\.(?:SF|RSA|DSA|EC))\Z', re.I)
@@ -243,7 +239,7 @@ def validate_gate(gate, frozen):
     aggregate = digest(json.dumps(files, sort_keys=True, separators=(',', ':')).encode())
     need(frozen['aggregate'] == aggregate, 'Frozen aggregate mismatch')
     need(gate['inputSha256'] == aggregate and gate['inputCount'] == len(files), 'Gate/frozen input mismatch')
-    need(gate['junit']['tests'] >= 3646 and all(gate['junit'][x] == 0 for x in ('errors', 'failures', 'skipped')),
+    need(gate['junit']['tests'] >= 320 and all(gate['junit'][x] == 0 for x in ('errors', 'failures', 'skipped')),
          'Full release tests not passed')
     need(gate['lint']['errors'] == 0, 'Lint did not pass')
     need(set(gate['adapterSdkCases']) == set(ADAPTERS), 'Required adapters missing')

@@ -234,12 +234,12 @@ Phones use the public Render mirror only. Update package/version/size/SHA-256/si
 
 ### Focused local development checks
 
-Use explicit test classes or methods while editing, then run the complete daily suite before handoff:
+Only the safety, privacy and consent suites remain: the owner had the other unit tests removed on 22 October 2026 (the branch claude/last-with-unit-tests keeps the last commit that had them). Do not write new tests. When a deliberate change makes a kept suite wrong, correct that suite and say so in the release notes. Use explicit test classes or methods while editing, then run the complete daily suite before handoff:
 
 ```sh
-tools/test-dev.sh BundledNotesTest
-tools/test-dev.sh BundledNotesTest.theCurrentNoticeAndVersionHaveTheirEntry
-tools/test-dev.sh OfferRuleTest AutopilotTest
+tools/test-dev.sh PrivacyBoundaryTest
+tools/test-dev.sh PrivacyBoundaryTest.paymentScreenNeverReachesEitherLogOrDecisionEvidence
+tools/test-dev.sh ActionSafetyTest ConsentGateTest
 tools/test-dev.sh --all
 ```
 
@@ -257,8 +257,8 @@ development history. The development flag and cache directory must be used toget
 The original Gradle commands retain their existing output locations; use the helper when development checks must
 preserve the previous full reports.
 
-Both test profiles also track the raw Java/XML sources and repository legal documents inspected by source-contract
-tests, so changes to those bytes invalidate cached test results. Preserved full reports describe the inputs they
+Both test profiles also track the repository legal documents that LegalTextsTest reads, so changes to those bytes
+invalidate cached test results. Preserved full reports describe the inputs they
 tested: every release still runs `testDebugUnitTest -PallSdks` and `lintDebug -PallSdks` through the existing gate
 against frozen inputs. This helper does not sign or publish.
 

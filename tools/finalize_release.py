@@ -27,12 +27,10 @@ def main():
         counts = {key: int(r.get(key, 0)) for key in totals}
         suites[r.get('name', path.name)] = counts
         for key, value in counts.items(): totals[key] += value
-    # Each floor counts every suite its name matches as a glob, so a suite split by topic into several classes
-    # (AndroidAdapter*Test) must still reach its floor together.
-    required = {'com.local.dasherfilter.AndroidAdapter*Test': 172, 'com.local.dasherfilter.AreaMapTest': 16, 'com.local.dasherfilter.AccessibilityAdapterTest': 106, 'com.local.dasherfilter.DecisionLogTest': 18, 'com.local.dasherfilter.MotionAdapterTest': 12, 'com.local.dasherfilter.PlacesTest': 10, 'com.local.dasherfilter.AreaMapViewTest': 4,
-                # Accountless feedback, its outbox and dialogs, the opt-in dash summary, stop reports, the offer report
-                # and the one-time removal of the GitHub state.
-                'com.local.dasherfilter.Feedback*Test': 94, 'com.local.dasherfilter.DashSummaryTest': 40, 'com.local.dasherfilter.StopReportsTest': 10, 'com.local.dasherfilter.OfferReportTest': 8, 'com.local.dasherfilter.LegacyReportingCleanupTest': 10}
+    # Each floor counts every suite its name matches as a glob. Since 22 October 2026 only the safety, privacy and
+    # consent suites are kept (the owner had the other unit tests removed), each at its count that day.
+    required = {'com.local.dasherfilter.ActionSafetyReviewTest': 50, 'com.local.dasherfilter.ActionSafetyTest': 36, 'com.local.dasherfilter.AdversarialSafetyTest': 17, 'com.local.dasherfilter.ConsentGateTest': 24, 'com.local.dasherfilter.ConsentReminderTest': 12, 'com.local.dasherfilter.DispatchStudyConsentTest': 14,
+                'com.local.dasherfilter.MaskedCaptureAdapterTest': 10, 'com.local.dasherfilter.ParserSafetyRegressionTest': 6, 'com.local.dasherfilter.PersonalTextTest': 36, 'com.local.dasherfilter.PolicySafetyRegressionTest': 3, 'com.local.dasherfilter.PrivacyBoundaryTest': 38}
     adapter_suites = {}
     for pattern, minimum in required.items():
         counts = dict.fromkeys(totals, 0)
@@ -41,7 +39,7 @@ def main():
                 for key, value in suite.items(): counts[key] += value
         if counts['tests'] < minimum: raise ValueError(f"Missing Android adapter coverage: {pattern} ran {counts['tests']} of {minimum}")
         adapter_suites[pattern] = counts
-    if totals['tests'] < 1046 or totals['failures'] or totals['errors'] or totals['skipped']:
+    if totals['tests'] < 320 or totals['failures'] or totals['errors'] or totals['skipped']:
         raise ValueError('Test gate failed: ' + json.dumps(totals))
     apk = ROOT / 'app/build/outputs/apk/debug/app-debug.apk'
     sdk = pathlib.Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'
