@@ -41,18 +41,19 @@ public final class LegalTextsTest {
      * The beta texts' effective identities, also read by ConsentGateTest. Only a text changed in substance gets
      * a new identity in its header; then tools/legal_texts.py regenerates the app's matching copy.
      */
-    static final String TERMS_EFFECTIVE = "19 October 2026";
+    static final String TERMS_EFFECTIVE = "22 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.29";
+    static final String TERMS_VERSION = "0.6.31";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
      * 0.6.21 both (an accept holds the bar for the 24 offers after it; Autopilot no longer grows the minimums; the
      * divider for a map in either half); 0.6.27 both (area scoring is the default, and whether the mode was picked is
-     * kept); 0.6.29 both (independent working minimums, prospective personal evidence and local snapshots).
+     * kept); 0.6.29 both (independent working minimums, prospective personal evidence and local snapshots); 0.6.31
+     * both (an acceptance's total pay weighs a quarter of each Autopilot Area score).
      */
-    static final String PRIVACY_EFFECTIVE = "19 October 2026";
-    static final String PRIVACY_VERSION = "0.6.29";
+    static final String PRIVACY_EFFECTIVE = "22 October 2026";
+    static final String PRIVACY_VERSION = "0.6.31";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {

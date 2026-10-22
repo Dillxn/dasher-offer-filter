@@ -165,7 +165,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         int words = 0;
         for (String[] point : Consent.POINTS) words += (point[0] + " " + point[1]).split("\\s+").length;
         assertTrue(words + " words", words <= 420);
-        assertEquals("30 (0.6.29): each acceptance sets separate working minimums up or down", 30,
+        assertEquals("31 (0.6.31): an acceptance's total pay weighs in each Autopilot Area score", 31,
                 Consent.VERSION);
         // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
         String account = point("Your Dasher account.");
@@ -194,7 +194,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                         + "values; the latest acceptance replaces earlier levels.",
                 "This can allow offers below your saved or learned minimums, or decline offers that meet them.",
                 "Learning separately raises learned minimums when you accept an offer that beats your best.",
-                "Peek can briefly open Dasher to read an offer that came in the background.",
+                "Peek can briefly open Dasher to read a background offer.",
                 // 0.6.3 (notice 20): the anonymous daily count.
                 "An anonymous daily count tells the developer how many people use the app.",
                 "Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the count in "
@@ -388,9 +388,10 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // offer holds and the divider moved during a delivery; 23, pay per stop; 24, the pickup counted; 25, the plain
         // account warning; 26, pay first by default and the 7-day floor; 27, the floor kept through Autopilot off and
         // on, and its accepts kept 7 days; 28, the 24-offer hold, the minimums no longer growing on their own, and the
-        // divider moved for a map; 29, area scoring by default; 30, independent working minimums following each accept.
+        // divider moved for a map; 29, area scoring by default; 30, independent working minimums following each accept; 31, total pay in each
+        // Autopilot Area score.
         // A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(30, Consent.VERSION);
+        assertEquals(31, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));
