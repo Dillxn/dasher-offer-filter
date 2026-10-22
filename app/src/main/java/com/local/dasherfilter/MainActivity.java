@@ -97,6 +97,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
      * shows it, and says "Auto-decline on" to screen readers.
      */
     static final String PAUSED_LINE = "Auto-decline paused";
+    /**
+     * Settings' Decline after 10 seconds (0.6.35, the owner: "we could also make auto decline timing configurable like
+     * immediate vs 10s"): off, a failing offer on Dasher's screen is declined at once, as before.
+     */
+    static final String DECLINE_WAIT_SWITCH = "Decline after 10 seconds";
+    static final String DECLINE_WAIT_LINE = "Time to take an offer yourself; a touch keeps it yours";
     /** The learner button's toasts. */
     static final String LEARN_ON_TOAST = "Learning on: new highs you accept raise the learned minimums.";
     static final String LEARN_OFF_TOAST = "Learning off: only your own minimums count.";
@@ -1831,6 +1837,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         Switch mute = ui.toggle(switches, "Quiet Dasher while declining",
                 FilterStore.silenceWhileDeclining(this));
         mute.setOnCheckedChangeListener((view, on) -> FilterStore.setSilenceWhileDeclining(this, on));
+        Switch wait = ui.toggle(switches, DECLINE_WAIT_SWITCH, FilterStore.declineAfterWait(this));
+        wait.setText(ui.twoLines(DECLINE_WAIT_SWITCH, DECLINE_WAIT_LINE));
+        wait.setOnCheckedChangeListener((view, on) -> {
+            if (on == FilterStore.declineAfterWait(this)) return;
+            FilterStore.setDeclineAfterWait(this, on);
+            DiagnosticLog.log(this, "rules", "Decline after 10 seconds turned " + (on ? "on" : "off") + " in Settings");
+        });
         // Peek (on unless turned off): Dasher is brought up for a moment to read a background offer.
         Switch peek = ui.toggle(switches, "Peek at background offers", FilterStore.peek(this));
         peek.setText(ui.twoLines("Peek at background offers", Peek.LOCKED_NOTE));

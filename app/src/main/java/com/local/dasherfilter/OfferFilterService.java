@@ -83,9 +83,10 @@ import java.util.function.Supplier;
  * user gets that gap too; and a read after one that showed nothing asks for Dasher's nodes with a prefetch Dasher may
  * break off. The 150 ms gap stays the only wait before a read that can find a readable offer. The
  * {@link ReadBudget} holds back only reads that cannot: what a timer asks for, and the changes of a screen too big to
- * read in full that showed nothing of an offer. While auto-decline is paused nothing of Dasher's is read at all:
- * Android's list of windows alone places the tab, and once Dasher changed its screen unread, as a slim peek that takes
- * no touches.
+ * read in full that showed nothing of an offer. With no rule set nothing of Dasher's is read at all: Android's list of
+ * windows alone places the tab, and once Dasher changed its screen unread, as a slim peek that takes no touches. Paused
+ * with a rule set (0.6.35, the owner: "we still show what we would recommend and it's score even if the user toggles
+ * off actual decline"), Dasher is read as ever and each offer scored and shown beside the tab, and nothing is tapped.
  *
  * <p>The user's decline. From the first Decline tap, the offer is handed back the moment the user acts on it: a touch
  * that is not the echo of one of the app's own taps ({@link OwnTaps}), a click Dasher reports on any node the app did
@@ -220,6 +221,12 @@ public final class OfferFilterService extends AccessibilityService {
      * after a refused try; taken requests wait 2–3 seconds for Dasher, each followed by a fresh read.
      */
     static final long CONFIRM_RETRY_MS = 300;
+    /**
+     * Settings' Decline after 10 seconds (0.6.35): how long an offer on Dasher's screen shows before its first Decline,
+     * unless its countdown has {@link #DECLINE_WAIT_LAST_S} seconds or less left by then.
+     */
+    static final long DECLINE_WAIT_MS = 10_000;
+    static final int DECLINE_WAIT_LAST_S = 3;
     /** Reading around a click held back by Dasher's events is tried this many times, this long at most. */
     private static final int CLICK_READ_TRIES = 3;
     private static final long CLICK_READ_WAIT_MS = 2_000;
@@ -744,6 +751,34 @@ public final class OfferFilterService extends AccessibilityService {
     private int questionMissRepeats;
     /** Why the app's last tap was refused, for the log. */
     private String lastRefusal = "";
+    /**
+     * Decline after 10 seconds (Settings, 0.6.35, the owner: "we could also make auto decline timing configurable like
+     * immediate vs 10s"): the offer whose first Decline waits ({@link #declineWait}) and since when (uptime), the
+     * user's clicks on Dasher and touches counted then, and whether either came since, which leaves it theirs until
+     * another offer shows. Scanner thread; the main thread reads the two volatile ones for the touch watch.
+     */
+    private OfferSnapshot declineWaitOffer;
+    private long declineWaitSince = NEVER;
+    private long declineWaitClicks;
+    private long declineWaitTouches;
+    private boolean declineWaitYours;
+    /**
+     * The offer a touch or tap of the user's made theirs during its wait, as a takeover is: Dasher's notification of it
+     * is then neither declined nor hidden ({@link #userHasOffer}), even with Dasher away.
+     */
+    private volatile Takeover declineWaitTaken = Takeover.NONE;
+    /** This read came to the wait (and did not tap). */
+    private boolean declineWaitReached;
+    private volatile boolean declineWaitWatched;
+    private volatile long declineWaitBeganAt = Long.MAX_VALUE;
+    /** The user's touches during a wait, counted on the main thread as the touch watch reports them. */
+    private final AtomicLong declineWaitTouched = new AtomicLong();
+    /** At the wait's end, or at a touch during it: the offer is read again, and declined or left to the user. */
+    private final Runnable declineWaitRead = () -> {
+        if (stopped) return;
+        if (checkOffer("decline wait", SystemClock.uptimeMillis(), MAX_SCAN_NODES)) scheduleRecheck();
+        watchWindows();
+    };
     /** A first-step Decline Android refused is tried this many times at most, each on a fresh read. */
     static final int MAX_REFUSED_TRIES = DeclineState.MAX_ATTEMPTS;
     /** The offer ({@link DeclineState#offerKey}) whose first-step Decline Android refused, "" for none. */
@@ -764,11 +799,11 @@ public final class OfferFilterService extends AccessibilityService {
     /** When a read last showed an offer or confirmation, or a decline was under way (uptime). */
     private long offerSeenAt = Long.MIN_VALUE / 2;
     /**
-     * Whether a complete read of Dasher's own screen said what it shows since screen reading connected, and since a
-     * pause that began with an offer on screen (nothing of Dasher's is read while paused). Until then an offer that a
-     * read before the connection or the pause decided at the bar it was shown under may still be up, and nothing says
+     * Whether a complete read of Dasher's own screen said what it shows since screen reading connected, and since
+     * reading stopped over an offer (nothing of Dasher's is read with no rule set). Until then an offer that a read
+     * before the connection or the stop decided at the bar it was shown under may still be up, and nothing says
      * otherwise, so Autopilot's bar does not move ({@link #safeForBarChange}). A look at the windows alone says nothing
-     * of it. Set on the scanner thread; cleared as screen reading connects, or pauses over an offer.
+     * of it. Set on the scanner thread; cleared as screen reading connects, or stops over an offer.
      */
     private volatile boolean dasherScreenKnown;
     /** When a read last found a readable offer, its Accept and Decline both (uptime); on the scanner. */
@@ -982,15 +1017,17 @@ public final class OfferFilterService extends AccessibilityService {
     /** Whether this read was skipped: Android did not give the active window. */
     private boolean readSkipped;
     /**
-     * What the last read decided of the offer on screen, for the slim bar's tint only (S10, presentation): KEEP or
-     * REVIEW with auto-decline on; null for a decline, a takeover, auto-decline paused or no offer decided.
+     * What the last read decided of the offer on screen, for the slim bar's tint and the score tag only (S10,
+     * presentation): KEEP or REVIEW left to the user; DECLINE for one auto-decline would decline but does not (paused,
+     * 0.6.35, or the user's own change while it showed); null for the app's decline, a takeover or no offer decided.
      */
     private OfferRule.Result offerVerdict;
     /**
      * The offer on screen's score as the last read decided it (its pay as a percent of what the minimums ask), for the
      * score tag beside the slim bar (0.6.21, the owner: "I want to be able to see at a small glance the score of the
-     * offer as it's being declined"), and whether the app's Decline of it was taken; -1 with auto-decline paused, an
-     * offer the user took over, or none decided. The offer the app declined keeps its score over its question.
+     * offer as it's being declined"), and whether the app's Decline of it was taken; -1 for an offer the user took
+     * over, or none decided. Paused, it is shown as ever (0.6.35). The offer the app declined keeps its score over its
+     * question.
      */
     private int offerScore = -1;
     private boolean offerDeclining;
@@ -1052,6 +1089,9 @@ public final class OfferFilterService extends AccessibilityService {
     /** The offer last left to the user because their own rules changed while it showed (logged once for it). */
     private String keptForUserKey = "";
     private String decidedBefore = "";
+    /** As {@link #decidedKey}, for an offer waiting for its decline (Decline after 10 seconds). */
+    private String waitingKey = "";
+    private String waitingBefore = "";
     /** Whether a delivery or route is under way: a stored route, or the last read a delivery, pickup or map route. */
     private boolean deliveryCalm;
     /** Until when (uptime) a fresh read asked for by an offer's notification keeps the old cadence. */
@@ -1078,17 +1118,17 @@ public final class OfferFilterService extends AccessibilityService {
     /** The deferred read's due time, while {@link #quietScanPending}. */
     private long quietScanDue = NEVER;
     /**
-     * Paused (auto-decline off, or no rule): nothing of Dasher's is read; only Android's list of windows, for the tab.
-     * Written on the scanner thread; the main thread reads it so a click's node is not fetched either.
+     * No rule set: nothing of Dasher's is read; only Android's list of windows, for the tab. Written on the scanner
+     * thread; the main thread reads it so a click's node is not fetched either.
      */
     private volatile boolean passive;
     /**
-     * Paused, and no event (Dasher's, or a change in Android's list of windows) came since the last read began: what
-     * that read made of the screen still stands for the tab. Cleared by the next event, after which the tab takes no
-     * touches.
+     * Not reading (no rule set), and no event (Dasher's, or a change in Android's list of windows) came since the last
+     * read began: what that read made of the screen still stands for the tab. Cleared by the next event, after which
+     * the tab takes no touches.
      */
     private volatile boolean pausedSceneStands;
-    /** Paused, Dasher changed its screen unread: the tab over it is the slim peek that takes no touches. */
+    /** Not reading, Dasher changed its screen unread: the tab over it is the slim peek that takes no touches. */
     private final Runnable pausedSceneGone = () -> {
         if (stopped || !passive || scene == DasherScene.OFFER) return;
         scene = DasherScene.OFFER;
@@ -1289,7 +1329,7 @@ public final class OfferFilterService extends AccessibilityService {
     private final Runnable syncWatch = new Runnable() {
         @Override public void run() {
             boolean wanted = !stopped && (decliningOffer != null || peekWatched || autoAcceptWatched
-                    || SystemClock.uptimeMillis() < lateCompletionUntil || gearWatched);
+                    || SystemClock.uptimeMillis() < lateCompletionUntil || gearWatched || declineWaitWatched);
             if (wanted) touchWatch.start();
             else touchWatch.stop();
             boolean up = touchWatch.isWatching();
@@ -1506,7 +1546,8 @@ public final class OfferFilterService extends AccessibilityService {
         // So is a touch in split screen still being judged (Offer Filter's half, or Dasher's).
         boolean acted = service.userActions.get() != taken || service.touchesHeld > 0;
         if (acted && declining != null && !facts.contradicts(declining)) return true;
-        return service.takeover.covers(facts, SystemClock.uptimeMillis());
+        long now = SystemClock.uptimeMillis();
+        return service.takeover.covers(facts, now) || service.declineWaitTaken.covers(facts, now);
     }
 
     /** When Dasher last showed a pickup, delivery or its own turn-by-turn screen (uptime); 0 after the wait shows. */
@@ -2045,11 +2086,12 @@ public final class OfferFilterService extends AccessibilityService {
         boolean clicked = type == AccessibilityEvent.TYPE_VIEW_CLICKED;
         // Dasher's own events name its windows (as Android delivered them: nothing is asked of Dasher).
         boolean newWindow = !windowsChanged && learnDasherWindow(event.getWindowId());
-        // Paused, nothing of Dasher's is read: not even a click's node.
-        boolean paused = passive;
-        Click click = clicked && !paused ? Click.of(event, at) : null;
+        // Not reading (no rule set), nothing of Dasher's is read: not even a click's node.
+        boolean unread = passive;
+        Click click = clicked && !unread ? Click.of(event, at) : null;
         // The user's tap on Dasher (not the echo of one of the app's own taps) may take them to another app: the tab,
-        // guide and chip go away until it settles. Paused, it is told by its own time alone, as a click with no node is.
+        // guide and chip go away until it settles. Not reading, it is told by its own time alone, as a click with no
+        // node is.
         if (clicked && usersClick(click, event, at)) {
             dasherClicks.incrementAndGet();
             putAwayAfterUserTap(at);
@@ -2075,10 +2117,10 @@ public final class OfferFilterService extends AccessibilityService {
         // Whatever Dasher changed may be an offer drawing under the Back to map chip: it takes no touches until a read
         // after this change finds the wait for offers still there.
         if (!clicked && overlay != null) overlay.dasherChanged();
-        // Paused: a content change or a click asks the scanner nothing, unless it names a window of Dasher's not known
-        // yet; a window change still moves the tab (Android's list of windows only).
-        boolean look = change || (paused && newWindow);
-        if (paused && !look) {
+        // Not reading (no rule set): a content change or a click asks the scanner nothing, unless it names a window of
+        // Dasher's not known yet; a window change still moves the tab (Android's list of windows only).
+        boolean look = change || (unread && newWindow);
+        if (unread && !look) {
             // Dasher changed its screen, unread: the scene the last read made no longer stands, and the tab takes no
             // touches from now on (an offer may be up unseen).
             if (pausedSceneStands) {
@@ -2088,7 +2130,7 @@ public final class OfferFilterService extends AccessibilityService {
             return;
         }
         // A new window of Dasher's, or a sign of an offer in the event's own words: read at once, never on the budget.
-        boolean hint = !paused && (newWindow || (!change && eventShowsOffer(event, click)));
+        boolean hint = !unread && (newWindow || (!change && eventShowsOffer(event, click)));
         if (onScannerThread()) {
             onEvents(look, click == null ? Collections.<Click>emptyList() : Collections.singletonList(click), at,
                     hint);
@@ -2131,8 +2173,8 @@ public final class OfferFilterService extends AccessibilityService {
 
     /**
      * Main thread: whether a click on Dasher is the user's, not the echo of one of the app's own taps
-     * ({@link OwnTaps#clickEcho}). Paused, its node is not asked for (nothing of Dasher's is read): it is judged by its
-     * own time alone, as a click Android gave no node is.
+     * ({@link OwnTaps#clickEcho}). With no rule set its node is not asked for (nothing of Dasher's is read): it is
+     * judged by its own time alone, as a click Android gave no node is.
      */
     private boolean usersClick(Click click, AccessibilityEvent event, long at) {
         if (click != null) return ownTaps.clickEcho(click.source, click.at, OfferFilterService::sameNodes) == null;
@@ -3025,6 +3067,8 @@ public final class OfferFilterService extends AccessibilityService {
         if (declineState.hasPendingConfirmation(now) || episode.active(now)) {
             handBack(HandBack.SCREEN_OFF, "screen off or locked", now);
         }
+        // A decline's wait starts again once the phone is back (the user was not looking), unless it is theirs.
+        endDeclineWait(!declineWaitYours);
         scanner.removeCallbacks(windowWatch);
         watchPending = false;
         scanner.removeCallbacks(recheck);
@@ -3080,8 +3124,8 @@ public final class OfferFilterService extends AccessibilityService {
      * every change until then. That gap is the only wait before a read that can find a readable offer, with one
      * exception the owner chose: during a delivery, a change after a read that showed nothing of an offer waits for one
      * read a second. After such a read, and after a read of a screen too big to read in full that showed nothing of an
-     * offer, a content change and a click are read on the read budget instead ({@link #eventBudgeted}); paused, nothing
-     * is read at all ({@link #notReading}).
+     * offer, a content change and a click are read on the read budget instead ({@link #eventBudgeted}); with no rule
+     * set, nothing is read at all ({@link #notReading}).
      *
      * @param change whether a window change is among them
      * @param hint whether their own words showed a sign of an offer, or one came from a new window of Dasher's: read
@@ -3090,7 +3134,7 @@ public final class OfferFilterService extends AccessibilityService {
     private void onEvents(boolean change, List<Click> taken, long at, boolean hint) {
         if (stopped) return;
         long now = SystemClock.uptimeMillis();
-        if (pausedNow()) {
+        if (readsNothing(this)) {
             lateClicks.clear();
             notReading(now, change);
             return;
@@ -3284,8 +3328,9 @@ public final class OfferFilterService extends AccessibilityService {
      * then places nothing.
      */
     private void lookAndPlace(boolean yielding) {
-        // Paused, Android's list of windows alone places the tab: nothing of Dasher's is asked, not even its root.
-        if (pausedNow()) {
+        // With no rule set, Android's list of windows alone places the tab: nothing of Dasher's is asked, not even its
+        // root.
+        if (readsNothing(this)) {
             notReading(SystemClock.uptimeMillis(), true);
             return;
         }
@@ -3400,7 +3445,7 @@ public final class OfferFilterService extends AccessibilityService {
      * (as it did before reads had a thread of their own), so nothing of ours stays over it.
      */
     private void lookSafely() {
-        if (pausedNow()) {
+        if (readsNothing(this)) {
             notReading(SystemClock.uptimeMillis(), true);
             return;
         }
@@ -3621,7 +3666,7 @@ public final class OfferFilterService extends AccessibilityService {
             scanNow(SystemClock.uptimeMillis(), "back to map tapped");
             if (stopped || scannerFaulted) return;
             String not = !phoneReadable() ? "the phone locked"
-                    : passive ? "Dasher's screen isn't read while auto-decline is paused"
+                    : passive ? "Dasher's screen isn't read with no rule set"
                     : lastAcceptAt != chip.acceptAt ? "an offer was accepted"
                     : readSkipped || !screen.dasherReadable || screen.split || offerOnScreen || offerEvidence
                             || scene != DasherScene.WAITING ? "Dasher no longer shows its wait for offers" : null;
@@ -3898,9 +3943,15 @@ public final class OfferFilterService extends AccessibilityService {
         }
         // Any touch of the user's, anywhere, and Dasher's gear waits for the next quiet or is not tapped.
         if (gearWatched && touchAt >= gearWatchBeganAt && echo == null) gearTouches.incrementAndGet();
+        // Decline after 10 seconds: a touch of the user's during the wait leaves the offer theirs, as the read it asks
+        // for at once finds.
+        if (declineWaitWatched && touchAt >= declineWaitBeganAt && echo == null) {
+            declineWaitTouched.incrementAndGet();
+            scanner.postAtFrontOfQueue(declineWaitRead);
+        }
         boolean peeking = peekWatched;
-        // Up for Dasher's gear alone: nothing of a decline's to judge.
-        if (gearWatched && !peeking && decliningOffer == null && !autoAcceptWatched
+        // Up for Dasher's gear, or a decline's wait, alone: nothing of a decline's to judge.
+        if ((gearWatched || declineWaitWatched) && !peeking && decliningOffer == null && !autoAcceptWatched
                 && SystemClock.uptimeMillis() >= lateCompletionUntil) {
             return;
         }
@@ -4112,6 +4163,80 @@ public final class OfferFilterService extends AccessibilityService {
     /** A decline of the app's is under way: its confirmation authority, or the wait over a closed question. */
     private boolean declineUnderWay(long now) {
         return declineState.hasPendingConfirmation(now) || episode.holding(now);
+    }
+
+    /** What an offer's first Decline on Dasher's screen does now, with Decline after 10 seconds. */
+    private enum DeclineWait { GO, WAIT, YOURS }
+
+    /**
+     * Decline after 10 seconds (scanner thread): GO with the setting off, and once the offer has shown
+     * {@link #DECLINE_WAIT_MS} (or its countdown has {@link #DECLINE_WAIT_LAST_S} seconds or less left); WAIT until
+     * then, with a read due at its end and the touch watch up; YOURS from a touch of the user's or a tap of theirs on
+     * Dasher during it, until another offer shows. A positively different offer, or a new showing of the same figures
+     * (its countdown starting again after the offer was away), starts a wait of its own.
+     */
+    private DeclineWait declineWait(OfferSnapshot offer, int secondsLeft, boolean fresh, long now) {
+        boolean same = declineWaitOffer != null && !offer.contradicts(declineWaitOffer) && !fresh;
+        if (!FilterStore.declineAfterWait(this)) {
+            // Turned off while an offer it made the user's still shows: that offer stays theirs.
+            if (declineWaitYours && same) return DeclineWait.YOURS;
+            if (declineWaitWatched || declineWaitOffer != null) endDeclineWait(true);
+            return DeclineWait.GO;
+        }
+        // A new showing of the same figures waits afresh only after its offer was away: one that never left goes on
+        // with its wait, whatever its countdown read.
+        if (declineWaitOffer == null || offer.contradicts(declineWaitOffer) || (fresh && !declineWaitWatched)) {
+            declineWaitOffer = offer;
+            declineWaitSince = now;
+            declineWaitYours = false;
+            declineWaitTaken = Takeover.NONE;
+            declineWaitClicks = dasherClicks.get();
+            declineWaitTouches = declineWaitTouched.get();
+            declineWaitBeganAt = now;
+            declineWaitWatched = true;
+            DiagnosticLog.log(this, "accessibility", "Decline after 10 seconds: waiting for " + offer.summary());
+        }
+        if (!declineWaitYours && (dasherClicks.get() != declineWaitClicks
+                || declineWaitTouched.get() != declineWaitTouches)) {
+            declineWaitYours = true;
+            declineWaitTaken = new Takeover(declineWaitOffer, now);
+            DiagnosticLog.log(this, "accessibility", "Decline after 10 seconds: you touched the screen or tapped "
+                    + "Dasher " + (now - declineWaitSince) + " ms into the wait; left to you");
+        }
+        scanner.removeCallbacks(declineWaitRead);
+        if (declineWaitYours) {
+            declineWaitWatched = false;
+            return DeclineWait.YOURS;
+        }
+        long due = declineWaitSince + DECLINE_WAIT_MS;
+        if (now >= due || (secondsLeft >= 0 && secondsLeft <= DECLINE_WAIT_LAST_S)) {
+            // The decline's own touch watch takes over from its tap.
+            declineWaitWatched = false;
+            return DeclineWait.GO;
+        }
+        // Watching again after its offer was away a moment: from now on.
+        if (!declineWaitWatched) {
+            declineWaitBeganAt = now;
+            declineWaitWatched = true;
+        }
+        scanner.postAtTime(declineWaitRead, due);
+        return DeclineWait.WAIT;
+    }
+
+    /**
+     * A decline's wait stops watching: its offer went, or the screen went off. {@code restart}: the next showing of
+     * any offer waits afresh; else the same offer back again goes on from where its wait was (and stays the user's
+     * once it is).
+     */
+    private void endDeclineWait(boolean restart) {
+        declineWaitWatched = false;
+        declineWaitBeganAt = Long.MAX_VALUE;
+        scanner.removeCallbacks(declineWaitRead);
+        if (restart) {
+            declineWaitOffer = null;
+            declineWaitYours = false;
+            declineWaitTaken = Takeover.NONE;
+        }
     }
 
     /**
@@ -4564,7 +4689,8 @@ public final class OfferFilterService extends AccessibilityService {
         OfferNotificationService.DasherTap tap = null;
         if (!Consent.accepted(this)) skip = "the notice isn't accepted";
         else if (!phoneReadable()) skip = "the phone locked";
-        // Paused, nothing of Dasher's is read: no read can say the offer did not show.
+        // Paused, nothing is tapped: no gear, and no own tap of Dasher's notification (0.6.35: with a rule set
+        // Dasher is still read, and the offer judged on screen when the user opens it).
         else if (pausedNow()) skip = "auto-decline is paused";
         else if (dasherClicks.get() != open.clicks) skip = "you tapped Dasher";
         else if (readShowsOffer()) skip = "offer showing";
@@ -4647,7 +4773,7 @@ public final class OfferFilterService extends AccessibilityService {
         String skip = null;
         if (!Consent.accepted(this)) skip = "the notice isn't accepted";
         else if (!phoneReadable()) skip = "the phone locked";
-        // Paused, nothing of Dasher's is read: no read can say the offer did not show.
+        // Paused, nothing is tapped: no read for a gear that would not be tapped.
         else if (pausedNow()) skip = "auto-decline is paused";
         if (skip == null) {
             // What Dasher shows now, whatever its last event: one read (an offer drawn by now is read, and judged, as
@@ -4950,7 +5076,7 @@ public final class OfferFilterService extends AccessibilityService {
     private String gearRefusal(long offerSince, BooleanSupplier still) {
         if (!Consent.accepted(this)) return "the notice isn't accepted";
         if (!phoneReadable()) return "the phone locked";
-        // Paused, nothing of Dasher's is read: no read can say the offer did not show.
+        // Paused, nothing is tapped.
         if (pausedNow()) return "auto-decline is paused";
         if (!still.getAsBoolean()) return "you touched";
         if (readShowsOffer() || offerEvidence) return "offer showing";
@@ -5879,7 +6005,7 @@ public final class OfferFilterService extends AccessibilityService {
         }
         if (!Consent.accepted(this)) return "ended because the notice isn't accepted yet";
         if (!FilterStore.peek(this)) return "left Dasher up because Peek was turned off";
-        // Paused (auto-decline off, or no rule): nothing of Dasher's is read, so nothing of a peek can go on.
+        // Paused (auto-decline off, or no rule): nothing is tapped, so nothing of a peek can go on.
         if (pausedNow()) return "left Dasher up because auto-decline was paused";
         String phone = phoneRefusal();
         return phone == null ? null : "ended because " + phone;
@@ -6310,9 +6436,9 @@ public final class OfferFilterService extends AccessibilityService {
      * at Dasher's next event.
      */
     private void lookAfterNoReturn() {
-        // Paused, nothing of Dasher's is read ({@link #lookSafely}); else Android's list and the windows known by
-        // their IDs ({@link #placeNow}).
-        if (pausedNow()) lookSafely();
+        // With no rule set, nothing of Dasher's is read ({@link #lookSafely}); else Android's list and the windows
+        // known by their IDs ({@link #placeNow}).
+        if (readsNothing(this)) lookSafely();
         else placeNow();
         syncOverlay();
         watchWindows();
@@ -6761,8 +6887,9 @@ public final class OfferFilterService extends AccessibilityService {
         // Every read starts here (a notification's, a rules change's, a recheck's): none before the notice is accepted.
         if (!Consent.accepted(this)) { stopWaitEstimate(); cancelAutoAccept(true, "notice_required"); return false; }
         restoreRestartState();
-        // Paused (auto-decline off, or no rule): nothing of Dasher's is read, not one node, until it resumes.
-        if (pausedNow()) {
+        // No rule set: nothing of Dasher's is read, not one node, until one is. Paused with a rule, it is read and
+        // scored, and nothing is tapped (0.6.35).
+        if (readsNothing(this)) {
             notReading(SystemClock.uptimeMillis(), true);
             return false;
         }
@@ -6800,6 +6927,7 @@ public final class OfferFilterService extends AccessibilityService {
         otherWindowsListed = 0;
         otherWindowsRead = 0;
         startReadAccounting();
+        declineWaitReached = false;
         // The bar's tint is this read's verdict alone (a skipped read keeps the last): a new offer's first frames are
         // never tinted with the one before.
         OfferRule.Result verdictBefore = offerVerdict;
@@ -6874,6 +7002,9 @@ public final class OfferFilterService extends AccessibilityService {
                 overlayApprovedTransition = overlayAtStart;
             }
             if (!quietTakenOver && readEvidence) offerSeenAt = lastScanEndAt;
+            // A decline's wait whose offer is gone (a whole read with no sign of one): its touch watch goes, and the
+            // same offer back again goes on from where its wait was.
+            if (declineWaitWatched && judged && !readEvidence && !declineWaitReached) endDeclineWait(false);
             syncAutomation();
             syncOverlay();
             scheduleAcceptanceObservation();
@@ -7040,26 +7171,31 @@ public final class OfferFilterService extends AccessibilityService {
         DiagnosticLog.log(this, "screen", lastLoadLine);
     }
 
-    /** Paused: auto-decline off, or no rule set (the homepage calls both paused). Nothing of Dasher's is read then. */
-    private boolean pausedNow() {
-        return readingPaused(this);
-    }
-
     /**
-     * Any thread, by the rules as saved: auto-decline off, or no rule set (the homepage calls both paused), so nothing
-     * of Dasher's is read.
+     * Paused: auto-decline off, or no rule set (the homepage calls both paused). Nothing is tapped then: no Decline, no
+     * question, no gear, no Accept, no peek. With a rule set, Dasher is still read and each offer scored and shown
+     * beside the tab (0.6.35, the owner: "we still show what we would recommend and it's score even if the user
+     * toggles off actual decline").
      */
-    static boolean readingPaused(Context context) {
-        FilterSettings settings = FilterStore.load(context);
+    private boolean pausedNow() {
+        FilterSettings settings = FilterStore.load(this);
         return !settings.enabled || !settings.hasAnyRule();
     }
 
     /**
-     * Paused: nothing of Dasher's is read, not one node and not even a root, until auto-decline resumes. Only
-     * Android's list of windows is looked at ({@link #passiveLook}), so the tab still follows Dasher and the
-     * notification path still knows whether Dasher is on screen. Once Dasher changed its screen unread, an offer may be
-     * up unseen: the tab is the slim peek that takes no touches ({@link DasherScene#OFFER}), and the guide stays off.
-     * What was under way ends as a pause ends it; the decision history then records nothing read from Dasher's screen.
+     * Any thread, by the rules as saved: no rule set, so nothing judges an offer and nothing of Dasher's is read.
+     * Before 0.6.35 a pause (auto-decline off) read nothing either (the owner, 6 October 2026: "Read nothing").
+     */
+    static boolean readsNothing(Context context) {
+        return !FilterStore.load(context).hasAnyRule();
+    }
+
+    /**
+     * No rule set: nothing of Dasher's is read, not one node and not even a root, until a rule is. Only Android's list
+     * of windows is looked at ({@link #passiveLook}), so the tab still follows Dasher and the notification path still
+     * knows whether Dasher is on screen. Once Dasher changed its screen unread, an offer may be up unseen: the tab is
+     * the slim peek that takes no touches ({@link DasherScene#OFFER}), and the guide stays off. What was under way
+     * ends; the decision history then records nothing read from Dasher's screen.
      *
      * @param look whether to look at the windows now (a window change, or a read was asked for)
      */
@@ -7072,9 +7208,8 @@ public final class OfferFilterService extends AccessibilityService {
                         + " (settings)");
                 rulesEnabled = settings.enabled;
             }
-            DiagnosticLog.log(this, "screen", "not reading Dasher while paused ("
-                    + (settings.enabled ? "no rule is set" : "auto-decline is off") + ")");
-            endAuthority("auto-decline paused", true);
+            DiagnosticLog.log(this, "screen", "not reading Dasher: no rule is set");
+            endAuthority("no rule is set", true);
             cancelAutoAccept(true, "offer_or_phone_ineligible");
             stopWaitEstimate();
             episode.end();
@@ -7096,27 +7231,28 @@ public final class OfferFilterService extends AccessibilityService {
             lateClicksPending = false;
             lateClicks.clear();
             offerOnScreen = false;
-            // The offer the last read showed (decided at the bar it was shown under) may still be up when the pause
-            // ends, and nothing read says otherwise meanwhile: Autopilot's bar waits for the first read after it.
+            // The offer the last read showed (decided at the bar it was shown under) may still be up when reading
+            // resumes, and nothing read says otherwise meanwhile: Autopilot's bar waits for the first read after it.
             if (readEvidence) dasherScreenKnown = false;
             offerEvidence = false;
             readEvidence = false;
             quietTakenOver = false;
             quietDecided = false;
             decidedKey = "";
+            waitingKey = "";
             readCut = false;
             declinedOfferShowing = false;
             readIdentity = null;
             offerAcceptTarget = null;
             offerDeclineTarget = null;
-            // Nothing read decides the slim bar's tint while paused, and the Back to map chip (which opens a map only
-            // on a fresh read of Dasher's wait for offers) goes. A peek goes too: nothing of it could be read. One whose
-            // Dasher never came up announces the offer as a launch Dasher never came up for does (one still arming,
-            // as a peek not taken).
+            // Nothing read decides the slim bar's tint while nothing is read, and the Back to map chip (which opens a
+            // map only on a fresh read of Dasher's wait for offers) goes. A peek goes too: nothing of it could be read.
+            // One whose Dasher never came up announces the offer as a launch Dasher never came up for does (one still
+            // arming, as a peek not taken).
             offerVerdict = null;
             offerScore = -1;
             offerDeclining = false;
-            forgetBackToMap("auto-decline paused");
+            forgetBackToMap("no rule is set");
             Peek.Request opening = peek.active() && peek.phase() == Peek.Phase.OPENING ? peek.request() : null;
             peekOver("left Dasher up because auto-decline was paused", Peek.Outcome.INTERRUPTED);
             if (opening != null) OfferNotificationService.peekNotTaken(opening.alertTag);
@@ -7131,12 +7267,12 @@ public final class OfferFilterService extends AccessibilityService {
         if (dasherEvents.get() != lastReadEvents) pausedSceneStands = false;
         if (!pausedSceneStands) scene = DasherScene.OFFER;
         syncOverlay();
-        status("Paused: " + AppName.NAME + " is not reading Dasher");
+        status("No rule set: " + AppName.NAME + " is not reading Dasher");
         if (look) passiveLook(now);
         watchWindows();
     }
 
-    /** Auto-decline resumed: Dasher is read again, its budget and slowness judged afresh. */
+    /** A rule set again: Dasher is read again, its budget and slowness judged afresh. */
     private void readingAgain() {
         if (!passive) return;
         passive = false;
@@ -7147,7 +7283,8 @@ public final class OfferFilterService extends AccessibilityService {
     }
 
     /**
-     * Paused: where Dasher is, from Android's list of windows alone ({@link #knownLook}). Nothing of Dasher's is read:
+     * No rule set: where Dasher is, from Android's list of windows alone ({@link #knownLook}). Nothing of Dasher's is
+     * read:
      * once Dasher changed its screen (or its windows) since the last read, the tab over it is placed as over a possible
      * offer ({@link DasherScene#OFFER}): the slim peek that takes no touches, and no guide. That peek may be placed after
      * a window change without a read; a tab that takes touches never is (with no event since the last read, no window
@@ -7476,7 +7613,8 @@ public final class OfferFilterService extends AccessibilityService {
         Peek.Phase phase = stopped || held ? Peek.Phase.NONE : peek.phase();
         if (peekPhase != phase) peekPhase = phase;
         if (peekWatched != peeking) peekWatched = peeking;
-        boolean watch = declining || peeking || autoAcceptWatched || now < lateCompletionUntil || gearWatched;
+        boolean watch = declining || peeking || autoAcceptWatched || now < lateCompletionUntil || gearWatched
+                || declineWaitWatched;
         int refusals = watchRefusals;
         if (refusals != watchRefusalsSeen) {
             // Android would not add the watch: it is not on, and is asked for again now while declining or peeking.
@@ -7535,6 +7673,8 @@ public final class OfferFilterService extends AccessibilityService {
         quietDecided = false;
         decidedBefore = decidedKey;
         decidedKey = "";
+        waitingBefore = waitingKey;
+        waitingKey = "";
         Look look = look();
         if (consumeDeclineError()) return declineError.pending();
         if (!look.activeKnown) {
@@ -8627,7 +8767,7 @@ public final class OfferFilterService extends AccessibilityService {
     /** {@link #RESIZE_FACTS_MS} after Dasher resized with no read since: none of an offer showed. */
     private final Runnable resizeCheck = () -> {
         if (stopped || resizedAt == NEVER || Peek.now() - resizedAt < RESIZE_FACTS_MS) return;
-        // Paused, nothing was read since: no line can say whether an offer's facts showed.
+        // Not reading (no rule set), nothing was read since: no line can say whether an offer's facts showed.
         if (passive) {
             resizedAt = NEVER;
             return;
@@ -8901,10 +9041,12 @@ public final class OfferFilterService extends AccessibilityService {
         }
         boolean declines = settings.enabled && decision.result == OfferRule.Result.DECLINE && !keptForUser;
         // The slim bar over the offer: green for a pass, amber for review or for a pass below the user's own minimums
-        // (Autopilot's bar let it through; it is the user's to accept): presentation only, never a decision.
-        offerVerdict = settings.enabled && !declines ? OfferNotificationService.announced(decision) : null;
+        // (Autopilot's bar let it through; it is the user's to accept): presentation only, never a decision. Paused
+        // (0.6.35, the owner: "we still show what we would recommend and it's score even if the user toggles off actual
+        // decline"), a failing offer is DECLINE here: what auto-decline would do, with nothing tapped.
+        offerVerdict = !declines ? OfferNotificationService.announced(decision) : null;
         // The score tag beside it (0.6.21): what the offer scored, marked declined once the app's Decline is taken.
-        offerScore = settings.enabled ? decision.scorePercent : -1;
+        offerScore = decision.scorePercent;
         // The screen's line in the log comes after a decline's tap, so nothing delays the tap.
         if (!declines) diagnostic(phase, scan, offer, decision);
         if (isTakenOver(offer, now)) {
@@ -8974,16 +9116,17 @@ public final class OfferFilterService extends AccessibilityService {
                         secondsLeft >= 0 ? System.currentTimeMillis() + secondsLeft * 1000L : 0, lastFolded);
             }
             if (decision.result == OfferRule.Result.REVIEW) countUnreadable(scan, offer);
-            status(detail + "\n" + decision.summary() + (!settings.enabled ? "\nAuto-decline is off."
+            status(detail + "\n" + decision.summary()
+                    + (!settings.enabled ? "\nAuto-decline is paused; nothing is tapped."
                     : keptForUser ? "\nYour rules changed while it showed; it is left to you." : ""));
             // The same offer as the read before, decided and left to the user, nothing of the app's under way on it:
             // nothing more to do with it, so its changes get the quiet gap (as an unchanged decided offer under
             // takeover does), and an offer needing review is settled. A window change, a new window or an event whose
-            // own words show an offer is read at once, as always.
-            quietDecided = settings.enabled && key.equals(decidedBefore) && !autoAcceptWatched
-                    && !declineUnderWay(now);
-            decidedKey = settings.enabled ? key : "";
-            return settings.enabled && decision.result == OfferRule.Result.REVIEW && !quietDecided;
+            // own words show an offer is read at once, as always. Paused, the same: and the offer on screen as
+            // auto-decline is turned back on stays the user's, as after any change of theirs while it shows.
+            quietDecided = key.equals(decidedBefore) && !autoAcceptWatched && !declineUnderWay(now);
+            decidedKey = key;
+            return decision.result == OfferRule.Result.REVIEW && !quietDecided;
         }
         if (autoAccept.candidate() != null) {
             cancelAutoAccept(true, "rules_changed");
@@ -9051,6 +9194,36 @@ public final class OfferFilterService extends AccessibilityService {
                             + "; left to you");
                 }
                 return wait;
+            }
+        }
+        // Decline after 10 seconds (Settings, 0.6.35): this offer's first Decline waits until it has shown
+        // DECLINE_WAIT_MS, or its countdown is nearly out, so the user can take it by hand; a touch of theirs or a tap
+        // on Dasher meanwhile leaves it theirs. Never during a peek: its offer is declined at once, so Dasher is not
+        // left over the app the user was in.
+        if (!again && !key.equals(declinedKey) && !key.equals(refusedKey) && !peek.active()) {
+            DeclineWait wait = declineWait(offer, secondsLeft, newCountdown || newScreenInstancePending, now);
+            if (wait != DeclineWait.GO) {
+                boolean yours = wait == DeclineWait.YOURS;
+                declineWaitReached = true;
+                declinedOfferShowing = false;
+                // Beside the tab, outlined: what auto-decline will do, with nothing tapped yet (or at all, once it is
+                // the user's).
+                offerVerdict = OfferRule.Result.DECLINE;
+                diagnostic(phase, scan, offer, decision);
+                acceptedTracker.offerLeftAlone(decision.basis, learn, routeAfter, isAddOn, false, secondsLeft,
+                        routeStored, now);
+                applyNotes();
+                record(scan, isAddOn, decision, settings, yours ? DecisionLog.Action.USER_TOOK_OVER
+                        : DecisionLog.Action.DECLINE_WAITING, false);
+                // Nothing to do with it until its wait ends (a read is due then) or a touch or tap of the user's: the
+                // same offer's changes get the quiet gap, as an unchanged decided offer's do.
+                quietDecided = key.equals(waitingBefore) && !autoAcceptWatched;
+                waitingKey = key;
+                long left = declineWaitSince + DECLINE_WAIT_MS - now;
+                status(detail + "\n" + decision.summary() + (yours
+                        ? "\nYou touched the screen or tapped Dasher, so it is left to you."
+                        : "\nDeclining in " + Math.max(1, (left + 999) / 1000) + " s unless you take it."));
+                return false;
             }
         }
         // A restart may only recover suppression, never tap authority. Persist before Android can take the request.

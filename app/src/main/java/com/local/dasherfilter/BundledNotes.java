@@ -140,6 +140,21 @@ final class BundledNotes {
     private static final String HOME_TAB = "To go to Dasher, tap the tab on this screen's edge: the same tab as over "
             + "Dasher, in the same spot, with Dasher's icon. Moving one moves both.";
 
+    /**
+     * Notice 35 and 0.6.35: paused, the app reads and scores each offer on Dasher's screen and taps nothing (it read
+     * nothing of the screen before); the Accessibility switch is the full stop.
+     */
+    private static final String[] PAUSED_SCORES = {
+            "Paused, the app now still reads each offer on Dasher's screen and shows its score beside the tab, "
+                    + "outlined when it would decline, but taps nothing.",
+            "Offers read while paused don't teach learning or move Autopilot. To stop all reading, turn the app off in "
+                    + "Android's Accessibility settings."};
+    /** 0.6.35's other change: Settings' Decline after 10 seconds. */
+    private static final String[] DECLINE_WAIT = {
+            "New in Settings: Decline after 10 seconds waits that long before declining an offer on Dasher's screen; a "
+                    + "touch in that time keeps it yours.",
+            "Offers that come while you're in another app are still declined at once."};
+
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
                     + "pay line and the 100% line.";
@@ -258,6 +273,9 @@ final class BundledNotes {
         notice(33, NO_SPLIT);
         // 0.6.34 (the owner, 22 October 2026: "we should combine all diagnostics opt in into one").
         notice(34, ONE_SWITCH);
+        // 0.6.35 (the owner, 22 October 2026: "we still show what we would recommend and it's score even if the user
+        // toggles off actual decline"), reversing his "Read nothing" of 6 October.
+        notice(35, PAUSED_SCORES);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -444,6 +462,9 @@ final class BundledNotes {
         // 0.6.34 (the owner, 22 October 2026: "we should combine all diagnostics opt in into one", and of the tab,
         // "door dash swap button should be same as offer filter swap button on its screen").
         release("0.6.34", ONE_SWITCH[0], ONE_SWITCH[1], HOME_TAB);
+        // 0.6.35 (the owner, 22 October 2026: the score while paused, and "we could also make auto decline timing
+        // configurable like immediate vs 10s").
+        release("0.6.35", PAUSED_SCORES[0], PAUSED_SCORES[1], DECLINE_WAIT[0], DECLINE_WAIT[1]);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

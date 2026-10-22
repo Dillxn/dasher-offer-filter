@@ -43,7 +43,7 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "22 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.34";
+    static final String TERMS_VERSION = "0.6.35";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -52,10 +52,11 @@ public final class LegalTextsTest {
      * kept); 0.6.29 both (independent working minimums, prospective personal evidence and local snapshots); 0.6.31
      * both (an acceptance's total pay weighs a quarter of each Autopilot Area score); 0.6.32 both (Autopilot's bar can
      * come down to 10%); 0.6.33 both (split screen retired: the divider is no longer moved for a map); 0.6.34 both
-     * (one Share anonymous diagnostics switch for every diagnostic, off for everyone until turned on).
+     * (one Share anonymous diagnostics switch for every diagnostic, off for everyone until turned on); 0.6.35 both
+     * (paused, Dasher's screen is read to show each offer's score, nothing tapped; Decline after 10 seconds).
      */
     static final String PRIVACY_EFFECTIVE = "22 October 2026";
-    static final String PRIVACY_VERSION = "0.6.34";
+    static final String PRIVACY_VERSION = "0.6.35";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -355,11 +356,14 @@ public final class LegalTextsTest {
     @Test public void privacyCoversThePathsThisReleaseAdds() {
         String privacy = LegalTexts.Doc.PRIVACY.text();
         for (String fact : new String[] {
-                // Never starve Dasher: paused reads nothing; only the maps it recognizes are skipped (MapNodes.isMap),
-                // never while a decline-error recovery or an automatic Accept is verified (pruneMaps), and whether
-                // Dasher's maps are recognized is unverified on phones.
-                "While auto-decline is paused, or no rule is set, it reads nothing of Dasher's screen; Android's list "
-                        + "of windows alone places its tab.",
+                // Never starve Dasher: with no rule set nothing is read, and paused (0.6.35) it reads to show the
+                // score, tapping nothing; only the maps it recognizes are skipped (MapNodes.isMap), never while a
+                // decline-error recovery or an automatic Accept is verified (pruneMaps), and whether Dasher's maps are
+                // recognized is unverified on phones.
+                "With no rule set, it reads nothing of Dasher's screen; Android's list of windows alone places its "
+                        + "tab.",
+                "to show each offer's score and what auto-decline would do, and taps nothing; turning Offer Filter off "
+                        + "in Android's Accessibility settings stops all reading of Dasher's screen.",
                 "Map views it recognizes inside Dasher's screens are skipped, not read, except while it checks a failed "
                         + "decline or an automatic Accept, or when a map's own label shows a sign of an offer; whether "
                         + "Dasher's maps are recognized depends on how Dasher draws them.",

@@ -1,3 +1,16 @@
+## 0.6.35 — Scores while paused; Decline after 10 seconds
+
+Version 0.6.35 (code 127) answers the owner's messages of 22 October 2026: "we need to separate showing the score and recommendation for an offer from actual auto decline if it's not already so that we still show what we would recommend and it's score even if the user toggles off actual decline for me" (17:38 UTC), and "we could also make auto decline timing configurable like immediate vs 10s" (17:38 UTC).
+
+- **Paused, the score still shows.** With auto-decline paused (the mascot, or a hold on the tab) and a rule set, the app reads each offer on Dasher's screen as it does when on and shows its score beside the tab: "✓ 88%" green when it passes, "? 74%" amber when it is yours to decide, and "✕ 52%" outlined in red when auto-decline would decline it. Nothing is tapped. The status line says "Auto-decline is paused; nothing is tapped.", and a background offer's card says the app won't decline it and Dasher shows its score.
+- **This reverses "Read nothing".** Since the owner's choice of 6 October 2026, pausing read nothing of Dasher's screen. Now only having no rule set reads nothing. Turning Offer Filter off in Android's Accessibility settings is the full stop.
+- **Paused offers teach nothing.** Offers read while paused stay out of learning and Autopilot: an offer taken by hand while paused sets no working minimum, starts no 24-offer hold and is left out of Autopilot's counts, so taking a low one won't pull Autopilot's minimums down. Peek, the ⚙ tap, auto-accept and the screen hold stay off while paused, as before.
+- **Decline after 10 seconds.** A new switch in Settings, off unless turned on: "Decline after 10 seconds", with "Time to take an offer yourself; a touch keeps it yours". With it on, an offer failing your rules on Dasher's screen, with Dasher in front, is declined only once it has shown for 10 seconds, or at once when its countdown has 3 seconds or less left. The status line says how long it waits. A touch on the screen or a tap on Dasher in that time leaves the offer to you, as a touch during a decline does. Offers handled while you are in another app (Dasher's notification, or Peek) are still declined at once, so Dasher is never left over your map. The wait starts again for a new offer, or for the same offer shown again after it went away.
+- **Notice 35.** The notice's words are unchanged (416 words); the Terms and Privacy, for 0.6.35, say what paused reads and how the wait works, and Privacy lists the touch watch during the wait. What's new says it in four short lines.
+- **Kept suites.** No tests were added. ActionSafetyTest's two paused tests now pause by saving no rule, since a pause with a rule reads the screen; ConsentGateTest expects notice 35; LegalTextsTest the 0.6.35 texts and the new paused-reading sentences; a PrivacyBoundaryTest comment is corrected.
+
+No phone has run this build.
+
 ## 0.6.34 — One switch for diagnostics; the same tab on Offer Filter's screen
 
 Version 0.6.34 (code 126) answers the owner's messages of 22 October 2026: "we should combine all diagnostics opt in into one" (17:18 UTC), and "door dash swap button should be same as offer filter swap button on its screen" with "the tab" (17:21 UTC; on a card at 17:26 UTC he picked "Tab on both").

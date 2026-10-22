@@ -708,7 +708,8 @@ final class DashSummary {
 
     /**
      * The switches, the bar and which rules are set (never their amounts): "auto-decline on · Peek on · quiet while
-     * declining off · auto-accept off · offer map off · bar 82% (Autopilot on) · rules set: pay per stop, per mile, per hour".
+     * declining off · decline after 10 s off · auto-accept off · offer map off · bar 82% (Autopilot on) · rules set:
+     * pay per stop, per mile, per hour".
      * Never Autopilot's acceptance-rate reading, its goal or its plan. The bar is Autopilot's, and Autopilot moves it
      * for the goal, so a bar below 100% can say the rate was below the goal; it never says what the rate was.
      */
@@ -720,6 +721,7 @@ final class DashSummary {
         if (rules.maxStops > 0) set.add("max stops");
         return "auto-decline " + onOff(rules.enabled) + " · Peek " + onOff(FilterStore.peek(app))
                 + " · quiet while declining " + onOff(FilterStore.silenceWhileDeclining(app))
+                + " · decline after 10 s " + onOff(FilterStore.declineAfterWait(app))
                 + " · auto-accept " + onOff(FilterStore.autoAcceptEnabled(app))
                 + " · offer map " + onOff(AreaMap.enabled(app))
                 + " · mode " + (rules.scoreByArea ? "area" : "strict")

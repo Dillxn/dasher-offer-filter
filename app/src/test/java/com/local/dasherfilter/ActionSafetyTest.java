@@ -548,18 +548,19 @@ public class ActionSafetyTest {
     }
 
     /**
-     * Paused (auto-decline off), nothing of Dasher's is read, not even a click's node: the user's tap on Dasher is told
-     * by its own time, and still puts the tab away at once, so none lingers over the map it opened.
+     * Paused with no rule set, nothing of Dasher's is read, not even a click's node: the user's tap on Dasher is told
+     * by its own time, and still puts the tab away at once, so none lingers over the map it opened. (Auto-decline off
+     * with a rule set reads and scores offers from 0.6.35, tapping nothing.)
      */
     @Test
     public void pausedATapOnDasherStillPutsTheTabAwayAndReadsNothingOfDasher() {
         OfferFilterService service = connect(finding());
         dasherShows(finding());
         assertTrue(tabUp());
-        FilterStore.save(app, FilterStore.load(app).withEnabled(false));
+        FilterStore.save(app, noRule());
         OfferFilterService.requestCheckForRules();
         idle();
-        assertTrue("paused with nothing changed since the last read: the tab still takes the tap that resumes",
+        assertTrue("paused with nothing changed since the last read: the tab still takes the tap that opens the app",
                 tabUp());
         int reads = service.contentReads;
         userTapsDasher("Navigate");
@@ -573,14 +574,15 @@ public class ActionSafetyTest {
     }
 
     /**
-     * Paused, a tap that stays in Dasher brings the tab back only once it settled, by Android's list of windows alone,
-     * and only as the slim peek that takes no touches (Dasher changed its screen unread: an offer may be up).
+     * Paused with no rule set, a tap that stays in Dasher brings the tab back only once it settled, by Android's list
+     * of windows alone, and only as the slim peek that takes no touches (Dasher changed its screen unread: an offer may
+     * be up).
      */
     @Test
     public void pausedATapThatStaysInDasherBringsBackOnlyTheUntouchablePeekOnceItSettled() {
         OfferFilterService service = connect(finding());
         dasherShows(finding());
-        FilterStore.save(app, FilterStore.load(app).withEnabled(false));
+        FilterStore.save(app, noRule());
         OfferFilterService.requestCheckForRules();
         idle();
         int reads = service.contentReads;
@@ -598,6 +600,11 @@ public class ActionSafetyTest {
         assertEquals("the slim peek", DasherTab.Look.PEEK, tab().look());
         assertFalse("which takes no touches", tabUp());
         assertEquals("nothing of Dasher's read while paused", reads, service.contentReads);
+    }
+
+    /** No rule left: nothing judges an offer, so nothing of Dasher's is read (the save pauses auto-decline too). */
+    private FilterSettings noRule() {
+        return FilterStore.load(app).withMinimums(0, 0, 0).withMaxStops(0).withAcceptanceLearning(false);
     }
 
     /**

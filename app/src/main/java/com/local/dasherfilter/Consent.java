@@ -61,7 +61,12 @@ final class Consent {
     // 34 (0.6.34): one switch, Share anonymous diagnostics, for the summary after each dash, masked diagnostics with
     // feedback and the offer timing study, which were three choices; it starts off for everyone, and the notice asks
     // (the owner, 22 October 2026: "we should combine all diagnostics opt in into one").
-    static final int VERSION = 34;
+    // 35 (0.6.35): paused, the app still reads each offer on Dasher's screen and shows its score and what it would do,
+    // tapping nothing, where it read nothing of Dasher's screen before (the owner's "Read nothing" of 6 October 2026,
+    // reversed by his ask of 22 October: "we still show what we would recommend and it's score even if the user toggles
+    // off actual decline"); turning the app off in Accessibility is the full stop. The notice's words are unchanged:
+    // the Terms and Privacy say it.
+    static final int VERSION = 35;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

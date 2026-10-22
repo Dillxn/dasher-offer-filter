@@ -456,13 +456,15 @@ final class AutopilotRuntime {
      * accepted ({@link DecisionLog#accepted}), declined (the app's decline went through, a "not accepted" or "counted
      * as your Decline" step, or a hidden notification of a failing offer), Dasher's "does not lower acceptance rate"
      * mark, and the bar it was decided at, whether Autopilot set it, and its rules model, and when
-     * the user accepted it by hand ({@link DecisionLog#handAcceptedAt}, for the accepted floor).
+     * the user accepted it by hand ({@link DecisionLog#handAcceptedAt}, for the accepted floor). An offer read while
+     * auto-decline was paused (0.6.35: its score shows, nothing is tapped) is not counted at all, so taking a low one
+     * by hand moves nothing of Autopilot's.
      */
     static List<Autopilot.OfferRecord> records(List<DecisionLog.Entry> newestFirst) {
         List<Autopilot.OfferRecord> records = new ArrayList<>();
         if (newestFirst == null) return records;
         for (DecisionLog.Entry entry : newestFirst) {
-            if (entry != null) records.add(record(entry));
+            if (entry != null && entry.autoDecline) records.add(record(entry));
         }
         return records;
     }

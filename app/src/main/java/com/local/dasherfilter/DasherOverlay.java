@@ -87,9 +87,13 @@ final class DasherOverlay implements DasherTab.Listener {
     private DasherGuide guide;
     private BackToMapChip chip;
     private ScoreTag scoreTag;
-    /** What the score tag shows: a score (-1 for none) and what came of its offer (DECLINE, KEEP or REVIEW). */
+    /**
+     * What the score tag shows: a score (-1 for none) and what came of its offer (DECLINE, KEEP or REVIEW), and
+     * whether its DECLINE is only what auto-decline would do (paused, 0.6.35: nothing tapped).
+     */
     private int tagScore = -1;
     private OfferRule.Result tagResult;
+    private boolean tagWould;
     /** Until when (uptime) a declined offer's score stays now that its offer left; 0 while the offer is up. */
     private long tagStaysUntil;
     private final Runnable tagAgain = this::tagTimedOut;
@@ -190,7 +194,8 @@ final class DasherOverlay implements DasherTab.Listener {
     /**
      * As {@link #sync(Rect, boolean, DasherScene)}: {@code oursBeside} whether the other half of a split screen is
      * Offer Filter's own (no tab then; beside another app the tab shows over Dasher's half), {@code verdict} the
-     * decided offer on screen's KEEP or REVIEW (the slim peek's tint), {@code backToMap} whether the Back to map chip
+     * decided offer on screen's KEEP or REVIEW (the slim peek's tint; DECLINE for one auto-decline would decline but
+     * does not, for the score tag's outline), {@code backToMap} whether the Back to map chip
      * shows, and {@code chipCurrent} whether the read that wants it began after Dasher's last change (only then does
      * it take touches).
      */
@@ -580,19 +585,22 @@ final class DasherOverlay implements DasherTab.Listener {
 
     /**
      * What the tag shows: the offer on screen's score once the rules decided it; a declined offer's stays for
-     * {@link #SCORE_STAYS_MS} once its offer left, a passing one's goes with it.
+     * {@link #SCORE_STAYS_MS} once its offer left, a passing one's goes with it, as does one auto-decline would decline
+     * but does not (paused, 0.6.35, or the user's own change while it showed: verdict DECLINE, nothing tapped).
      */
     private void noteScore(int score, boolean declining) {
-        OfferRule.Result result = declining ? OfferRule.Result.DECLINE
+        boolean would = !declining && verdict == OfferRule.Result.DECLINE;
+        OfferRule.Result result = declining || would ? OfferRule.Result.DECLINE
                 : verdict == OfferRule.Result.KEEP || verdict == OfferRule.Result.REVIEW ? verdict : null;
         if (scene == DasherScene.OFFER && score >= 0 && result != null) {
             tagScore = score;
             tagResult = result;
+            tagWould = would;
             tagStaysUntil = 0;
             main.removeCallbacks(tagAgain);
         } else if (tagScore >= 0) {
             long now = SystemClock.uptimeMillis();
-            if (tagResult != OfferRule.Result.DECLINE) {
+            if (tagResult != OfferRule.Result.DECLINE || tagWould) {
                 tagScore = -1;
             } else if (tagStaysUntil == 0) {
                 tagStaysUntil = now + SCORE_STAYS_MS;
@@ -623,7 +631,7 @@ final class DasherOverlay implements DasherTab.Listener {
         Ui ui = ui();
         if (scoreTag == null) {
             ScoreTag view = new ScoreTag(service, ui);
-            view.show(tagScore, tagResult);
+            view.show(tagScore, tagResult, tagWould);
             WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.WRAP_CONTENT, ui.dp(ScoreTag.HEIGHT_DP),
                     WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -640,7 +648,7 @@ final class DasherOverlay implements DasherTab.Listener {
                 return;
             }
         } else {
-            scoreTag.show(tagScore, tagResult);
+            scoreTag.show(tagScore, tagResult, tagWould);
             scoreTag.setVisibility(android.view.View.VISIBLE);
         }
         scoreTag.measure(0, 0);

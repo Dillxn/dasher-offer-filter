@@ -46,6 +46,8 @@ final class DecisionLog {
     /** What the app did about a decision. A heavier action replaces a lighter one on the same offer. */
     enum Action {
         PAUSED("No action: auto-decline paused", 0),
+        /** Decline after 10 seconds (0.6.35): the offer showed, its first Decline waiting for the user to take it. */
+        DECLINE_WAITING("No action: auto-decline waits 10 seconds", 0),
         PASSES("No action: passes your rules", 0),
         SEEN_ON_SCREEN("No card: the screen had already read this offer", 0),
         NEEDS_REVIEW("No action: needs your review", 0),

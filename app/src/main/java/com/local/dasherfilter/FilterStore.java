@@ -207,6 +207,7 @@ final class FilterStore {
     /** Where 0.4.13 and earlier kept an address for emailing reports; Share replaced that, so it is removed. */
     private static final String RETIRED_REPORT_EMAIL = "report_email";
     private static final String SILENCE_WHILE_DECLINING = "silence_while_declining";
+    private static final String DECLINE_AFTER_WAIT = "decline_after_wait";
     /** Peek at background offers ({@link Peek}); on unless turned off. */
     private static final String PEEK = "peek_background_offers";
     /** Accepting a delivery is a separate, explicit opt-in; upgrades never enable it. */
@@ -1011,14 +1012,17 @@ final class FilterStore {
         }
     }
 
-    /** Captured only at the first observation of a standalone offer, independently of the Learn switch. */
+    /**
+     * Captured only at the first observation of a standalone offer, independently of the Learn switch; never while
+     * auto-decline is paused (0.6.35: a paused offer's score shows, and taking it by hand moves no minimum).
+     */
     static AutopilotPermit captureAutopilotAcceptance(Context context, OfferSnapshot observed, boolean skipped) {
         if (observed == null || skipped) return null;
         load(context);
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
             FilterSettings rules = read(prefs);
-            if (!Consent.accepted(context) || !rules.autopilot || !rules.hasMonetaryRule()
+            if (!Consent.accepted(context) || !rules.enabled || !rules.autopilot || !rules.hasMonetaryRule()
                     || rules.maxStops > 0 && observed.stops != null && observed.stops > rules.maxStops) return null;
             return new AutopilotPermit(prefs, context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE), observed);
         }
@@ -1086,7 +1090,7 @@ final class FilterStore {
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
             FilterSettings before = read(prefs);
-            if (!Consent.accepted(context) || !before.autopilot) return AutopilotAcceptance.OFF;
+            if (!Consent.accepted(context) || !before.enabled || !before.autopilot) return AutopilotAcceptance.OFF;
             SharedPreferences consent = context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE);
             long elapsed = SystemClock.elapsedRealtime();
             if (permit == null || permit.consumed || permit.sequence <= lastAutopilotAcceptanceSequence
@@ -1583,6 +1587,20 @@ final class FilterStore {
 
     static void setSilenceWhileDeclining(Context context, boolean on) {
         prefs(context).edit().putBoolean(SILENCE_WHILE_DECLINING, on).apply();
+    }
+
+    /**
+     * Settings' Decline after 10 seconds (0.6.35, the owner: "we could also make auto decline timing configurable like
+     * immediate vs 10s"): an offer on Dasher's screen is declined only once it has shown
+     * {@link OfferFilterService#DECLINE_WAIT_MS}, so the user can take it by hand. Off (immediately, as before) unless
+     * turned on.
+     */
+    static boolean declineAfterWait(Context context) {
+        return prefs(context).getBoolean(DECLINE_AFTER_WAIT, false);
+    }
+
+    static void setDeclineAfterWait(Context context, boolean on) {
+        prefs(context).edit().putBoolean(DECLINE_AFTER_WAIT, on).apply();
     }
 
     /**
