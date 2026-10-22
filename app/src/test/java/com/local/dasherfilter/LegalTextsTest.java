@@ -43,17 +43,18 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "22 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.31";
+    static final String TERMS_VERSION = "0.6.32";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
      * 0.6.21 both (an accept holds the bar for the 24 offers after it; Autopilot no longer grows the minimums; the
      * divider for a map in either half); 0.6.27 both (area scoring is the default, and whether the mode was picked is
      * kept); 0.6.29 both (independent working minimums, prospective personal evidence and local snapshots); 0.6.31
-     * both (an acceptance's total pay weighs a quarter of each Autopilot Area score).
+     * both (an acceptance's total pay weighs a quarter of each Autopilot Area score); 0.6.32 both (Autopilot's bar can
+     * come down to 10%).
      */
     static final String PRIVACY_EFFECTIVE = "22 October 2026";
-    static final String PRIVACY_VERSION = "0.6.31";
+    static final String PRIVACY_VERSION = "0.6.32";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -120,7 +121,7 @@ public final class LegalTextsTest {
                         + "as its goal (from 0.6.18, when it replaced the suggested acceptance-rate goal of 70%: once, a "
                         + "70% goal moved to pay first, since it could not be told from the suggested one, and a 50% "
                         + "goal stayed) until you choose a goal that protects your acceptance rate (70% or 50%); you can "
-                        + "turn it off from its chip on the homepage.", "between 50% and 150%",
+                        + "turn it off from its chip on the homepage.", "between 10% and 150%",
                 // 0.6.18: only Dasher's usual decline question is confirmed; any other pauses auto-decline.
                 "it confirms only a decline question worded as Dasher's usual one (\"Are you sure you want to "
                         + "decline this offer?\"), seen in the developer's own reports; any other question, or one "
@@ -461,10 +462,10 @@ public final class LegalTextsTest {
         assertTrue(privacy.contains("older than 7 days is never used or sent"));
         assertEquals(300, AreaMap.MAX_CELLS);
         assertTrue(privacy.contains("up to 300 historical squares"));
-        assertEquals(50, FilterStore.BAR_MIN);
+        assertEquals(10, FilterStore.BAR_MIN);
         assertEquals(150, FilterStore.BAR_MAX);
-        assertTrue(terms.contains("between 50% and 150%"));
-        assertTrue(privacy.contains("between 50% and 150%"));
+        assertTrue(terms.contains("between 10% and 150%"));
+        assertTrue(privacy.contains("between 10% and 150%"));
         assertEquals(10, AutopilotStore.EXTRA_MAX);
         assertTrue(privacy.contains("a correction of at most 10 points"));
         assertEquals(25, Autopilot.CHECK_EVERY);

@@ -110,6 +110,15 @@ final class BundledNotes {
                     + "declined.",
             "The chart's pay line now shows that acceptance's total pay at the bar."};
 
+    /** Notice 32 and 0.6.32: Autopilot's bar can come down to 10% of its working minimums, not only to 50%. */
+    private static final String[] LOW_BAR = {
+            "Autopilot's bar can now come down to 10% of its working minimums instead of stopping at 50%, so a slow "
+                    + "dash doesn't decline nearly everything.",
+            "With pay first it keeps about one offer in five coming. Offers below your saved or learned minimums "
+                    + "are left to you, never auto-accepted.",
+            "An offer you accept still sets its working minimums and holds the bar there for the 24 offers after "
+                    + "it."};
+
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
                     + "pay line and the 100% line.";
@@ -223,6 +232,8 @@ final class BundledNotes {
         // 0.6.31 (the owner, 22 October 2026: "we must factor in overall pay", and "we had some issue before with
         // overall pay compounding weird with pay per stop"): total against total, never pay per stop times stops.
         notice(31, TOTAL_PAY);
+        // 0.6.32 (the owner, 22 October 2026: "i think auto needs to be able to go below 50%, like maybe even 10%?").
+        notice(32, LOW_BAR);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -402,6 +413,8 @@ final class BundledNotes {
                 + "the offer is kept.");
         // 0.6.31 (the owner, 22 October 2026: "we must factor in overall pay").
         release("0.6.31", TOTAL_PAY);
+        // 0.6.32 (the owner, 22 October 2026: "i think auto needs to be able to go below 50%, like maybe even 10%?").
+        release("0.6.32", LOW_BAR);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

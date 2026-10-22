@@ -795,7 +795,7 @@ final class AutopilotRuntime {
     /**
      * The user is about to choose typical minimums (the 0.5.0 notice's "Use typical minimums", the new-install
      * starter's "Use these"): with Autopilot on, the bar goes back to exactly 100 first (the owner's decision), so the
-     * plan {@link #rulesChanged} then asks for starts from 100, never from a bar set for the old minimums (a pinned 50,
+     * plan {@link #rulesChanged} then asks for starts from 100, never from a bar set for the old minimums (a pinned 10,
      * say). Under {@link #LOCK} like a commit, with its change note ("you changed your minimums") and log line; no
      * plan is asked for here. Nothing happens while Autopilot is off: the bar is exactly 100 already.
      */

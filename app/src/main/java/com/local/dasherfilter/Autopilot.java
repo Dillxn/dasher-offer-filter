@@ -42,7 +42,13 @@ import java.util.TimeZone;
  */
 final class Autopilot {
     // ---- Bar ----
-    static final int BAR_MIN = 50;
+    /**
+     * The lowest bar (0.6.32; 50 before). When too few offers pass even at half the working references (a slow dash,
+     * or references set by a high accept), the bar keeps coming down instead of stopping there (the owner, 22 October
+     * 2026: "i think auto needs to be able to go below 50%, like maybe even 10%?"). An accept still holds the bar for
+     * the {@value #FLOOR_OFFERS} offers after it.
+     */
+    static final int BAR_MIN = 10;
     static final int BAR_MAX = 150;
     /**
      * How long a hand accept holds the bar (0.6.18; the owner chose "Earnings first", 14 October 2026): for the next
@@ -696,7 +702,10 @@ final class Autopilot {
         /** Counted offers (n) and how many pass at the target. */
         final int counted;
         final int passAtTarget;
-        /** The pass share needed in whole percent, the share bar, and whether even 50% misses it (-1: not planned). */
+        /**
+         * The pass share needed in whole percent, the share bar, and whether even the lowest bar misses it (-1: not
+         * planned).
+         */
         final int need;
         final int barShare;
         final boolean pinned;
@@ -915,7 +924,7 @@ final class Autopilot {
      *   <li>Gates, holding the bar at 100: Autopilot off ({@link Mode#OFF}); no money minimum
      *   ({@link Mode#NO_RULES}); fewer than 20 counted offers ({@link Mode#LEARNING}).</li>
      *   <li>The acceptance rate, the stall correction and the need.</li>
-     *   <li>The share bar; when even 50% misses the need, 50 ({@link Mode#PINNED}).</li>
+     *   <li>The share bar; when even the lowest bar misses the need, {@link #BAR_MIN} ({@link Mode#PINNED}).</li>
      *   <li>With fewer than 20 readable offers, {@code min(share bar, 100)}.</li>
      *   <li>Otherwise the acceptable bar closest to the current one, the lower of two equally close.</li>
      * </ol>
@@ -1313,7 +1322,7 @@ final class Autopilot {
 
     // ---- (c) The share bar ----
 
-    /** The share bar: the highest bar in 50–150 at which {@code 100·pass ≥ need·n}; 50 and pinned when none. */
+    /** The share bar: the highest bar in 10–150 at which {@code 100·pass ≥ need·n}; 10 and pinned when none. */
     static ShareBar shareBar(int[] thetas, int need) {
         long n = thetas.length;
         for (int bar = BAR_MAX; bar >= BAR_MIN; bar--) {
@@ -1365,7 +1374,7 @@ final class Autopilot {
     }
 
     /**
-     * Every bar's value from 50 to {@code hi}, by θ-sorted prefix sums: {@code N(σ) = 60·L·SP(σ)} over
+     * Every bar's value from 10 to {@code hi}, by θ-sorted prefix sums: {@code N(σ) = 60·L·SP(σ)} over
      * {@code Dn(σ) = n_r·D + L·ST(σ)} cents per hour, the renewal-reward rate {@code 60·λ·E[pay·1A] ÷ (1 +
      * λ·E[minutes·1A])} with {@code λ = L ÷ D}. The mix must not be empty and {@code D} must be positive.
      */
@@ -1432,7 +1441,7 @@ final class Autopilot {
      * One commit decision, in order: a user's change jumps straight to the target; at the target, hold; within a
      * minute of the last commit, hold; within 3 of 100 with 100 as the target, exactly 100; within 3, hold, unless
      * the bar is above the acceptance-rate limit and the target below it; down at most 20; up only after five minutes
-     * and three counted offers since the last raise, at most 5. The result is held to 50–150.
+     * and three counted offers since the last raise, at most 5. The result is held to 10–150.
      *
      * @param limit the acceptance-rate limit, the plan's share bar ({@link Plan#barShare}), or -1 when it has none:
      *     the bar is never above the highest bar at which enough offers would pass (AGENTS), so the deadband never

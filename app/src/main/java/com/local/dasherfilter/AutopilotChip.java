@@ -18,7 +18,7 @@ import android.widget.TextView;
 
 /**
  * Autopilot's one-line chip ({@link AutopilotText#chip}): "Auto off", "Auto learning", "Auto 82%", "Auto 82% ▲" (below
- * the goal, in amber), "Auto 50%" (its lowest bar), "Auto" (it needs a minimum; the status line beside it says so) or
+ * the goal, in amber), "Auto 10%" (its lowest bar), "Auto" (it needs a minimum; the status line beside it says so) or
  * "Auto waits". A pill in Autopilot's purple (amber below the goal, grey while off) inside a target at least 48 dp each
  * way. A tap opens the details and a long press the goal chooser: the page that holds it says how
  * ({@link #setOnClickListener}, {@link #setOnLongClickListener}).

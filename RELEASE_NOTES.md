@@ -1,3 +1,15 @@
+## 0.6.32 — Autopilot's bar can come down to 10%
+
+Version 0.6.32 (code 124) answers the owner's message of 22 October 2026 (01:45 UTC): "i think auto needs to be able to go below 50%, like maybe even 10%?"
+
+- **The lowest bar is 10%, not 50%.** Autopilot's bar now moves from 10% to 150% of its working minimums. Before, when fewer offers passed at 50% than its goal needs (with pay first, one in five of the last 100 counted offers), it stopped there, "Lowest bar", and declined the rest; the $27.00 offer behind 0.6.31 was declined at that 50%. Now it keeps coming down, at most 20 points a minute as before, until enough pass or it reaches 10%. Its pay-per-hour choice can also pick a bar under 50% when that pays more per hour on a slow dash.
+- **Accepts work as before.** An offer you accept yourself still sets the working minimums to its own values at the bar of the moment and holds the bar at least there for the 24 counted offers after it. Only after those 24 can the bar now go below that offer's level, as far as a tenth of the working minimums (before, half); your next accept sets them again.
+- **What a low bar can't do.** Offers that pass only below your saved or learned minimums are left to you, without the pass chime, and never auto-accepted: automatic acceptance still asks your saved and learned minimums at 100% or more. Strict mode, add-ons and learning are unchanged.
+- **Notice 32.** The notice's Autopilot point now says 10% to 150% (still 420 words), and the Terms and Privacy say so from 0.6.32. What's new says it in three short lines.
+- **Kept suites.** No tests were added; ConsentGateTest now expects notice 32, and LegalTextsTest the 0.6.32 texts and the 10% figure.
+
+No phone has run this build.
+
 ## 0.6.31 — Autopilot counts total pay
 
 Version 0.6.31 (code 123) answers the owner's message of 22 October 2026 (00:00 UTC), with a screenshot of a $27.00 offer Autopilot declined at its lowest bar, 50%: "we must factor in overall pay. we declined an offer that payed a lot and was only negligibly less than the last accepted offer in area score. weighing in ticket value would have caught it", and "we had some issue before with overall pay compounding weird with pay per stop so we need to address that".

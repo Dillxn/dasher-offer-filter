@@ -532,7 +532,7 @@ final class AutopilotText {
 
     /**
      * The one-line chip at the status line's start: "Auto off", "Auto learning" (at 100%; its bar while learning
-     * with any other), "Auto 82%", "Auto 82% ▲" (below the goal), "Auto waits"; "Auto" with no money minimum and "Auto 50%" pinned at the lowest bar, the status line beside
+     * with any other), "Auto 82%", "Auto 82% ▲" (below the goal), "Auto waits"; "Auto" with no money minimum and "Auto 10%" pinned at the lowest bar, the status line beside
      * it saying the rest ({@link #statusLine}). Every word it shows is one of {@link #CHIP_WIDEST} or its bar, no wider
      * than theirs.
      */

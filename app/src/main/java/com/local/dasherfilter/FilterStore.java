@@ -69,8 +69,8 @@ final class FilterStore {
     private static final String AUTOPILOT_RESUME_BAR = "autopilot_axes_resume_bar_v1";
     private static long autopilotObservationSequence;
     private static long lastAutopilotAcceptanceSequence;
-    /** The lowest and highest bar Autopilot may set. */
-    static final int BAR_MIN = 50;
+    /** The lowest and highest bar Autopilot may set: {@link Autopilot#BAR_MIN}'s 10 (50 before 0.6.32) and 150. */
+    static final int BAR_MIN = 10;
     static final int BAR_MAX = 150;
     /** Which rules model the stored values are in: absent (1) before 0.5.0, {@link #MODEL} after. */
     private static final String RULES_MODEL = "rules_model";

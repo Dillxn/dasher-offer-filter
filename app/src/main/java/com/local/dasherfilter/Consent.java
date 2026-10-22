@@ -53,7 +53,9 @@ final class Consent {
     // readable plausible short trips can teach learned highs, and green shows the calculated learned envelope.
     // 31 (0.6.31): that acceptance also keeps its total pay, and in Area mode a quarter of each Autopilot score weighs
     // an offer's total pay against it (the owner, 22 October 2026: "we must factor in overall pay").
-    static final int VERSION = 31;
+    // 32 (0.6.32): Autopilot's bar can come down to 10% of its working references instead of stopping at 50% (the
+    // owner, 22 October 2026: "i think auto needs to be able to go below 50%, like maybe even 10%?").
+    static final int VERSION = 32;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
