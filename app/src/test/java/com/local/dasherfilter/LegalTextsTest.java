@@ -43,7 +43,7 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "22 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.33";
+    static final String TERMS_VERSION = "0.6.34";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -51,10 +51,11 @@ public final class LegalTextsTest {
      * divider for a map in either half); 0.6.27 both (area scoring is the default, and whether the mode was picked is
      * kept); 0.6.29 both (independent working minimums, prospective personal evidence and local snapshots); 0.6.31
      * both (an acceptance's total pay weighs a quarter of each Autopilot Area score); 0.6.32 both (Autopilot's bar can
-     * come down to 10%); 0.6.33 both (split screen retired: the divider is no longer moved for a map).
+     * come down to 10%); 0.6.33 both (split screen retired: the divider is no longer moved for a map); 0.6.34 both
+     * (one Share anonymous diagnostics switch for every diagnostic, off for everyone until turned on).
      */
     static final String PRIVACY_EFFECTIVE = "22 October 2026";
-    static final String PRIVACY_VERSION = "0.6.33";
+    static final String PRIVACY_VERSION = "0.6.34";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -103,7 +104,9 @@ public final class LegalTextsTest {
         assertTrue(terms.contains("without warranties of any kind"));
         assertTrue(terms.contains("Do not handle your phone while driving"));
         assertTrue(terms.contains("Feedback and offer reports are accountless and are sent only when you tap Send."));
-        assertTrue(terms.contains("Share anonymous diagnostics after each dash (off by default)"));
+        assertTrue(terms.contains("Share anonymous diagnostics (off by default)"));
+        // 0.6.34: one switch for every diagnostic, which the update turns off until it is turned on.
+        assertTrue(terms.contains("the update turns it off for everyone until they turn it on"));
         assertTrue(terms.contains("unsent submissions wait on the phone for at most 7 days"));
         assertTrue(terms.contains("the feedback service keeps them for 90 days"));
         // 0.5.0's minimums, Autopilot and auto-accept (finalSpec.privacyConsent, TERMS).
@@ -174,10 +177,14 @@ public final class LegalTextsTest {
         }
         String privacy = LegalTexts.Doc.PRIVACY.text();
         for (String flow : new String[] {"Update checks.", "**Send anonymous feedback**, only when you tap Send",
-                "**Attach masked diagnostics** on (off by default, chosen for each submission)",
+                "With **Share anonymous diagnostics** on (from 0.6.34; before, each submission chose with Attach "
+                        + "masked diagnostics)",
+                "With the switch off, it sends only your words, the category and the app's version",
                 "**Report this offer**, only when you tap Send",
-                "**Share anonymous diagnostics after each dash**, only if you turn it on in Settings",
-                "it starts off, and no update turns it on", "Offer Filter stopped unexpectedly last time",
+                "**Share anonymous diagnostics**, only if you turn it on in Settings",
+                "turns it off for everyone, whatever was chosen before, and no update turns it on",
+                "**Share anonymous diagnostics** is off unless you turn it on",
+                "Offer Filter stopped unexpectedly last time",
                 "Where feedback goes.", "Share report", "Place names.", "Navigation, only when you tap it.",
                 "Help, only when you tap it in Settings", "Tips.", "24-hour retention window",
                 "rounded to about half a kilometre", "masked"}) {
@@ -267,7 +274,8 @@ public final class LegalTextsTest {
                 "Autopilot's plans with the acceptance rate and the offer rate (offers an hour) they count with",
                 "Autopilot's log lines carry only the offer rate (offers an hour) it works out from them",
                 "Your acceptance rate leaves the phone only in a report you share (**Share report**), in masked "
-                        + "diagnostics you attach to feedback, and in **Report this offer**",
+                        + "diagnostics sent with feedback (with **Share anonymous diagnostics** on, or in the report "
+                        + "offered after a stop), and in **Report this offer**",
                 "It is never in the summary after each dash",
                 "Autopilot's bar and why it changed (never your acceptance rate)",
                 "The fingerprint kept with a reading never leaves the phone.",

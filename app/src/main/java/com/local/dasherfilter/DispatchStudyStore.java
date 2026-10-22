@@ -21,11 +21,14 @@ import java.util.function.Consumer;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** Separate consent and bounded worker. No network calls, raw labels, or reads of prior waiting history. */
+/**
+ * The offer timing study's scope and bounded worker. No network calls, raw labels, or reads of prior waiting history.
+ * It runs only while Share anonymous diagnostics is on (0.6.34; its own choice before, retired once by
+ * {@link #retireOwnChoice}), and every change of that switch starts it afresh ({@link #clear}).
+ */
 final class DispatchStudyStore {
     static final String PREFS = "dispatch-study";
     static final String FILE = "dispatch-study.json";
-    static final int CONSENT_VERSION = 1;
     static final int MAX_FILE_BYTES = 60_000;
     private static final ThreadPoolExecutor WORK = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(64), r -> { Thread t = new Thread(r, "offer-timing-study"); t.setDaemon(true); return t; });
@@ -39,8 +42,7 @@ final class DispatchStudyStore {
     static SharedPreferences prefs(Context c) { return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE); }
     static long epoch(Context c) { return prefs(c).getLong("epoch", 0); }
     static boolean enabled(Context c) {
-        boolean on = Consent.accepted(c) && prefs(c).getInt("version", 0) == CONSENT_VERSION
-                && prefs(c).getBoolean("enabled", false);
+        boolean on = Consent.accepted(c) && Feedback.diagnosticsOn(c);
         if (on) watchRules(c.getApplicationContext());
         return on;
     }
@@ -66,32 +68,26 @@ final class DispatchStudyStore {
         watchedRules = p; p.registerOnSharedPreferenceChangeListener(rulesListener);
     }
 
-    /** A checked draft is never consent. A prior explicit refusal (including diagnostics) stays unchecked. */
-    static boolean checkedDraft(Context c) {
-        SharedPreferences p = prefs(c);
-        if (p.contains("enabled")) return p.getBoolean("enabled", false);
-        SharedPreferences feedback = Feedback.prefs(c);
-        return !feedback.contains("after_dash") || feedback.getBoolean("after_dash", false);
-    }
-
-    /** Called only by the dialog's affirmative confirmation. Does not alter the after-dash choice. */
-    static void confirm(Context c, boolean on) {
-        if (!Consent.accepted(c)) return;
+    /**
+     * The study's own choice before 0.6.34 ("version" and "enabled"), forgotten once with whatever it kept: the one
+     * switch covers it now, and starts off. Called by {@link Feedback} as it retires the separate choices.
+     *
+     * @return whether a choice was kept
+     */
+    static boolean retireOwnChoice(Context c) {
         Context app = c.getApplicationContext();
-        if (on && enabled(app)) return;
-        long next = epoch(app) + 1;
-        prefs(app).edit().putInt("version", CONSENT_VERSION).putBoolean("enabled", on)
-                .putLong("epoch", next).putLong("since", System.currentTimeMillis()).apply();
-        // Every confirmation starts a fresh scope; prepared reports from any previous scope are stripped.
-        resetSoon(app, next);
-        FeedbackOutbox.discardStudy(app);
+        SharedPreferences p = prefs(app);
+        boolean kept = p.contains("enabled") || p.contains("version");
+        if (!kept) return false;
+        p.edit().remove("enabled").remove("version").apply();
+        clear(app);
+        return true;
     }
 
-    /** Dismissal records a refusal only before the first choice, never changes existing consent. */
-    static void dismissed(Context c) {
-        if (!prefs(c).contains("enabled")) prefs(c).edit().putBoolean("enabled", false).apply();
-    }
-
+    /**
+     * A fresh scope: a new epoch, so nothing kept or queued before it is used or sent (prepared reports from an
+     * earlier scope are stripped), and its file goes. Share anonymous diagnostics turned on or off, and Clear history.
+     */
     static void clear(Context c) {
         Context app = c.getApplicationContext();
         long next = epoch(app) + 1;

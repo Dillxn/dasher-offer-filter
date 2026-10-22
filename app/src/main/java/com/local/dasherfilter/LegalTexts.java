@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 22 October 2026 · for {app} 0.6.33
+            Beta terms, effective 22 October 2026 · for {app} 0.6.34
 
             ## What {app} is
 
@@ -196,10 +196,12 @@ final class LegalTexts {
             by itself during a dash waits until the dash ends; if nothing of a dash is seen for 8 hours while \
             Dasher is not in front and the screen is off, it installs then, after checking the update again.
             - Feedback and offer reports are accountless and are sent only when you tap Send. Masked diagnostics go \
-            only when you attach them to feedback, or after each dash once you turn on Share anonymous diagnostics \
-            after each dash (off by default). The privacy text says what each sends, where it goes and how long it \
-            is kept: unsent submissions wait on the phone for at most 7 days, and the feedback service keeps them \
-            for 90 days. Sending feedback does not guarantee a reply, review or fix.
+            only with Share anonymous diagnostics (off by default) turned on: after each dash and with the feedback \
+            you send. From 0.6.34 that one switch covers every diagnostic, the offer timing study included, and the \
+            update turns it off for everyone until they turn it on. A report the app offers after a stop sends them \
+            once, when you tap Send. The privacy text says what each sends, where it goes and how long it is kept: \
+            unsent submissions wait on the phone for at most 7 days, and the feedback service keeps them for 90 \
+            days. Sending feedback does not guarantee a reply, review or fix.
             - Once a day it sends the feedback service one anonymous count, so the developer can see how many \
             people use the app: its version, whether this install was counted before and a random code made new \
             each day. It is on by default; turn it off with Send an anonymous daily count in Settings. The privacy \
@@ -262,11 +264,11 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 22 October 2026 · for {app} 0.6.33
+            Beta privacy policy, effective 22 October 2026 · for {app} 0.6.34
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
-            optional diagnostics after each dash, the anonymous daily count (on unless you turn it off), place-name \
+            optional anonymous diagnostics, the anonymous daily count (on unless you turn it off), place-name \
             lookups and links you choose to open can send information to the services described under What leaves \
             the phone. The developer's public project identity is Dillxn. {app} is beta software, and this text \
             changes with it (see Changes).
@@ -346,19 +348,19 @@ final class LegalTexts {
 
             ## Optional offer timing study
 
-            Settings offers a separate choice, “Include future offer timing study in diagnostics I choose to \
-            share”. On first presentation it is checked as a draft; nothing is enabled or collected until Save \
-            choice is tapped. A prior explicit study refusal or after-dash diagnostics opt-out leaves the draft \
-            unchecked. Accepting the general notice does not enable this choice, including for existing users. \
-            Cancel, Back and dismissal enable nothing. Automatic after-dash diagnostics remain a separate choice \
-            and are never turned back on by this study.
+            The offer timing study is part of **Share anonymous diagnostics** (from 0.6.34; before, Settings \
+            offered it as a separate choice, “Include future offer timing study in diagnostics I choose to share”). \
+            It records nothing while that switch is off. Turning the switch on starts a fresh study; turning it \
+            off, or Clear history, ends it and removes its data from this phone and from unsent reports. The update \
+            to 0.6.34 forgets the separate choice and removes what it kept. Accepting the notice never turns the \
+            switch on.
 
-            Once confirmed, new observations are processed locally to compare an estimate frozen before an outcome \
+            While it is on, new observations are processed locally to compare an estimate frozen before an outcome \
             with subsequently observed waiting and numeric offer quality. This study uses a separate instance of \
-            the existing historical-mean estimator, trained only on observations made after study consent (and \
-            reset after a process, session or policy change); it is not a claim to capture DoorDash's algorithm or \
-            every homepage estimate. It stores no old waiting-history export. Records contain method/schema \
-            versions, the estimate or an unavailable marker, actual evidence counts and exposure, a \
+            the existing historical-mean estimator, trained only on observations made since the switch was turned \
+            on (and reset after a process, session or policy change); it is not a claim to capture DoorDash's \
+            algorithm or every homepage estimate. It stores no old waiting-history export. Records contain \
+            method/schema versions, the estimate or an unavailable marker, actual evidence counts and exposure, a \
             last-complete-wait baseline when available, normalized filter score/bar, a local sequential policy \
             epoch, UTC hour without date, numeric pay/miles/minutes/stops/items, fixed requested-action and \
             observed-outcome categories, touch-takeover evidence and explicit unknown/censor reasons. It does not \
@@ -370,12 +372,12 @@ final class LegalTexts {
             hours during use; training and live timers are not restored after restart. Its report section is at \
             most 10,000 characters and ten recent rows, with omission counts, inside existing report limits. No \
             customer/merchant text, address, coordinates, raw nodes/screenshots, account/device identifier, \
-            acceptance rate, Autopilot goal/plan, configured minimum amounts or free text is included. Preview \
-            study data shows the structured section; the existing full Preview shows what is attached to feedback. \
-            Study data goes only with diagnostics the user attaches to feedback or, if separately enabled, the \
-            existing capped after-dash summaries. It uses the same feedback recipient, queue limits and stated \
-            90-day server retention below; this candidate does not establish that server retention has been \
-            verified. Existing automatic-summary exclusions remain unchanged.
+            acceptance rate, Autopilot goal/plan, configured minimum amounts or free text is included. The feedback \
+            dialog's Preview shows the study section with the rest of what goes. Study data goes only with the \
+            diagnostics the switch sends: with feedback you send and in the capped summaries after each dash. It \
+            uses the same feedback recipient, queue limits and stated 90-day server retention below; this candidate \
+            does not establish that server retention has been verified. Existing automatic-summary exclusions \
+            remain unchanged.
 
             Uncheck and save to stop new study collection/sharing and discard local study data and study sections \
             in unsent reports. Other feedback and the automatic-report choice remain unchanged. An emptied \
@@ -507,8 +509,8 @@ final class LegalTexts {
             already read: Peek's introduction, and the version whose "What is new" note was shown. Uninstalling \
             removes it.
             - Feedback waiting to send. A submission is saved on the phone before it is sent, so no signal or a \
-            restart loses nothing: your words, its category, and any masked diagnostics or offer report you chose \
-            to include. At most 5 submissions wait, each at most 7 days; one still unsent after 7 days is discarded \
+            restart loses nothing: your words, its category, and any masked diagnostics or offer report that go \
+            with it. At most 5 submissions wait, each at most 7 days; one still unsent after 7 days is discarded \
             unsent. Each is deleted from the phone once the feedback service has accepted it, or refused it for \
             good.
             - The last 10 references of accepted submissions: the date, the short reference and whether it was \
@@ -525,9 +527,9 @@ final class LegalTexts {
             where in the app's code it happened (the error's type and the top of its stack, or the top of the main \
             thread for a stop for not responding). Never an error's message, a trace's other text or anything read \
             from a screen. It is kept for 24 hours; Clear history removes it.
-            - With **Share anonymous diagnostics after each dash** on: counts of the current dash's problems by \
-            fixed category, and the masked read lines of up to six recent problems, until that dash's summary is \
-            queued. Turning the option off or Clear history removes them.
+            - With **Share anonymous diagnostics** on: counts of the current dash's problems by fixed category, and \
+            the masked read lines of up to six recent problems, until that dash's summary is queued. Turning the \
+            option off or Clear history removes them.
             - Your Day, Night, System or Auto theme choice. Auto is the default for new choices; it calculates the \
             local sun cycle using only an existing permitted approximate location, without a network request or a \
             separate saved location. When none is available it uses a disclosed local-clock fallback: day from 6 am \
@@ -662,13 +664,14 @@ final class LegalTexts {
             and after); as for other recognized screens, they can also hold the decline question's masked words \
             with its percentage.
             - Where it goes. Your acceptance rate leaves the phone only in a report you share (**Share report**), \
-            in masked diagnostics you attach to feedback, and in **Report this offer**, which sends Autopilot's \
-            state and the acceptance rate it counts with. It is never in the summary after each dash: that summary \
-            carries Autopilot's bar and why it changed (never your acceptance rate), so a reason such as \
-            "acceptance rate below your goal" can show it was below your goal, never what it was. The fingerprint \
-            kept with a reading never leaves the phone. The mark that declining an offer does not lower your \
-            acceptance rate is part of that offer's history line and goes with it in Share report, attached \
-            diagnostics and the summary after each dash; Report this offer leaves it out.
+            in masked diagnostics sent with feedback (with **Share anonymous diagnostics** on, or in the report \
+            offered after a stop), and in **Report this offer**, which sends Autopilot's state and the acceptance \
+            rate it counts with. It is never in the summary after each dash: that summary carries Autopilot's bar \
+            and why it changed (never your acceptance rate), so a reason such as "acceptance rate below your goal" \
+            can show it was below your goal, never what it was. The fingerprint kept with a reading never leaves \
+            the phone. The mark that declining an offer does not lower your acceptance rate is part of that offer's \
+            history line and goes with it in Share report, the diagnostics sent with feedback and the summary after \
+            each dash; Report this offer leaves it out.
             - Clear history removes the reading, Autopilot's working figures, the accepted offers it keeps, its \
             independent working minimums and any pending adjustment, its last-change note, the note of its last \
             growth (and with it the Undo) and its other notes above. Your rules and Autopilot's settings stay.
@@ -677,8 +680,8 @@ final class LegalTexts {
             choice. Existing diagnostics can include scoring mode, learning on/off and the recorded score kind, \
             alongside observed offer figures and per-decision required pay, and fixed-word lines saying whether \
             each of your accepts taught the learner and, if not, why (no amounts). Raw learned-best snapshots and \
-            adoption receipts are not sent. The separate offer timing study continues to exclude minimum amounts \
-            and learner evidence.
+            adoption receipts are not sent. The offer timing study continues to exclude minimum amounts and learner \
+            evidence.
 
             ## What leaves the phone, and when
 
@@ -687,13 +690,14 @@ final class LegalTexts {
             internet connection metadata such as your IP address and the app's own request information, but no \
             offer history.
             - **Send anonymous feedback**, only when you tap Send: the category you pick, what you type (at most \
-            4,000 characters), and the app's version. With **Attach masked diagnostics** on (off by default, chosen \
-            for each submission), it also sends the masked diagnostic report Share report builds: the Android \
-            version and phone maker, the app's readiness, settings and last status line, the offer map's counts \
-            (never a position), your current rules and Autopilot's state, including the latest acceptance-rate \
-            reading, the decision history, the state of updates, the latest states, the bounded masked logs \
-            described above and any recent stop summary. Long diagnostics go in at most 4 parts; Preview shows \
-            exactly what will be sent.
+            4,000 characters), and the app's version. With **Share anonymous diagnostics** on (from 0.6.34; before, \
+            each submission chose with Attach masked diagnostics), it also sends the masked diagnostic report Share \
+            report builds, with the offer timing study's section: the Android version and phone maker, the app's \
+            readiness, settings and last status line, the offer map's counts (never a position), your current rules \
+            and Autopilot's state, including the latest acceptance-rate reading, the decision history, the state of \
+            updates, the latest states, the bounded masked logs described above and any recent stop summary. Long \
+            diagnostics go in at most 4 parts; Preview shows exactly what will be sent. With the switch off, it \
+            sends only your words, the category and the app's version, and the dialog says which.
             - **Report this offer**, only when you tap Send: what went wrong (Misread, Wrong decline, Wrong accept \
             or Other), your optional note, and that offer's report: its figures, decision and outcome, the bar it \
             was judged at, its masked read lines (with every word that is not offer vocabulary reduced to its \
@@ -702,25 +706,29 @@ final class LegalTexts {
             Android's versions (not the phone's maker) and the minute it was decided. With Autopilot's state go \
             whether it is recovering toward your goal, its correction and, for Dasher's own reading, how many \
             minutes ago Dasher showed it. The dialog says what is sent; tapping Send is your choice to send it.
-            - **Share anonymous diagnostics after each dash**, only if you turn it on in Settings or with the \
-            switch at the end of the notice, "Share anonymous diagnostics after each dash (helps fix it for your \
-            phone)" (from 0.6.18; from 0.6.20 it shows your current choice, and accepting the notice leaves the \
-            option as that switch is left); it starts off, and no update turns it on. After each dash ends (Dasher \
-            shows the dash ended, you end it in Dasher with its End dash, or nothing of the dash was seen for 30 \
-            minutes), it sends one masked summary of at most 30,000 characters: the app and Android version and \
-            phone maker; how long the dash lasted (to the nearest 5 minutes) and how it ended; your switches and \
-            which rules are set, and whether screen reading, background offers and alerts were ready; Autopilot's \
-            bar and why it changed (never your acceptance rate); counts of offers by result, action and outcome; \
-            unreadable offers; declines still showing, by stage; decline-error recoveries; automatic accepts not \
-            sent, and why; the types of screen-read and notification errors with the place in the app's code where \
-            they happened; how Dasher's window was laid out; what Peek did, by fixed category; that dash's \
-            decisions, with times counted from the dash's start; masked log lines only around those problems; and \
-            any recent stop summary. Never coordinates, place names, or an install or device identifier. At most \
-            one a dash and three a day. Turning it off discards summaries not yet sent.
-            - After a crash or a stop for not responding: with diagnostics after each dash on, the stop's summary \
-            goes with the next one. Otherwise the homepage shows "{app} stopped unexpectedly last time" with Send \
-            report, which opens the feedback dialog with Bug chosen and diagnostics attached, for that report only; \
-            nothing is sent unless you tap Send.
+            - **Share anonymous diagnostics**, only if you turn it on in Settings or with the switch at the end of \
+            the notice, "Share anonymous diagnostics (helps fix it for your phone)" (from 0.6.18; from 0.6.20 it \
+            shows your current choice, and accepting the notice leaves the option as that switch is left). From \
+            0.6.34 this one switch covers the summary after each dash, the diagnostics with feedback you send \
+            (above) and the offer timing study, which were three choices before. It covers more than any of them \
+            did, so the update to 0.6.34 turns it off for everyone, whatever was chosen before, and no update turns \
+            it on. After each dash ends (Dasher shows the dash ended, you end it in Dasher with its End dash, or \
+            nothing of the dash was seen for 30 minutes), it sends one masked summary of at most 30,000 characters: \
+            the app and Android version and phone maker; how long the dash lasted (to the nearest 5 minutes) and \
+            how it ended; your switches and which rules are set, and whether screen reading, background offers and \
+            alerts were ready; Autopilot's bar and why it changed (never your acceptance rate); counts of offers by \
+            result, action and outcome; unreadable offers; declines still showing, by stage; decline-error \
+            recoveries; automatic accepts not sent, and why; the types of screen-read and notification errors with \
+            the place in the app's code where they happened; how Dasher's window was laid out; what Peek did, by \
+            fixed category; that dash's decisions, with times counted from the dash's start; masked log lines only \
+            around those problems; any recent stop summary; and the offer timing study's rows for that dash. Never \
+            coordinates, place names, or an install or device identifier. At most one a dash and three a day. \
+            Turning it off discards summaries not yet sent and the timing study's data.
+            - After a crash or a stop for not responding: with **Share anonymous diagnostics** on, the stop's \
+            summary goes with the next summary after a dash. Otherwise the homepage shows "{app} stopped \
+            unexpectedly last time" with Send report, which opens the feedback dialog with Bug chosen; that report \
+            sends the masked diagnostics, the stop's summary among them, for it only, and nothing is sent unless \
+            you tap Send.
             - Where feedback goes. All of the above go only to the project's own feedback service, a Supabase Edge \
             Function reached through Cloudflare. Every submission carries a fresh random token, used only to tie \
             its parts together and store each once; it is new for each submission and not tied to your phone. The \
@@ -740,8 +748,8 @@ final class LegalTexts {
             - Waiting and retrying. If the phone is offline, the service is busy or too many submissions came from \
             your network recently, a submission waits on the phone (see above) and Android sends it later, once a \
             network is available; the app also sends what waits when it next opens. Nothing is sent unless the \
-            current notice is accepted, and an after-dash summary only while that option is still on; both are \
-            checked again before every part.
+            current notice is accepted, and an after-dash summary only while Share anonymous diagnostics is still \
+            on; both are checked again before every part.
             - **Send an anonymous daily count**, on unless you turn it off in Settings (on by default from 0.6.3, \
             for new installs and installs updating alike). Once a UTC day at most, and only after you accept the \
             current notice, the app sends the same feedback service one count, so the developer can see how many \
@@ -778,8 +786,8 @@ final class LegalTexts {
             which network sent which code. It counts at most 20,000 a day in all. Cloudflare and Supabase receive \
             each count's ordinary connection metadata, as described under Where feedback goes.
             - **Share report**, only when you tap it, hands a masked report to the app you choose: the same report \
-            attached diagnostics carry, with the latest acceptance-rate reading. From there, that app handles the \
-            copy under its own privacy practices.
+            the diagnostics sent with feedback carry, with the latest acceptance-rate reading. From there, that app \
+            handles the copy under its own privacy practices.
             - Place names. To name the squares on the map and the place you are in, the app asks Android's own \
             place lookup (Google's servers on most phones) about positions rounded to about half a kilometre, the \
             phone's own approximate position among them, once while a position remains cached. An evicted or \
@@ -823,8 +831,8 @@ final class LegalTexts {
             ends the hold. Peek pauses while your phone is locked.
             - The scoring mode (Area by default, or Strict) is the word in the radar's middle on the homepage; \
             acceptance learning is the Learn button on the homepage (a long press shows what it learned). Turning \
-            learning off retains bests; confirmed Reset or Clear history clears them. Neither enables the optional \
-            timing study or sharing.
+            learning off retains bests; confirmed Reset or Clear history clears them. Neither turns on Share \
+            anonymous diagnostics or its timing study.
             - Autopilot is on by default; turning it off from its chip on the homepage uses your saved and enabled \
             learned minimums again. It retains committed working adjustments for when you turn it back on, and \
             records no new ones while off. The acceptance-rate reading is kept whether or not Autopilot is on; \
@@ -839,10 +847,10 @@ final class LegalTexts {
             history. Feedback and offer reports you sent and that still wait to go stay until they are sent or 7 \
             days pass. Your rules, Autopilot's settings and the app's last status line (which can show the last \
             offer's figures until the next status replaces it) remain.
-            - Feedback and offer reports leave only after you tap Send. Leave **Attach masked diagnostics** off to \
-            send only your words, the category and the app's version.
-            - **Share anonymous diagnostics after each dash** is off unless you turn it on, and you can turn it off \
-            at any time.
+            - Feedback and offer reports leave only after you tap Send. With **Share anonymous diagnostics** off, \
+            feedback sends only your words, the category and the app's version.
+            - **Share anonymous diagnostics** is off unless you turn it on, and you can turn it off at any time: \
+            summaries not yet sent and the timing study's data go with it.
             - **Send an anonymous daily count** is on unless you turn it off in Settings; off, the app sends no \
             count. Counts already made stay in the service's daily totals, which cannot tell which phone sent them, \
             until those are deleted after 400 days.

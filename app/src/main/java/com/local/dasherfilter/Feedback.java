@@ -29,7 +29,7 @@ import org.json.JSONObject;
  * <p>The protocol: one JSON POST per part, with no Origin header (the service files it as from the app). {@code kind}
  * is feedback, problem or diagnostics; {@code category} one of the service's; the {@code message} (what the user
  * typed, at most {@value #MAX_MESSAGE_CHARS} characters) is required for feedback, so every later part of a feedback
- * submission carries a short continuation line instead. Diagnostics (masked text the user chose to attach, an offer's
+ * submission carries a short continuation line instead. Diagnostics (masked text going with feedback, an offer's
  * report, or the opt-in summary after a dash) require {@code diagnosticsConsented} and go in at most
  * {@value #MAX_PARTS} parts of at most {@value #MAX_PART_CHARS} characters, cut at line ends. The service trims every
  * text field, so each part is framed by a header line and an end line that are never whitespace, and the text between
@@ -423,9 +423,9 @@ final class Feedback {
     }
 
     /**
-     * Sends what the user typed in the feedback dialog, with diagnostics only when they chose to attach them
-     * ({@code prepared}, built and previewed for this submission, or built now). Queued durably first, then sent at
-     * once; {@link Event}s say how it went.
+     * Sends what the user typed in the feedback dialog, with diagnostics only when {@code attach}: Share anonymous
+     * diagnostics on, or the report offered after a stop ({@code prepared}, built and previewed for this submission, or
+     * built now). Queued durably first, then sent at once; {@link Event}s say how it went.
      *
      * @return the submission's token, to tell its events apart
      */
@@ -477,10 +477,22 @@ final class Feedback {
         return token;
     }
 
-    // ---- Diagnostics after each dash: the opt-in ----
+    // ---- Share anonymous diagnostics: the one opt-in ----
+
+    /**
+     * The one diagnostics switch (0.6.34; the owner, 22 October 2026: "we should combine all diagnostics opt in into
+     * one"): the summary after each dash, masked diagnostics with the feedback the user sends, and the offer timing
+     * study ({@link DispatchStudyStore}), which were three choices before.
+     */
+    static final String DIAGNOSTICS_SWITCH = "Share anonymous diagnostics";
+    static final String DIAGNOSTICS_LINE = "Masked, after each dash and with feedback you send";
 
     private static final String PREFS = "feedback";
-    private static final String AFTER_DASH = "after_dash";
+    private static final String DIAGNOSTICS = "diagnostics";
+    /** The switch it replaced, diagnostics after each dash: forgotten once ({@link #oneSwitch}). */
+    static final String RETIRED_AFTER_DASH = "after_dash";
+    /** Set once the separate choices are forgotten, on every install from 0.6.34, new ones too. */
+    private static final String ONE_SWITCH = "one_switch";
     private static final String AUTOMATIC_EPOCH = "automatic_epoch";
     private static final String REFERENCES = "references";
     private static final String LAST_STATE = "last_state";
@@ -492,29 +504,57 @@ final class Feedback {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    /** "Share anonymous diagnostics after each dash": off unless the user turned it on; no update turns it on. */
-    static boolean afterDashOn(Context context) {
-        return prefs(context).getBoolean(AFTER_DASH, false);
+    /** {@value #DIAGNOSTICS_SWITCH}: off unless the user turned it on; no update turns it on. */
+    static boolean diagnosticsOn(Context context) {
+        SharedPreferences prefs = prefs(context);
+        if (!prefs.getBoolean(ONE_SWITCH, false)) oneSwitch(context);
+        return prefs.getBoolean(DIAGNOSTICS, false);
     }
 
     /**
-     * The user's choice. Off discards every automatic summary not yet sent, and what the current dash counted. Any
-     * thread, the main one included: the choice holds at once (in memory; written to disk in the background), and the
-     * files go on DashSummary's own thread.
+     * The user's choice. A change starts the offer timing study afresh, its numbers gone (on its own thread); off also
+     * discards every automatic summary not yet sent, and what the current dash counted. Any thread, the main one
+     * included: the choice holds at once (in memory; written to disk in the background), and the files go on
+     * DashSummary's own thread.
      */
-    static synchronized void setAfterDash(Context context, boolean on) {
+    static synchronized void setDiagnostics(Context context, boolean on) {
         Context app = context.getApplicationContext();
         SharedPreferences prefs = prefs(app);
-        boolean was = prefs.getBoolean(AFTER_DASH, false);
-        SharedPreferences.Editor edit = prefs.edit().putBoolean(AFTER_DASH, on);
+        if (!prefs.getBoolean(ONE_SWITCH, false)) oneSwitch(app);
+        boolean was = prefs.getBoolean(DIAGNOSTICS, false);
+        SharedPreferences.Editor edit = prefs.edit().putBoolean(DIAGNOSTICS, on);
         // A new epoch: a summary of a dash that ended before the change is never queued or sent, even if the switch
         // goes back.
         if (was != on) edit.putLong(AUTOMATIC_EPOCH, prefs.getLong(AUTOMATIC_EPOCH, 0) + 1);
         edit.apply();
         DashSummary.optInChanged(app, on);
         if (was != on) {
-            DiagnosticLog.log(app, "feedback", "diagnostics after each dash turned " + (on ? "on" : "off")
-                    + (on ? "" : "; unsent ones discarded"));
+            DispatchStudyStore.clear(app);
+            DiagnosticLog.log(app, "feedback", "diagnostics turned " + (on ? "on" : "off")
+                    + (on ? "" : "; unsent summaries and timing study discarded"));
+        }
+    }
+
+    /**
+     * The separate choices the one switch replaced, forgotten once: it covers more than either did, so it starts off
+     * for everyone, and only the user turns it on (the notice asks). Diagnostics after each dash on goes as turning it
+     * off went (its summaries not yet sent, and what the current dash counted); so does the timing study's own choice,
+     * with its numbers ({@link DispatchStudyStore#retireOwnChoice}).
+     */
+    private static synchronized void oneSwitch(Context context) {
+        Context app = context.getApplicationContext();
+        SharedPreferences prefs = prefs(app);
+        if (prefs.getBoolean(ONE_SWITCH, false)) return;
+        boolean afterDash = prefs.getBoolean(RETIRED_AFTER_DASH, false);
+        SharedPreferences.Editor edit = prefs.edit().remove(RETIRED_AFTER_DASH).putBoolean(ONE_SWITCH, true);
+        if (afterDash) edit.putLong(AUTOMATIC_EPOCH, prefs.getLong(AUTOMATIC_EPOCH, 0) + 1);
+        edit.apply();
+        boolean study = DispatchStudyStore.retireOwnChoice(app);
+        if (afterDash) DashSummary.optInChanged(app, false);
+        if (afterDash || study) {
+            DiagnosticLog.log(app, "feedback", "diagnostics choices joined in one switch, off until turned on"
+                    + (afterDash ? "; after-dash summaries not yet sent discarded" : "")
+                    + (study ? "; timing study choice and data removed" : ""));
         }
     }
 
@@ -528,7 +568,7 @@ final class Feedback {
 
     /** An automatic summary of {@code epoch} may be queued or sent: the opt-in is on, and has not changed since. */
     static boolean automaticAllowed(Context context, long epoch) {
-        return afterDashOn(context) && automaticEpoch(context) == epoch;
+        return diagnosticsOn(context) && automaticEpoch(context) == epoch;
     }
 
     /**

@@ -25,6 +25,10 @@ import java.util.List;
  * (0.6.33: before, a tap paused). The user drags it up and down either edge or across to the other one; a drag is
  * never a tap or a hold, nor is a hold ever a drag. Screen readers get both, named, and "Move up", "Move down" and
  * "Move to other side".
+ *
+ * <p>Its twin on Offer Filter's home screen ({@link #showDasher}, 0.6.34; the owner: "door dash swap button should be
+ * same as offer filter swap button on its screen", "the tab"): the same tab in the same place, with Dasher's own icon
+ * in place of the mascot, whose tap opens Dasher. It has no hold, and moving either moves both.
  */
 @SuppressLint("ViewConstructor")
 final class DasherTab extends View {
@@ -95,6 +99,8 @@ final class DasherTab extends View {
     /** A touch held in place this long is a hold, not a tap: Android's own long-press time, as the user set it. */
     private final int holdMs;
     private final Runnable holdCheck = this::heldDown;
+    /** Dasher's icon, on Offer Filter's own tab; null for the tab over Dasher. */
+    private android.graphics.drawable.Drawable dasher;
 
     DasherTab(Context context, Ui ui, Listener listener) {
         super(context);
@@ -110,6 +116,14 @@ final class DasherTab extends View {
         setFocusable(true);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
         describe();
+    }
+
+    /** Offer Filter's home screen's tab: Dasher's icon where the mascot is, a tap that opens Dasher, and no hold. */
+    void showDasher(android.graphics.drawable.Drawable icon) {
+        dasher = icon;
+        setLongClickable(false);
+        describe();
+        invalidate();
     }
 
     void show(FilterHeroView.State next) {
@@ -183,6 +197,10 @@ final class DasherTab extends View {
     }
 
     private void describe() {
+        if (dasher != null) {
+            setContentDescription(DasherLaunch.OPEN_LABEL);
+            return;
+        }
         String now = state == FilterHeroView.State.ON ? AppName.NAME + ": auto-decline on."
                 : state == FilterHeroView.State.PAUSED ? AppName.NAME + ": paused." : AppName.NAME + ": no rules yet.";
         String tap = state == FilterHeroView.State.ON ? " Tap to open. Hold to pause."
@@ -251,6 +269,17 @@ final class DasherTab extends View {
         line.setStrokeWidth(Math.max(1, ui.dp(1)));
         line.setColor(border);
         canvas.drawRoundRect(rect, round, round, line);
+        if (dasher != null) {
+            // Dasher's icon, whole in the part that shows, and never mirrored: it is Dasher's own picture.
+            canvas.restore();
+            int size = ui.dp(look == Look.REST ? 18 : 24);
+            float middle = look == Look.REST ? ui.dp(REST_SHOWN_DP) / 2f : width / 2;
+            int x = Math.round((right ? width - middle : middle) - size / 2f);
+            int y = Math.round(height / 2 - size / 2f);
+            dasher.setBounds(x, y, x + size, y + size);
+            dasher.draw(canvas);
+            return;
+        }
 
         float cy = height / 2;
         line.setColor(color);
@@ -274,7 +303,7 @@ final class DasherTab extends View {
                 dragging = false;
                 setPressed(true);
                 removeCallbacks(holdCheck);
-                postDelayed(holdCheck, holdMs);
+                if (dasher == null) postDelayed(holdCheck, holdMs);
                 return true;
             case MotionEvent.ACTION_MOVE:
                 if (!tracking) return true;
@@ -332,6 +361,7 @@ final class DasherTab extends View {
     }
 
     @Override public boolean performLongClick() {
+        if (dasher != null) return false;
         super.performLongClick();
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         listener.held();
@@ -353,11 +383,14 @@ final class DasherTab extends View {
         super.onInitializeAccessibilityNodeInfo(info);
         // What a tap and a hold do, in the screen reader's own words for them ("Double-tap to open Offer Filter"). A
         // peek keeps the plain words: tucked away a tap only brings the tab out, and over an offer it does nothing.
-        if (look != Look.PEEK) {
+        if (dasher != null) {
+            info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
+                    "open Dasher"));
+        } else if (look != Look.PEEK) {
             info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
                     state == FilterHeroView.State.OFF ? "set up rules" : "open " + AppName.NAME));
         }
-        if (look != Look.PEEK && state != FilterHeroView.State.OFF) {
+        if (dasher == null && look != Look.PEEK && state != FilterHeroView.State.OFF) {
             info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_LONG_CLICK,
                     state == FilterHeroView.State.ON ? "pause auto-decline" : "resume auto-decline"));
         }

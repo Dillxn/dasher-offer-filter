@@ -12,7 +12,7 @@ package com.local.dasherfilter;
  * under it. How the band folds goes by the window's width alone, never its height: over {@link #NARROW_DP} up to the
  * width at which the buttons fit beside the chips, the mascot shrinks from 64 to 48 dp into the corner, the room above
  * it closes and the status words' end pulls in to leave the buttons their room; from there, over {@link #RISE_DP}, the
- * buttons rise into the chips' row. Five buttons (a full screen's, with Open Dasher) fold up to
+ * buttons rise into the chips' row. Five buttons (before 0.6.34, a full screen's with Open Dasher) fold up to
  * {@link #FULL_SCREEN_EXTRA_DP} later, so a phone's own screen keeps its whole mascot.
  *
  * <p>Since 0.6.8 the buttons also lift into the first row, beside the tile, where the folded mascot, a readable tile
@@ -59,7 +59,7 @@ final class FluidLayout {
     static final float ROW1_LEAST_DP = 48;
     /**
      * The band folds over {@link #NARROW_DP} of the width up to where the buttons fit beside the chips, and the
-     * buttons rise over {@link #RISE_DP} from there. With a fifth button (Open Dasher, a full screen's) that width is
+     * buttons rise over {@link #RISE_DP} from there. With a fifth button (Open Dasher, until 0.6.34) that width is
      * up to {@link #FULL_SCREEN_EXTRA_DP} more, in step with the buttons' width past {@link #FOUR_BUTTONS_DP} over one
      * more button's {@link #BUTTON_STEP_DP}.
      */

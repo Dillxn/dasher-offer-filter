@@ -25,8 +25,9 @@ import android.widget.Toast;
  * shows, so it covers none of Dasher's offer or delivery; over an offer that passes it is green, over one that needs
  * review amber (presentation only). Away from an offer a tap on the peek brings the tab out for a few seconds; over an
  * offer the peek takes no touches at all, so every touch there is Dasher's. A tap on the tab brings Offer Filter's own
- * screen in front of Dasher, as it was, and the homepage's Open Dasher goes back (0.6.33, with split screen retired:
- * the owner, 22 October 2026, "instead can we have an easy way to swap back to the offerfilter app?"). A touch held
+ * screen in front of Dasher, as it was, and the same tab on Offer Filter's screen, with Dasher's icon, goes back
+ * (0.6.33, with split screen retired: the owner, 22 October 2026, "instead can we have an easy way to swap back to the
+ * offerfilter app?"; the twin since 0.6.34, in its place: {@link #tabOnRight}). A touch held
  * on the tab pauses or resumes auto-decline, as tapping the mascot does (a tap did that before 0.6.33); with no rule
  * saved yet, both open Offer Filter. A tap during an automatic decline is a touch like any other, so that offer is
  * handed back to the user.
@@ -247,34 +248,67 @@ final class DasherOverlay implements DasherTab.Listener {
     /** One place per orientation, as Dasher's window is now, and one for Dasher's half of a split screen. */
     private String orientation() {
         if (split) return "split";
-        return area.width() > area.height() ? "landscape" : "portrait";
+        return orientation(area.width(), area.height());
+    }
+
+    /** The tab's place is kept for each orientation: "landscape" for a window wider than tall, else "portrait". */
+    static String orientation(int width, int height) {
+        return width > height ? "landscape" : "portrait";
     }
 
     private boolean onRight() {
-        return prefs(service).getBoolean(RIGHT + orientation(), false);
+        return tabOnRight(service, orientation());
+    }
+
+    /**
+     * Which edge the tab is on in {@code orientation}, as the user left it (the left until moved): Offer Filter's own
+     * tab on its home screen (0.6.34) sits on the same one.
+     */
+    static boolean tabOnRight(Context context, String orientation) {
+        return prefs(context).getBoolean(RIGHT + orientation, false);
+    }
+
+    /** Where the tab's top is in {@code orientation}, as a share of its window's height. */
+    static float tabTopShare(Context context, String orientation) {
+        return prefs(context).getFloat(TOP + orientation, TOP_SHARE);
+    }
+
+    /** The tab moved, here or on Offer Filter's home screen: both follow. */
+    static void rememberTab(Context context, String orientation, boolean right, float share) {
+        prefs(context).edit().putBoolean(RIGHT + orientation, right).putFloat(TOP + orientation, share).apply();
     }
 
     private int minTop() {
-        return Math.min(area.top + ui().dp(TOP_MARGIN_DP), centeredTop());
+        return minTop(area.top, area.height(), ui());
     }
 
     private int maxTop() {
-        return Math.max(area.bottom - ui().dp(DasherTab.HEIGHT_DP) - ui().dp(BOTTOM_MARGIN_DP), minTop());
+        return maxTop(area.top, area.height(), ui());
     }
 
-    private int centeredTop() {
-        return area.top + (area.height() - ui().dp(DasherTab.HEIGHT_DP)) / 2;
+    /** The highest the tab's top may be on a window from {@code top}, {@code height} tall: below its status bar. */
+    static int minTop(int top, int height, Ui ui) {
+        return Math.min(top + ui.dp(TOP_MARGIN_DP), top + (height - ui.dp(DasherTab.HEIGHT_DP)) / 2);
+    }
+
+    /** The lowest: above its navigation bar. */
+    static int maxTop(int top, int height, Ui ui) {
+        return Math.max(top + height - ui.dp(DasherTab.HEIGHT_DP) - ui.dp(BOTTOM_MARGIN_DP), minTop(top, height, ui));
     }
 
     /** Where the tab's top is: as the user left it, else a little above the middle; never off its edge's band. */
     private int tabTop() {
-        float share = prefs(service).getFloat(TOP + orientation(), TOP_SHARE);
-        return clamp(area.top + Math.round(area.height() * share), minTop(), maxTop());
+        return tabTop(area.top, area.height(), tabTopShare(service, orientation()), ui());
+    }
+
+    /** As above, on a window from {@code top}, {@code height} tall: Offer Filter's own tab is placed the same way. */
+    static int tabTop(int top, int height, float share, Ui ui) {
+        return clamp(top + Math.round(height * share), minTop(top, height, ui), maxTop(top, height, ui));
     }
 
     private void remember(boolean right, int top) {
         float share = area.height() > 0 ? (top - area.top) / (float) area.height() : TOP_SHARE;
-        prefs(service).edit().putBoolean(RIGHT + orientation(), right).putFloat(TOP + orientation(), share).apply();
+        rememberTab(service, orientation(), right, share);
     }
 
     private static int clamp(int value, int min, int max) {
@@ -387,8 +421,9 @@ final class DasherOverlay implements DasherTab.Listener {
 
     /**
      * The tab's tap: Offer Filter's own screen in front of Dasher, its task as it was, so a dash goes back and forth
-     * by the tab and the homepage's Open Dasher. The tab goes at once, never over Offer Filter's screen as it comes;
-     * a look puts it back over Dasher once Dasher is in front again. Refused, a toast says where Offer Filter is.
+     * by the tab and its twin on Offer Filter's screen. The tab goes at once, never over Offer Filter's screen as it
+     * comes; a look puts it back over Dasher once Dasher is in front again. Refused, a toast says where Offer Filter
+     * is.
      */
     private void openOurs() {
         BooleanSupplier open = openOurs;

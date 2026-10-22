@@ -26,9 +26,10 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * Diagnostics after each dash: the user's opt-in, "Share anonymous diagnostics after each dash" (off by default, and
- * no update turns it on). With it on, the app counts this dash's problems as they happen, and once the dash ends
- * (Dasher showed it ended, as {@link Dashing#ended} knows it, or thirty minutes passed with nothing of the dash seen)
+ * Diagnostics after each dash: part of the user's opt-in, "Share anonymous diagnostics" (off by default, and no update
+ * turns it on; from 0.6.34 the one switch for every diagnostic, {@link Feedback#diagnosticsOn}). With it on, the app
+ * counts this dash's problems as they happen, and once the dash ends (Dasher showed it ended, as {@link Dashing#ended}
+ * knows it, or thirty minutes passed with nothing of the dash seen)
  * it queues one purpose-built summary of at most {@value Feedback#MAX_SUMMARY_CHARS} characters: the app's and
  * Android's version and the phone's maker; the settings' switches; counts by result, action and outcome; unreadable
  * offers, declines still showing by how far they got, decline-error recoveries, automatic accepts not sent and why,
@@ -181,7 +182,7 @@ final class DashSummary {
     static boolean collecting(Context context) {
         Context app = context.getApplicationContext();
         if (collectingFor != app) {
-            collecting = Feedback.afterDashOn(app);
+            collecting = Feedback.diagnosticsOn(app);
             collectingFor = app;
         }
         return collecting;
@@ -608,7 +609,7 @@ final class DashSummary {
      * again) or clearing history after the dash ended, before or while its summary is built, discards it.
      */
     static void summarize(Context app, long start, long end, End why, long epoch) {
-        if (!Consent.accepted(app) || !Feedback.afterDashOn(app)) return;
+        if (!Consent.accepted(app) || !Feedback.diagnosticsOn(app)) return;
         SharedPreferences prefs = prefs(app);
         JSONObject model = null;
         synchronized (DashSummary.class) {
@@ -660,7 +661,7 @@ final class DashSummary {
         }
         Collections.reverse(decisions); // Oldest first.
         StringBuilder head = new StringBuilder()
-                .append("Diagnostics after a dash, sent because Share anonymous diagnostics after each dash is on.\n")
+                .append("Diagnostics after a dash, sent because Share anonymous diagnostics is on.\n")
                 .append("App ").append(Updater.version(app)).append(" (").append(Feedback.versionCode(app))
                 .append(") · ").append(DiagnosticLog.phone()).append('\n')
                 .append("Dash: about ").append(duration(Math.max(0, end - start))).append("; ended: ").append(why.why)
@@ -922,7 +923,7 @@ final class DashSummary {
             if (start <= 0) return;
             synchronized (DashSummary.class) {
                 // Checked under the lock clear() takes: an opt-out or Clear history before this wins.
-                if (!Feedback.afterDashOn(app) || !Consent.accepted(app)) return;
+                if (!Feedback.diagnosticsOn(app) || !Consent.accepted(app)) return;
                 if (prefs(app).getLong(SUMMARIZED, 0) == start) return;
                 JSONObject model = model(app, start);
                 change.apply(model);

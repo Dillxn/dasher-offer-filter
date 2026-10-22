@@ -28,7 +28,7 @@ import org.json.JSONObject;
  * exception's message, a trace's other text or anything read from a screen.
  *
  * <p>Read on the next start ({@link #checkSoon}) from Android's record of how the app's process exited (API 30+),
- * matched with the note this process wrote as it crashed ({@link #install}). With diagnostics after each dash on, the
+ * matched with the note this process wrote as it crashed ({@link #install}). With Share anonymous diagnostics on, the
  * summaries go with the next one; otherwise the homepage offers to send a report, and only the user's Send sends it.
  * Before the current notice is accepted, nothing here runs: no note is written, Android's record is not read, nothing
  * is kept; accepting the notice starts both ({@link Consent#accept}).

@@ -73,8 +73,8 @@ final class NoticePage {
             body.addView(line, params);
         }
         // Pilot diagnostics (0.6.18): asked here, opt-in; it shows the choice already made (0.6.20), off on a new
-        // install.
-        Switch diagnostics = ui.toggle(body, Consent.DIAGNOSTICS_ASK, Feedback.afterDashOn(context));
+        // install, and off once for everyone at 0.6.34, when it became the one switch for every diagnostic.
+        Switch diagnostics = ui.toggle(body, Consent.DIAGNOSTICS_ASK, Feedback.diagnosticsOn(context));
         diagnostics.setId(DIAGNOSTICS_ID);
         ((LinearLayout.LayoutParams) diagnostics.getLayoutParams()).topMargin = ui.dp(18);
         TextView agreement = ui.text(Consent.AGREEMENT, 13, ui.inkSecondary, false);
@@ -98,7 +98,7 @@ final class NoticePage {
             // The notice's own ask: accepting keeps the switch as it is left, Settings' switch with it (0.6.20; 0.6.18
             // showed it off every time, so a choice already made looked undone).
             boolean on = diagnostics.isChecked();
-            if (on != Feedback.afterDashOn(context)) Feedback.setAfterDash(context, on);
+            if (on != Feedback.diagnosticsOn(context)) Feedback.setDiagnostics(context, on);
             accept.run();
         }), acceptParams);
         page.addView(body, Ui.matchWidth());

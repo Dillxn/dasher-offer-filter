@@ -2191,7 +2191,7 @@ public final class OfferFilterService extends AccessibilityService {
 
     // ---- The launch watch: every start of Dasher this app makes (main thread notes, scanner looks) ----
 
-    /** What started Dasher, as the [launch] lines name it: the header's Open Dasher. */
+    /** What started Dasher, as the [launch] lines name it: Offer Filter's tab (until 0.6.34, Open Dasher). */
     static final String LAUNCH_OPEN_DASHER = "open dasher";
     /** A tap on one of our cards (Dasher's launcher, or Dasher's own notification intent the card carried). */
     static final String LAUNCH_CARD = "card";

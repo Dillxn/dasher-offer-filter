@@ -565,7 +565,7 @@ final class DiagnosticLog {
                 + "Selective alerts permitted: " + OfferAlerts.canNotify(context) + "\n"
                 + "Screen text capture: " + (isEnabled(context) ? "automatic, masked" : "off")
                 + " (kept on this phone: about what one report carries, never older than 24 hours)\n"
-                + "Share anonymous diagnostics after each dash: " + (Feedback.afterDashOn(context) ? "on" : "off") + "\n"
+                + Feedback.DIAGNOSTICS_SWITCH + ": " + (Feedback.diagnosticsOn(context) ? "on" : "off") + "\n"
                 + DailyCount.SWITCH + ": " + (DailyCount.on(context) ? "on" : "off") + "\n"
                 + lossSummary() + "\n"
                 + "Last status: " + PersonalText.maskLine(FilterStore.lastStatus(context).replace('\n', ' ')) + "\n"

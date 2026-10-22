@@ -58,7 +58,10 @@ final class Consent {
     // 33 (0.6.33): split screen is retired, so the app no longer moves the split-screen divider for a map (the owner,
     // 22 October 2026: "i say let's get rid of split screen mode. we haven't been able to get the auto resizing to work
     // and it's so buggy").
-    static final int VERSION = 33;
+    // 34 (0.6.34): one switch, Share anonymous diagnostics, for the summary after each dash, masked diagnostics with
+    // feedback and the offer timing study, which were three choices; it starts off for everyone, and the notice asks
+    // (the owner, 22 October 2026: "we should combine all diagnostics opt in into one").
+    static final int VERSION = 34;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -96,11 +99,11 @@ final class Consent {
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},
         {"Your data.", "Your offers, rules and history stay on this phone. Feedback and reports leave only when you "
-                + "tap Send, and masked diagnostics only when you attach them or turn on the switch below. What you "
-                + "type is sent as written, and masking can miss details. The feedback service keeps what you send "
-                + "90 days, and the developer may review it with AI tools (Anthropic's Claude or OpenAI's "
-                + "ChatGPT/Codex). The Terms and Privacy say the rest, including what updates, the daily count, "
-                + "place lookups and map links send."},
+                + "tap Send, and masked diagnostics only with the switch below on: after each dash and with feedback "
+                + "you send. What you type is sent as written, and masking can miss details. The feedback service "
+                + "keeps what you send 90 days, and the developer may review it with AI tools (Anthropic's Claude or "
+                + "OpenAI's ChatGPT/Codex). The Terms and Privacy say the rest, including what updates, the daily "
+                + "count, place lookups and map links send."},
     };
     static final String ACCEPT = "I understand and accept";
     static final String AGREEMENT = "By tapping " + ACCEPT + ", you acknowledge this acceptance-rate risk, "
@@ -108,13 +111,15 @@ final class Consent {
     static final String NOT_NOW = "Not now";
     /**
      * The notice's last control (0.6.18; the owner chose "The install page and the notice ask pilot Dashers to turn
-     * diagnostics on, and it stays opt-in", 14 October 2026): one switch showing Settings' "Share anonymous diagnostics
-     * after each dash" as it is, off on a new install (0.6.20; 0.6.18 showed it unchecked every time, and the owner
-     * asked, 14 October 2026: "share diagnostics was turned off by default again on the splash screen even though I had
-     * it turned on last time"). Accepting the notice leaves Settings' switch as this one is left
-     * ({@link Feedback#setAfterDash} only when that changes it). The same summaries, masking and limits as that switch.
+     * diagnostics on, and it stays opt-in", 14 October 2026): one switch showing Settings' "Share anonymous
+     * diagnostics" as it is, off on a new install (0.6.20; 0.6.18 showed it unchecked every time, and the owner asked,
+     * 14 October 2026: "share diagnostics was turned off by default again on the splash screen even though I had it
+     * turned on last time"). From 0.6.34 it is the one switch for every diagnostic, so it shows off once for everyone:
+     * no earlier, narrower choice is read as this one. Accepting the notice leaves Settings' switch as this one is left
+     * ({@link Feedback#setDiagnostics} only when that changes it). The same summaries, masking and limits as that
+     * switch.
      */
-    static final String DIAGNOSTICS_ASK = "Share anonymous diagnostics after each dash (helps fix it for your phone)";
+    static final String DIAGNOSTICS_ASK = "Share anonymous diagnostics (helps fix it for your phone)";
 
     /** Whether the current notice was accepted. Cheap enough for every read: Android keeps the prefs in memory. */
     static boolean accepted(Context context) {

@@ -1,3 +1,16 @@
+## 0.6.34 — One switch for diagnostics; the same tab on Offer Filter's screen
+
+Version 0.6.34 (code 126) answers the owner's messages of 22 October 2026: "we should combine all diagnostics opt in into one" (17:18 UTC), and "door dash swap button should be same as offer filter swap button on its screen" with "the tab" (17:21 UTC; on a card at 17:26 UTC he picked "Tab on both").
+
+- **One diagnostics switch.** **Share anonymous diagnostics** in Settings is now the only diagnostics choice. It covers the summary after each dash, masked diagnostics with feedback you send and the offer timing study, which were three choices before: the after-dash switch, the feedback dialog's **Attach masked diagnostics**, and the study's own row in Settings, all gone. Its dialog says everything it covers, and only its **Turn on** (or the notice's switch when you accept) turns it on. Turning it off discards summaries not yet sent and the study's data.
+- **Off for everyone until turned on.** The one switch covers more than any of the old choices did, so the update turns it off for everyone, whatever was chosen before, and forgets the old choices and what the study kept. Notice 34 asks again with its switch.
+- **Feedback says what goes.** With the switch on, feedback sends the masked report Share report builds, and the dialog says so; with it off, only your words, the category and the app's version go. The report offered after a stop still sends its diagnostics for that report only. Report this offer, Share report and the daily count are unchanged.
+- **The same tab on Offer Filter's screen.** Offer Filter's homepage now has the same tab as over Dasher, at the same edge and height, with Dasher's icon in place of the mascot. A tap opens Dasher; it replaces the header's **Open Dasher**. Dragging either tab moves both. It has no hold, and screen readers hear "open Dasher".
+- **Notice 34.** "Your data." now says masked diagnostics leave only with the switch below on: after each dash and with feedback you send. The switch reads "Share anonymous diagnostics (helps fix it for your phone)". The Terms and Privacy say the same, for 0.6.34. What's new says it in three short lines; 0.6.33's card no longer names Open Dasher.
+- **Kept suites.** No tests were added. DispatchStudyConsentTest is rewritten for the one switch (only its Turn on grants it, no earlier choice is read as it, turning it off forgets the study); PrivacyBoundaryTest calls the renamed switch; ConsentGateTest expects notice 34 and the new data and study wording; LegalTextsTest the 0.6.34 texts.
+
+No phone has run this build.
+
 ## 0.6.33 — No split screen; the tab over Dasher comes back to Offer Filter
 
 Version 0.6.33 (code 125) answers the owner's message of 22 October 2026 (16:19 UTC): "i say let's get rid of split screen mode. we haven't been able to get the auto resizing to work and it's so buggy. instead can we have an easy way to swap back to the offerfilter app?"

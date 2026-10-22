@@ -138,8 +138,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         String data = point("Your data.");
         for (String fact : new String[] {"Your offers, rules and history stay on this phone.",
                 "Feedback and reports leave only when you tap Send",
-                // 0.6.18: or with the notice's own switch (0.6.20: showing the choice already made).
-                "masked diagnostics only when you attach them or turn on the switch below",
+                // 0.6.18: or with the notice's own switch (0.6.20: showing the choice already made; 0.6.34: the
+                // one switch, after each dash and with feedback).
+                "masked diagnostics only with the switch below on: after each dash and with feedback you send",
                 "What you type is sent as written, and masking can miss details.",
                 "The feedback service keeps what you send 90 days",
                 "the developer may review it with AI tools (Anthropic's Claude or OpenAI's ChatGPT/Codex)",
@@ -165,7 +166,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         int words = 0;
         for (String[] point : Consent.POINTS) words += (point[0] + " " + point[1]).split("\\s+").length;
         assertTrue(words + " words", words <= 420);
-        assertEquals("33 (0.6.33): split screen retired, the divider no longer moved", 33, Consent.VERSION);
+        assertEquals("34 (0.6.34): one Share anonymous diagnostics switch", 34, Consent.VERSION);
         // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
         String account = point("Your Dasher account.");
         assertEquals(AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash. DoorDash's terms ban "
@@ -257,8 +258,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Masking is pattern-based and can miss unfamiliar wording",
                 // 0.6.3: the daily count, what it carries and how long it is kept.
                 "Once a UTC day at most", "a random code made new for each UTC day", "400 days",
-                // The optional timing study, which Settings asks for on its own.
-                "nothing is enabled or collected until Save choice is tapped"}) {
+                // The optional timing study, part of Share anonymous diagnostics from 0.6.34.
+                "It records nothing while that switch is off", "Turning the switch on starts a fresh study",
+                "Accepting the notice never turns the switch on"}) {
             assertTrue(fact, privacy.contains(fact));
         }
     }
@@ -386,9 +388,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // account warning; 26, pay first by default and the 7-day floor; 27, the floor kept through Autopilot off and
         // on, and its accepts kept 7 days; 28, the 24-offer hold, the minimums no longer growing on their own, and the
         // divider moved for a map; 29, area scoring by default; 30, independent working minimums following each accept; 31, total pay in each
-        // Autopilot Area score; 32, Autopilot's bar down to 10%; 33, split screen retired with the divider's moves.
-        // A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(33, Consent.VERSION);
+        // Autopilot Area score; 32, Autopilot's bar down to 10%; 33, split screen retired with the divider's moves;
+        // 34, one Share anonymous diagnostics switch. A phone that accepted 14 (0.5.0) sees it again too.
+        assertEquals(34, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

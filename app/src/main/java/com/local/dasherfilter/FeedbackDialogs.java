@@ -22,7 +22,6 @@ import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
-import android.widget.Switch;
 import android.widget.TextView;
 import java.util.List;
 import java.util.Locale;
@@ -33,8 +32,9 @@ import java.util.Locale;
  * Every submission is built and sent off the main thread ({@link Feedback}); the dialog stays open while it is sent,
  * keeps what was typed when it is refused, and shows the reference, copyable, once it is accepted.
  *
- * <p>Attach masked diagnostics is chosen for each submission: every new dialog opens with it off, unless that dialog
- * itself was opened with it on (the report offered after a stop); no earlier dialog's choice carries over.
+ * <p>Masked diagnostics go with feedback only while Share anonymous diagnostics is on (0.6.34; before, each submission
+ * chose with its own Attach switch), and with the report offered after a stop, for that report only. Turning the switch
+ * on is its own dialog here ({@link #diagnostics}), never consent read from a switch.
  */
 final class FeedbackDialogs implements Feedback.Listener {
     /** What the user was writing: kept across a recreated screen and a refused send, until it is accepted. */
@@ -57,7 +57,7 @@ final class FeedbackDialogs implements Feedback.Listener {
     static final int PREVIEW_PAGE_CHARS = 12_000;
     private static Draft draft = new Draft();
     private static final String OPEN = "feedback_dialog_open";
-    /** The open feedback dialog's own Attach choice, kept only through its recreated screen. */
+    /** Whether the open feedback dialog is the report offered after a stop, kept only through its recreated screen. */
     private static final String OPEN_ATTACH = "feedback_dialog_attach";
 
     private final Activity activity;
@@ -68,8 +68,8 @@ final class FeedbackDialogs implements Feedback.Listener {
     private String waitingFor = "";
     private TextView statusLine;
     private boolean feedbackOpen;
-    /** The open feedback dialog's Attach masked diagnostics switch, or null. */
-    private Switch attachSwitch;
+    /** Whether the open feedback dialog is the report offered after a stop, which sends diagnostics for it only. */
+    private boolean openReport;
     /** What the open dialog built ahead of Send (for its preview), or null; dropped once a send is refused. */
     private Feedback.Prepared[] preparedNow;
     /** The preview over the open dialog, so it goes with the screen. */
@@ -109,7 +109,7 @@ final class FeedbackDialogs implements Feedback.Listener {
     void save(Bundle state) {
         boolean open = feedbackOpen && dialog != null && dialog.isShowing() && waitingFor.isEmpty();
         state.putBoolean(OPEN, open);
-        state.putBoolean(OPEN_ATTACH, open && attachSwitch != null && attachSwitch.isChecked());
+        state.putBoolean(OPEN_ATTACH, open && openReport);
     }
 
     void restore(Bundle state) {
@@ -120,56 +120,53 @@ final class FeedbackDialogs implements Feedback.Listener {
         return dialog != null && dialog.isShowing();
     }
 
-    static final String STUDY_TITLE = "Offer timing study";
-    static final String STUDY_CHOICE = "Include future offer timing study in diagnostics I choose to share";
-    static final String STUDY_COPY = "Help compare estimates made before an offer with observed waiting and offer "
-            + "quality. Keeps new numeric observations for up to 24 hours (32 result rows), including gaps, filter "
-            + "score/bar and requested versus observed actions. No customer or merchant text, location, account or "
-            + "device ID, acceptance rate, Autopilot plan or minimum amounts. This cannot reveal DoorDash's hidden "
-            + "dispatch algorithm.\n\nThe checked choice is a draft: nothing starts until you tap Save choice. "
-            + "It then joins diagnostics you attach and, only if separately enabled, after-dash summaries. That "
-            + "automatic-sharing choice stays unchanged. The developer may review reports with AI tools; the "
-            + "feedback policy specifies 90-day retention. Preview before sharing.\n\nUncheck and save to stop "
-            + "collection and remove study data from this phone and unsent reports. A request already in flight "
-            + "or sent cannot be recalled here. Driving controls stay unchanged.";
+    // ---- Share anonymous diagnostics ----
 
-    /** Existing reporting area; one optional choice, never consent inferred from a checked box. */
-    void study() {
-        if (showing() || !Consent.accepted(activity)) return;
-        LinearLayout frame = frame();
-        Switch choice = ui.toggle(frame, STUDY_CHOICE, DispatchStudyStore.checkedDraft(activity));
-        frame.addView(small(STUDY_COPY), Ui.matchWidth());
-        Button show = ui.link("Preview study data", () -> {
-            AlertDialog origin = dialog;
-            DispatchStudyStore.preview(activity, text -> {
-                if (!started || !showing() || dialog != origin || activity.isFinishing() || activity.isDestroyed()) return;
-                preview(text.isEmpty() ? "No study data to share. Collection starts only after confirmation and new "
-                        + "eligible observations. Predictions can be unavailable while learning; gaps remain unknown."
-                        : text);
-            });
-        });
-        frame.addView(show, Ui.matchWidth());
+    static final String DIAGNOSTICS_TITLE = "Share anonymous diagnostics?";
+    /** What turning it on sends, all of it: the summary after each dash, feedback's diagnostics, the timing study. */
+    static final String DIAGNOSTICS_SAYS = "Sends masked diagnostics to the developer, with no account. After each "
+            + "dash, one summary: the app and Android versions and phone maker, your switches, counts of offers and "
+            + "problems, that dash's decisions timed from its start, masked log lines around problems, and how long "
+            + "you waited for offers against the app's estimate, with their figures. With feedback you send, the "
+            + "masked report Share report builds. No location, place names or device ID. At most 3 summaries a day; "
+            + "kept 90 days. Turn it off any time: what is not sent yet is discarded.";
+
+    /**
+     * Turning Share anonymous diagnostics on (Settings' switch): Turn on is the only way in. Not now, Back, a dismissal
+     * or the screen going leave it as it was, and turning it off needs no dialog.
+     */
+    void diagnostics() {
+        if (showing() || !Consent.accepted(activity) || Feedback.diagnosticsOn(activity)) return;
         feedbackOpen = false;
-        dialog = OwnWindowTouches.show(new AlertDialog.Builder(activity).setTitle(STUDY_TITLE)
-                .setView(scroll(frame)).setNegativeButton("Cancel", null)
-                .setPositiveButton("Save choice", (d, which) -> {
-                    DispatchStudyStore.confirm(activity, choice.isChecked());
+        dialog = OwnWindowTouches.show(new AlertDialog.Builder(activity).setTitle(DIAGNOSTICS_TITLE)
+                .setMessage(DIAGNOSTICS_SAYS)
+                .setNegativeButton("Not now", null)
+                .setPositiveButton("Turn on", (d, which) -> {
+                    Feedback.setDiagnostics(activity, true);
                     changed.run();
-                }).setOnDismissListener(d -> {
-                    DispatchStudyStore.dismissed(activity);
-                    closed();
-                }));
+                })
+                .setOnDismissListener(d -> closed()));
     }
 
     // ---- Send anonymous feedback ----
 
+    /** With Share anonymous diagnostics on: what goes with feedback. */
+    static final String WITH_DIAGNOSTICS = "Masked diagnostics go with it, since Share anonymous diagnostics is on.";
+    /** With it off. */
+    static final String WORDS_ONLY = "Only your words, the category and the app's version go. Share anonymous "
+            + "diagnostics in Settings adds masked diagnostics.";
+    /** The report offered after a stop, whatever the switch says. */
+    static final String REPORT_SENDS = "This report sends masked diagnostics with it, the stop's summary among them, "
+            + "for this report only.";
+
     /**
      * The feedback dialog: a category, what to say (a counter and its limit), a reminder to leave out customer,
-     * payment and account details, an Attach masked diagnostics switch with a Preview of exactly what goes, and the
-     * references of the last submissions.
+     * payment and account details, a line saying whether masked diagnostics go with it, a Preview of exactly what goes,
+     * and the references of the last submissions.
      *
      * @param category chosen in advance (Bug, for a report after a stop), or null for the draft's
-     * @param attach   attach diagnostics in advance, for this dialog only (a report after a stop); null or false: off
+     * @param attach   true for the report offered after a stop, which sends diagnostics for this dialog only; null or
+     *                 false: they go only while Share anonymous diagnostics is on
      */
     void feedback(Feedback.Category category, Boolean attach) {
         if (showing()) return;
@@ -189,15 +186,17 @@ final class FeedbackDialogs implements Feedback.Listener {
         });
         EditText message = editor(frame, "What should we know?", draft.message, typed -> draft.message = typed);
         frame.addView(small("Don't include customer, payment or account details."), Ui.matchWidth());
-        // Off for every new submission; on only when this dialog itself was opened so.
-        Switch diagnostics = ui.toggle(frame, "Attach masked diagnostics", attach != null && attach);
-        attachSwitch = diagnostics;
+        // The one switch decides, read again at Preview and Send; the report after a stop sends them for itself only.
+        boolean report = attach != null && attach;
+        openReport = report;
+        frame.addView(small(report ? REPORT_SENDS : Feedback.diagnosticsOn(activity) ? WITH_DIAGNOSTICS : WORDS_ONLY),
+                Ui.matchWidth());
         Feedback.Prepared[] prepared = new Feedback.Prepared[1];
         preparedNow = prepared;
         boolean[] preparedWith = new boolean[1];
         Button preview = ui.link("Preview what is sent", () -> {
             status("Preparing…");
-            boolean with = diagnostics.isChecked();
+            boolean with = report || Feedback.diagnosticsOn(activity);
             Feedback.prepareFeedback(activity, with, ready -> {
                 if (!showing()) return;
                 status("");
@@ -229,9 +228,9 @@ final class FeedbackDialogs implements Feedback.Listener {
                 status("Write something first.");
                 return;
             }
-            boolean with = diagnostics.isChecked();
+            boolean with = report || Feedback.diagnosticsOn(activity);
             Feedback.Prepared reuse = prepared[0] != null && preparedWith[0] == with ? prepared[0] : null;
-            busy(true, message, diagnostics, preview);
+            busy(true, message, preview);
             status(with && reuse == null ? "Preparing and sending…" : "Sending…");
             waitingFor = Feedback.sendFeedback(activity, draft.category, typed, with, reuse);
         });
@@ -267,7 +266,7 @@ final class FeedbackDialogs implements Feedback.Listener {
         frame.addView(small("Don't include customer, payment or account details."), Ui.matchWidth());
         Feedback.Prepared[] prepared = new Feedback.Prepared[1];
         preparedNow = prepared;
-        attachSwitch = null;
+        openReport = false;
         OfferReport.Problem[] preparedFor = new OfferReport.Problem[1];
         Button preview = ui.link("Preview what is sent", () -> {
             status("Preparing…");

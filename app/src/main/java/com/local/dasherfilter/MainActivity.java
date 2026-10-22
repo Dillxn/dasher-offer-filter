@@ -173,10 +173,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** The main page's scroller: it scrolls only where even the band and the lines need more. */
     private ScrollView mainPage;
     private ScenePage scene;
-    /** The header's one-tap Open Dasher, filling the screen (F22). */
-    private View openDasherButton;
-    /** Whether Open Dasher was given Dasher's own icon yet (asked of Android once, as it first shows). */
-    private boolean openDasherDressed;
+    /**
+     * The tab on the screen's edge that opens Dasher (0.6.34, in place of the header's Open Dasher): the tab over
+     * Dasher's twin, in its place, with Dasher's own icon ({@link DasherTab#showDasher}).
+     */
+    private DasherTab homeTab;
+    /** Where Offer Filter's tab was (its translation) as a drag of it began, and whether one is under way. */
+    private float homeTabFromX;
+    private float homeTabFromY;
+    private boolean homeTabDragging;
     private FrameLayout root;
     /** A card sliding up over the main page for the chosen offer's ticket or the map: the page itself never scrolls. */
     private FrameLayout sheet;
@@ -307,10 +312,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Button shareReportRow;
     /** Send anonymous feedback, its line saying what waits or what was last sent. */
     private Button feedbackRow;
-    private Switch afterDashToggle;
+    private Switch diagnosticsToggle;
     /** The feedback and offer-report dialogs, and what this screen shows of a submission's fate. */
     private FeedbackDialogs feedbackDialogs;
-    /** On the homepage after the app stopped unexpectedly, while diagnostics after each dash are off. */
+    /** On the homepage after the app stopped unexpectedly, while Share anonymous diagnostics is off. */
     private Readiness stopNotice;
     /** On the homepage: a held, verified update while no dash is on. */
     private UpdateReadyRow updateReady;
@@ -365,6 +370,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         settingsPage = addPage(root, settings);
         buildMain(scene);
         buildSettings(settings);
+        buildHomeTab(root);
         buildSheet(root);
         // Setup's page over the pages while it has a step, under an update's cover and the notice.
         setupPage = new SetupPage(this, ui, (step, action) -> {
@@ -417,6 +423,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             mainPage.setVisibility(View.GONE);
             settingsPage.setVisibility(View.GONE);
             sheet.setVisibility(View.GONE);
+            syncHomeTab();
             root.setBackgroundColor(ui.page);
         } else {
             showSettings(showingSettings);
@@ -649,6 +656,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             shown.setAlpha(0f);
             shown.animate().alpha(1f).setDuration(160);
         }
+        syncHomeTab();
     }
 
     /**
@@ -670,6 +678,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         mainPage.setVisibility(View.GONE);
         settingsPage.setVisibility(View.GONE);
         closeSheet();
+        syncHomeTab();
         root.setBackgroundColor(ui.page);
         View focused = getCurrentFocus();
         if (focused != null && !focused.isShown()) focused.clearFocus();
@@ -678,9 +687,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /**
      * A sky strip across the top of a page: the title and its round buttons. Settings' ({@code back}) has its own strip
      * of sky, Back and the title. The main page's is only the band's buttons (0.6.3; {@link FluidLayout} puts them at
-     * the end of the chips' row, or on their own row under it in a narrow window): Navigate, Open Dasher, the sun and
-     * Settings, each round button 48 dp with 4 dp before it and the sun 56 dp, after its title, an empty
-     * heading only screen readers hear (the page's picture needs none) in the band's gap before them.
+     * the end of the chips' row, or on their own row under it in a narrow window): Navigate, the sun and Settings, each
+     * round button 48 dp with 4 dp before it and the sun 56 dp, after its title, an empty heading only screen readers
+     * hear (the page's picture needs none) in the band's gap before them. Dasher opens from the tab on the screen's
+     * edge (0.6.34), no longer from a button here.
      */
     /**
      * The main page's header: the title's room, then the buttons, which spread evenly across whatever the box has past
@@ -740,14 +750,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
             header.addView(name, new LinearLayout.LayoutParams(ui.dp(FluidLayout.BAND_GAP_DP), ui.dp(48)));
             mainTitle = name;
             header.addView(bandButton(Glyph.Shape.PIN, "Navigate", this::chooseNavigation));
-            // One tap to Dasher filling the screen (with the tab over it, whose tap comes back here), at the user's
-            // tap only.
-            openDasherButton = bandButton(Glyph.Shape.PHONE, DasherLaunch.OPEN_LABEL, () -> {
-                String said = DasherLaunch.openDasher(this);
-                if (said != null) toast(said);
-            });
-            openDasherButton.setVisibility(View.GONE);
-            header.addView(openDasherButton);
             // The existing sun/moon cycles modes directly; no chooser or duplicate Settings row.
             AppearanceButton sun = new AppearanceButton(this, ui);
             sun.show(Appearance.resolve(this));
@@ -793,22 +795,144 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     /**
-     * Dasher's own icon on the header's Open Dasher, as this phone's home screen draws it (the owner, 12 October 2026:
-     * the drawn phone with a pin in it, beside Navigate's pin, "isn't clear visually what it does"). Only the icon is
-     * asked of Android: nothing of Dasher is opened or read for it. The drawn phone stays when Android cannot give it.
+     * Dasher's own icon, as this phone's home screen draws it, for Offer Filter's tab (the owner, 12 October 2026, of
+     * the drawn phone with a pin in it the header's Open Dasher first had: it "isn't clear visually what it does").
+     * Only the icon is asked of Android: nothing of Dasher is opened or read for it. The drawn phone when Android
+     * cannot give it.
      */
-    private void showDashersIcon(View button) {
-        if (!(button instanceof ImageButton)) return;
+    private android.graphics.drawable.Drawable dashersIcon() {
         try {
             android.graphics.drawable.Drawable icon = getPackageManager().getApplicationIcon(DASHER_PACKAGE);
-            int size = ui.dp(30);
+            int size = ui.dp(48);
             android.graphics.Bitmap drawn = android.graphics.Bitmap.createBitmap(size, size,
                     android.graphics.Bitmap.Config.ARGB_8888);
             icon.setBounds(0, 0, size, size);
             icon.draw(new android.graphics.Canvas(drawn));
-            ((ImageButton) button).setImageDrawable(new android.graphics.drawable.BitmapDrawable(getResources(), drawn));
+            return new android.graphics.drawable.BitmapDrawable(getResources(), drawn);
         } catch (PackageManager.NameNotFoundException | RuntimeException unavailable) {
-            // The drawn phone it already has.
+            return new Glyph(Glyph.Shape.PHONE, ui.ink, ui.dp(24));
+        }
+    }
+
+    // ---- Offer Filter's tab, which opens Dasher ----
+
+    /**
+     * Offer Filter's own tab (0.6.34, the owner: "door dash swap button should be same as offer filter swap button on
+     * its screen", "the tab"): over the pages, under the sheet, setup's page, an update's cover and the notice. A tap
+     * opens Dasher as its launcher icon does, at the user's tap only; a drag moves it, and the tab over Dasher with it.
+     */
+    private void buildHomeTab(FrameLayout root) {
+        homeTab = new DasherTab(this, ui, new DasherTab.Listener() {
+            @Override public void tapped() {
+                String said = DasherLaunch.openDasher(MainActivity.this);
+                if (said != null) toast(said);
+            }
+
+            @Override public void held() {
+                // No hold here: pausing is the mascot's, on this screen.
+            }
+
+            @Override public void dragStarted() {
+                homeTabDragging = true;
+                homeTabFromX = homeTab.getTranslationX();
+                homeTabFromY = homeTab.getTranslationY();
+                homeTab.setLook(DasherTab.Look.FLOATING, homeTab.onRight(), false);
+            }
+
+            @Override public void dragged(float dx, float dy) {
+                android.graphics.Rect box = homeTabBox();
+                float wide = Math.max(0, box.width() - ui.dp(DasherTab.WIDTH_DP));
+                float tall = Math.max(0, box.height() - ui.dp(DasherTab.HEIGHT_DP));
+                homeTab.setTranslationX(Math.max(0, Math.min(wide, homeTabFromX + dx)));
+                homeTab.setTranslationY(Math.max(0, Math.min(tall, homeTabFromY + dy)));
+            }
+
+            @Override public void dropped() {
+                homeTabDragging = false;
+                // It lands on the nearer edge, where it was let go, at the height it was let go (kept in its band).
+                android.graphics.Rect box = homeTabBox();
+                boolean right = homeTab.getTranslationX() + ui.dp(DasherTab.WIDTH_DP) / 2f > box.width() / 2f;
+                rememberHomeTab(right, Math.round(homeTabWindowTop(homeTab.getTranslationY())));
+                placeHomeTab();
+            }
+
+            @Override public boolean move(DasherTab.Move how) {
+                String orientation = homeTabOrientation();
+                boolean right = DasherOverlay.tabOnRight(MainActivity.this, orientation);
+                int full = getWindow().getDecorView().getHeight();
+                int top = DasherOverlay.tabTop(0, full, DasherOverlay.tabTopShare(MainActivity.this, orientation), ui);
+                int next = how == DasherTab.Move.UP ? top - ui.dp(DasherOverlay.STEP_DP)
+                        : how == DasherTab.Move.DOWN ? top + ui.dp(DasherOverlay.STEP_DP) : top;
+                next = Math.max(DasherOverlay.minTop(0, full, ui), Math.min(DasherOverlay.maxTop(0, full, ui), next));
+                if (how == DasherTab.Move.OTHER_SIDE) right = !right;
+                else if (next == top) return false;
+                rememberHomeTab(right, next);
+                placeHomeTab();
+                return true;
+            }
+        });
+        homeTab.showDasher(dashersIcon());
+        homeTab.setVisibility(View.GONE);
+        root.addView(homeTab, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START));
+        root.addOnLayoutChangeListener((view, l, t, r, b, oldL, oldT, oldR, oldB) -> placeHomeTab());
+    }
+
+    /** The box the tab moves in: the root's, inside its system bars, in the root's own coordinates. */
+    private android.graphics.Rect homeTabBox() {
+        return new android.graphics.Rect(root.getPaddingLeft(), root.getPaddingTop(),
+                root.getWidth() - root.getPaddingRight(), root.getHeight() - root.getPaddingBottom());
+    }
+
+    /** As the tab over Dasher keeps its place: one for a window wider than tall, one for the rest. */
+    private String homeTabOrientation() {
+        View window = getWindow().getDecorView();
+        return DasherOverlay.orientation(window.getWidth(), window.getHeight());
+    }
+
+    /** A translation's top as the window measures it, as the overlay measures Dasher's full-screen window. */
+    private float homeTabWindowTop(float translationY) {
+        int[] at = new int[2];
+        root.getLocationInWindow(at);
+        return at[1] + root.getPaddingTop() + translationY;
+    }
+
+    private void rememberHomeTab(boolean right, int windowTop) {
+        int full = getWindow().getDecorView().getHeight();
+        int top = Math.max(DasherOverlay.minTop(0, full, ui), Math.min(DasherOverlay.maxTop(0, full, ui), windowTop));
+        DasherOverlay.rememberTab(this, homeTabOrientation(), right,
+                full > 0 ? top / (float) full : DasherOverlay.TOP_SHARE);
+    }
+
+    /**
+     * Puts the tab where the tab over Dasher is: the same edge, the same share of the screen's height (kept off its
+     * bars as over Dasher), half tucked past the edge.
+     */
+    private void placeHomeTab() {
+        if (homeTab == null || homeTabDragging || root.getWidth() == 0) return;
+        String orientation = homeTabOrientation();
+        boolean right = DasherOverlay.tabOnRight(this, orientation);
+        int full = getWindow().getDecorView().getHeight();
+        int top = DasherOverlay.tabTop(0, full, DasherOverlay.tabTopShare(this, orientation), ui);
+        android.graphics.Rect box = homeTabBox();
+        int height = ui.dp(DasherTab.HEIGHT_DP);
+        float y = top - homeTabWindowTop(0);
+        y = Math.max(0, Math.min(Math.max(0, box.height() - height), y));
+        homeTab.setLook(DasherTab.Look.REST, right, false);
+        homeTab.setMoves(top > DasherOverlay.minTop(0, full, ui), top < DasherOverlay.maxTop(0, full, ui));
+        homeTab.setTranslationX(right ? box.width() - ui.dp(DasherTab.WIDTH_DP) : 0);
+        homeTab.setTranslationY(y);
+    }
+
+    /** Shown only with the homepage itself: Dasher installed, and no Settings, setup page or notice over it. */
+    private void syncHomeTab() {
+        if (homeTab == null) return;
+        boolean shown = mainPage.getVisibility() == View.VISIBLE && !noticeShown() && !setupShown()
+                && dasherInstalled.get();
+        int visibility = shown ? View.VISIBLE : View.GONE;
+        if (homeTab.getVisibility() != visibility) {
+            homeTab.setVisibility(visibility);
+            if (shown) placeHomeTab();
         }
     }
 
@@ -946,7 +1070,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     refresh();
                 });
         launchScreen.spokenAsButton(DasherLaunch.LAUNCH_SCREEN_SPOKEN);
-        // After a stop, with diagnostics after each dash off: one line offering a report the user still sends.
+        // After a stop, with Share anonymous diagnostics off: one line offering a report the user still sends.
         // Offered once: the line goes as its dialog opens; the stop stays in diagnostics for a day.
         stopNotice = new Readiness(problems, AppName.NAME + " stopped unexpectedly last time", "Send report", () -> {
             StopReports.acknowledge(this);
@@ -1759,29 +1883,19 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
         LinearLayout reports = group(body);
         feedbackRow = ui.listRow(reports, "Send anonymous feedback", () -> feedbackDialogs.feedback(null, null));
-        ui.listRow(reports, FeedbackDialogs.STUDY_TITLE, () -> feedbackDialogs.study());
-        // Off unless the user turns it on (no update does), and only after its own confirmation.
-        afterDashToggle = ui.toggle(reports, "Share anonymous diagnostics after each dash", Feedback.afterDashOn(this));
-        afterDashToggle.setOnCheckedChangeListener((view, on) -> {
-            if (on == Feedback.afterDashOn(this)) return;
+        // The one diagnostics switch (0.6.34): off unless the user turns it on (no update does), and only after its own
+        // confirmation (FeedbackDialogs.diagnostics, which refreshes Settings as it turns on).
+        diagnosticsToggle = ui.toggle(reports, Feedback.DIAGNOSTICS_SWITCH, Feedback.diagnosticsOn(this));
+        diagnosticsToggle.setText(ui.twoLines(Feedback.DIAGNOSTICS_SWITCH, Feedback.DIAGNOSTICS_LINE));
+        diagnosticsToggle.setOnCheckedChangeListener((view, on) -> {
+            if (on == Feedback.diagnosticsOn(this)) return;
             if (!on) {
-                Feedback.setAfterDash(this, false);
+                Feedback.setDiagnostics(this, false);
                 refresh();
                 return;
             }
-            afterDashToggle.setChecked(false);
-            OwnWindowTouches.show(new AlertDialog.Builder(this)
-                    .setTitle("Share diagnostics after each dash?")
-                    .setMessage("After each dash, sends one masked summary to the developer, with no account: the "
-                            + "app and Android versions and phone maker, your switches, counts of offers and problems, "
-                            + "that dash's decisions timed from its start, and masked log lines around problems. No "
-                            + "location, place names or device ID. At most 3 a day; kept 90 days.")
-                    .setNegativeButton("Not now", null)
-                    .setPositiveButton("Turn on", (dialog, which) -> {
-                        Feedback.setAfterDash(this, true);
-                        afterDashToggle.setChecked(true);
-                        refresh();
-                    }));
+            diagnosticsToggle.setChecked(false);
+            feedbackDialogs.diagnostics();
         });
         // On unless the user turns it off: once a UTC day, the app's version, whether this install was counted before
         // and the day's random token (DailyCount). Off cancels its job and discards the day's token, on looks at
@@ -1899,15 +2013,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
         shownState = state;
         hero.setAction(saved.enabled ? SetupPage.PAUSE : saved.hasAnyRule() ? SetupPage.RESUME : "Set up rules");
-        if (openDasherButton != null) {
-            // Whenever Dasher is installed (0.6.33: no Split button beside it any more).
-            int open = dasherInstalled.get() ? View.VISIBLE : View.GONE;
-            if (open == View.VISIBLE && !openDasherDressed) {
-                openDasherDressed = true;
-                showDashersIcon(openDasherButton);
-            }
-            if (openDasherButton.getVisibility() != open) openDasherButton.setVisibility(open);
-        }
+        // Offer Filter's tab, whenever Dasher is installed (0.6.34, in place of the header's Open Dasher).
+        syncHomeTab();
 
         boolean readerConnected = OfferFilterService.isConnected();
         // Alerts are not needed to filter (0.6.26): auto-decline works with them off.
@@ -1934,7 +2041,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // No hold now: the next one is logged as shown, whenever it began.
         if (stuck == 0) launchScreenLogged = 0;
         launchScreen.update(stuck == 0);
-        stopNotice.update(Feedback.afterDashOn(this) || !StopReports.unacknowledged(this));
+        stopNotice.update(Feedback.diagnosticsOn(this) || !StopReports.unacknowledged(this));
         peekIntro.refresh(saved.enabled);
         whatsNew.refresh();
         growthCard.refresh();
@@ -2128,8 +2235,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         ui.setRow(updatesRow, "Updates", Updater.status(this));
         // What waits to send is read only while Settings shows, and as it opens.
         if (showingSettings) ui.setRow(feedbackRow, "Send anonymous feedback", Feedback.status(this));
-        boolean afterDash = Feedback.afterDashOn(this);
-        if (afterDashToggle.isChecked() != afterDash) afterDashToggle.setChecked(afterDash);
+        boolean diagnostics = Feedback.diagnosticsOn(this);
+        if (diagnosticsToggle.isChecked() != diagnostics) diagnosticsToggle.setChecked(diagnostics);
     }
 
     /** A submission changed (sent, waiting, refused): Settings' line follows, if the page is up. */
@@ -3051,7 +3158,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         return saved.enabled ? SetupPage.PAUSE : SetupPage.RESUME;
     }
 
-    /** Setup page's "Stuck? Send feedback": the feedback form as Usability (diagnostics attached only if chosen). */
+    /** Setup page's "Stuck? Send feedback": the feedback form as Usability (diagnostics only with the switch on). */
     private void stuckInSetup() {
         SetupFlow.Page step = setupPage.page();
         DiagnosticLog.log(this, "setup", "Stuck? Send feedback tapped" + (step == null ? ""

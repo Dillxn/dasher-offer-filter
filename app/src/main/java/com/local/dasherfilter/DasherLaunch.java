@@ -11,7 +11,8 @@ import android.content.pm.ResolveInfo;
 import java.util.List;
 
 /**
- * How this app starts Dasher, and itself, as their launcher icons do: the header's Open Dasher (F22), the launcher
+ * How this app starts Dasher, and itself, as their launcher icons do: the tab on Offer Filter's screen (the header's
+ * Open Dasher until 0.6.34, F22), the launcher
  * intents a card's tap, Peek and its return use, and the homepage's line for Dasher stuck on its launch screen. Every
  * start of Dasher is plain, full screen, its task as it was: none asks for the other half of a split screen (0.6.33
  * retired the Split button, its Swap in Dasher and the divider's moves for a map: the owner, 22 October 2026, "i say
@@ -20,7 +21,7 @@ import java.util.List;
  */
 final class DasherLaunch {
     static final String DASHER_PACKAGE = "com.doordash.driverapp";
-    /** The header's one-tap Dasher, full screen (F22). */
+    /** What Offer Filter's tab opens, and screen readers call it: Dasher, full screen (F22). */
     static final String OPEN_LABEL = "Open Dasher";
 
     /** Asks Android to open recent apps; replaced only by tests. */
@@ -111,8 +112,8 @@ final class DasherLaunch {
     }
 
     /**
-     * The user's tap on Open Dasher: Dasher's own launch intent, as its launcher icon opens it (full screen, its task as
-     * it was; nothing cleared or reset). Never by itself.
+     * The user's tap on Offer Filter's tab: Dasher's own launch intent, as its launcher icon opens it (full screen, its
+     * task as it was; nothing cleared or reset). Never by itself.
      *
      * @return what to tell the user when Dasher could not be opened, else null
      */

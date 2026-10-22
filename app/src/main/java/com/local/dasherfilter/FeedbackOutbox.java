@@ -206,7 +206,7 @@ final class FeedbackOutbox {
             stripStaleStudy(app, item);
             // Checked under the lock the discarding takes: a summary begun before the opt-in changed never lands.
             if (automatic && !Feedback.automaticAllowed(app, item.optLong("epoch", -1))) {
-                return "Diagnostics after each dash changed meanwhile.";
+                return "Share anonymous diagnostics changed meanwhile.";
             }
             prune(app);
             File dir = dir(app);
@@ -618,7 +618,7 @@ final class FeedbackOutbox {
         File[] all = dir.listFiles();
         if (all == null) return;
         long now = clock.getAsLong();
-        boolean afterDash = Feedback.afterDashOn(app);
+        boolean afterDash = Feedback.diagnosticsOn(app);
         int expired = 0;
         for (File file : all) {
             String name = file.getName();

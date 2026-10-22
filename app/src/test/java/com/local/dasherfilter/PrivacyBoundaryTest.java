@@ -369,7 +369,7 @@ public class PrivacyBoundaryTest {
         assertEquals(java.util.Collections.singletonList(PersonalText.UNKNOWN_NOT_KEPT), DashSummary.readLines(payment));
         app.getSharedPreferences("dashing", Context.MODE_PRIVATE).edit().clear().commit();
         Dashing.forgetCache();
-        Feedback.setAfterDash(app, true);
+        Feedback.setDiagnostics(app, true);
         Dashing.seen(app);
         long start = Dashing.currentStart(app);
         DashSummary.unreadable(app, partial);
@@ -400,7 +400,7 @@ public class PrivacyBoundaryTest {
         // A recognized offer screen keeps its lines, masked twice.
         assertEquals(Arrays.asList("Guaranteed pay", "$7.90", "Accept", "Decline"),
                 DashSummary.readLines(Arrays.asList("Guaranteed pay", "$7.90", "Accept", "Decline")));
-        Feedback.setAfterDash(app, false);
+        Feedback.setDiagnostics(app, false);
         DashSummary.flush();
     }
 
@@ -498,7 +498,7 @@ public class PrivacyBoundaryTest {
 
         // The summary after a dash, which leaves without a tap: never the rate, even around a problem right beside
         // Dasher's question, Autopilot's reading and its plan.
-        Feedback.setAfterDash(app, true);
+        Feedback.setDiagnostics(app, true);
         Dashing.forgetCache();
         app.getSharedPreferences("dashing", Context.MODE_PRIVATE).edit().clear().commit();
         Dashing.seen(app);
@@ -542,7 +542,7 @@ public class PrivacyBoundaryTest {
         assertFalse(summary, summary.contains("ar reading"));
         assertFalse(summary, java.util.regex.Pattern.compile("\\[autopilot\\] plan \\d").matcher(summary).find());
         assertTrue("Autopilot's lines without the rate stay", summary.contains("[autopilot] on; goal 70%"));
-        Feedback.setAfterDash(app, false);
+        Feedback.setDiagnostics(app, false);
         DashSummary.flush();
     }
 
@@ -550,7 +550,7 @@ public class PrivacyBoundaryTest {
         FilterStore.save(app, FilterSettings.of(true, 2000, 0, 0, 0));
         app.getSharedPreferences("dashing", Context.MODE_PRIVATE).edit().clear().commit();
         Dashing.forgetCache();
-        Feedback.setAfterDash(app, true);
+        Feedback.setDiagnostics(app, true);
         OfferFilterService.scanLooperForTests = android.os.Looper.getMainLooper();
         org.robolectric.android.controller.ServiceController<OfferFilterService> reader =
                 org.robolectric.Robolectric.buildService(OfferFilterService.class).create();
@@ -596,7 +596,7 @@ public class PrivacyBoundaryTest {
         } finally {
             reader.destroy();
             OfferFilterService.scanLooperForTests = null;
-            Feedback.setAfterDash(app, false);
+            Feedback.setDiagnostics(app, false);
             DashSummary.flush();
         }
     }

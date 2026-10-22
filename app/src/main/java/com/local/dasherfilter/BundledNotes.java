@@ -69,8 +69,8 @@ final class BundledNotes {
                     + "you change your goal or minimums.",
             "A decline is confirmed only on Dasher's usual question; any other question is left to you and pauses "
                     + "auto-decline.",
-            "This notice ends with a switch to share anonymous diagnostics after each dash; it starts off and Settings "
-                    + "can change it later.",
+            "This notice ends with a switch to share anonymous diagnostics; it starts off and Settings can change it "
+                    + "later.",
             "If screen reading stops on a fault it restarts once, then a notification says offers aren't filtered; "
                     + "update checks wait for this notice."};
 
@@ -126,8 +126,19 @@ final class BundledNotes {
      */
     private static final String[] NO_SPLIT = {
             "Split screen is gone: the app no longer splits the screen with Dasher or moves its divider for a map.",
-            "To come back here from Dasher, tap the tab on the screen's edge. Open Dasher, at the top here, goes back.",
+            "To come back here from Dasher, tap the tab on the screen's edge.",
             "To pause or resume from Dasher, touch and hold the tab. Tapping the mascot here still does it too."};
+
+    /**
+     * Notice 34 and 0.6.34: one Share anonymous diagnostics switch for every diagnostic, off for everyone until turned
+     * on; and the release's other change, the same tab on this screen, opening Dasher.
+     */
+    private static final String[] ONE_SWITCH = {
+            "Share anonymous diagnostics is now one switch for the summary after each dash, masked diagnostics with "
+                    + "feedback you send and the offer timing study.",
+            "It covers more than each earlier choice did, so it is off for everyone until you turn it on."};
+    private static final String HOME_TAB = "To go to Dasher, tap the tab on this screen's edge: the same tab as over "
+            + "Dasher, in the same spot, with Dasher's icon. Moving one moves both.";
 
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
@@ -245,6 +256,8 @@ final class BundledNotes {
         // auto resizing to work and it's so buggy. instead can we have an easy way to swap back to the offerfilter
         // app?"). Notices 20, 22 and 28 no longer say what split screen did.
         notice(33, NO_SPLIT);
+        // 0.6.34 (the owner, 22 October 2026: "we should combine all diagnostics opt in into one").
+        notice(34, ONE_SWITCH);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -428,6 +441,9 @@ final class BundledNotes {
         release("0.6.32", LOW_BAR);
         // 0.6.33 (the owner, 22 October 2026: "i say let's get rid of split screen mode").
         release("0.6.33", NO_SPLIT);
+        // 0.6.34 (the owner, 22 October 2026: "we should combine all diagnostics opt in into one", and of the tab,
+        // "door dash swap button should be same as offer filter swap button on its screen").
+        release("0.6.34", ONE_SWITCH[0], ONE_SWITCH[1], HOME_TAB);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 
