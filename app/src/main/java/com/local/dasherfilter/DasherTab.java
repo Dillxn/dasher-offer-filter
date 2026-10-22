@@ -8,6 +8,7 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.Bundle;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -20,8 +21,10 @@ import java.util.List;
  * awake while auto-decline is on, amber and asleep while paused, grey with no rules yet. At rest about half of it is
  * tucked past the edge, the mascot peeking out, while its touch target stays 48 dp wide. During an offer or a
  * delivery only a slim bar in its colour shows, with a touch strip no wider than the margin Dasher keeps at its edge.
- * The user drags it up and down either edge or across to the other one; a drag is never a tap. Screen readers get
- * "Move up", "Move down" and "Move to other side".
+ * A tap opens Offer Filter, and a touch held in place for Android's long-press time pauses or resumes auto-decline
+ * (0.6.33: before, a tap paused). The user drags it up and down either edge or across to the other one; a drag is
+ * never a tap or a hold, nor is a hold ever a drag. Screen readers get both, named, and "Move up", "Move down" and
+ * "Move to other side".
  */
 @SuppressLint("ViewConstructor")
 final class DasherTab extends View {
@@ -46,8 +49,11 @@ final class DasherTab extends View {
 
     /** What the user does with the tab; on the main thread. */
     interface Listener {
-        /** A tap: no drag came of the touch. */
+        /** A tap: no drag came of the touch, and it was let go before it was held. */
         void tapped();
+
+        /** A touch held in place for Android's long-press time (or a screen reader's long press): no tap follows. */
+        void held();
 
         void dragStarted();
 
@@ -86,6 +92,9 @@ final class DasherTab extends View {
     private float downY;
     private boolean tracking;
     private boolean dragging;
+    /** A touch held in place this long is a hold, not a tap: Android's own long-press time, as the user set it. */
+    private final int holdMs;
+    private final Runnable holdCheck = this::heldDown;
 
     DasherTab(Context context, Ui ui, Listener listener) {
         super(context);
@@ -95,7 +104,9 @@ final class DasherTab extends View {
         line.setStrokeCap(Paint.Cap.ROUND);
         dashed = new DashPathEffect(new float[] {ui.dp(4), ui.dp(3)}, 0);
         touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
+        holdMs = ViewConfiguration.getLongPressTimeout();
         setClickable(true);
+        setLongClickable(true);
         setFocusable(true);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
         describe();
@@ -174,8 +185,8 @@ final class DasherTab extends View {
     private void describe() {
         String now = state == FilterHeroView.State.ON ? AppName.NAME + ": auto-decline on."
                 : state == FilterHeroView.State.PAUSED ? AppName.NAME + ": paused." : AppName.NAME + ": no rules yet.";
-        String tap = state == FilterHeroView.State.ON ? " Tap to pause."
-                : state == FilterHeroView.State.PAUSED ? " Tap to resume." : " Tap to set them up.";
+        String tap = state == FilterHeroView.State.ON ? " Tap to open. Hold to pause."
+                : state == FilterHeroView.State.PAUSED ? " Tap to open. Hold to resume." : " Tap to set them up.";
         String offer = look != Look.PEEK || verdict == null ? ""
                 : verdict == OfferRule.Result.KEEP ? " This offer passes your rules." : " This offer needs your review.";
         setContentDescription(look != Look.PEEK ? now + tap : tapToShow ? now + " Tucked away. Tap to show it."
@@ -262,6 +273,8 @@ final class DasherTab extends View {
                 tracking = true;
                 dragging = false;
                 setPressed(true);
+                removeCallbacks(holdCheck);
+                postDelayed(holdCheck, holdMs);
                 return true;
             case MotionEvent.ACTION_MOVE:
                 if (!tracking) return true;
@@ -269,6 +282,7 @@ final class DasherTab extends View {
                 float dy = event.getRawY() - downY;
                 if (!dragging && Math.hypot(dx, dy) > touchSlop) {
                     dragging = true;
+                    removeCallbacks(holdCheck);
                     setPressed(false);
                     listener.dragStarted();
                 }
@@ -276,6 +290,7 @@ final class DasherTab extends View {
                 return true;
             case MotionEvent.ACTION_UP:
                 setPressed(false);
+                removeCallbacks(holdCheck);
                 if (!tracking) return true;
                 tracking = false;
                 if (dragging) {
@@ -287,6 +302,7 @@ final class DasherTab extends View {
                 return true;
             case MotionEvent.ACTION_CANCEL:
                 setPressed(false);
+                removeCallbacks(holdCheck);
                 tracking = false;
                 if (dragging) {
                     dragging = false;
@@ -298,10 +314,33 @@ final class DasherTab extends View {
         }
     }
 
+    /**
+     * The touch is still down where it landed, past Android's long-press time: a hold. The touch ends here, so its
+     * lifting is no tap and its moving no drag.
+     */
+    private void heldDown() {
+        if (!tracking || dragging) return;
+        tracking = false;
+        setPressed(false);
+        performLongClick();
+    }
+
     @Override public boolean performClick() {
         super.performClick();
         listener.tapped();
         return true;
+    }
+
+    @Override public boolean performLongClick() {
+        super.performLongClick();
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        listener.held();
+        return true;
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        removeCallbacks(holdCheck);
+        super.onDetachedFromWindow();
     }
 
     // The tab's own accessibility actions. Plain constants rather than R ids: build-local.sh compiles without a
@@ -312,6 +351,16 @@ final class DasherTab extends View {
 
     @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
         super.onInitializeAccessibilityNodeInfo(info);
+        // What a tap and a hold do, in the screen reader's own words for them ("Double-tap to open Offer Filter"). A
+        // peek keeps the plain words: tucked away a tap only brings the tab out, and over an offer it does nothing.
+        if (look != Look.PEEK) {
+            info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK,
+                    state == FilterHeroView.State.OFF ? "set up rules" : "open " + AppName.NAME));
+        }
+        if (look != Look.PEEK && state != FilterHeroView.State.OFF) {
+            info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_LONG_CLICK,
+                    state == FilterHeroView.State.ON ? "pause auto-decline" : "resume auto-decline"));
+        }
         if (canMoveUp) info.addAction(new AccessibilityNodeInfo.AccessibilityAction(ACTION_MOVE_UP, "Move up"));
         if (canMoveDown) {
             info.addAction(new AccessibilityNodeInfo.AccessibilityAction(ACTION_MOVE_DOWN, "Move down"));

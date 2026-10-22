@@ -1,3 +1,15 @@
+## 0.6.33 — No split screen; the tab over Dasher comes back to Offer Filter
+
+Version 0.6.33 (code 125) answers the owner's message of 22 October 2026 (16:19 UTC): "i say let's get rid of split screen mode. we haven't been able to get the auto resizing to work and it's so buggy. instead can we have an easy way to swap back to the offerfilter app?"
+
+- **Split screen is gone.** The header's Split screen with Dasher button (Swap in Dasher once split) is removed, with the homepage's split-screen hints and the recent-apps steps they opened, and the app no longer moves the split-screen divider to give a map 70% (0.6.11 to 0.6.32). Every start of Dasher is plain and full screen. A split screen you make yourself from recent apps still works as Android makes it: Dasher's half is read while it is really in view, and the tab sits over Dasher's half beside a map.
+- **One tap back.** A tap on the tab at the edge of Dasher's screen now brings Offer Filter's own screen to the front, as it was. The header's **Open Dasher** (now shown whenever Dasher is installed) goes back. Over an offer the tab still takes no touches, and a tap with another app in front does nothing, as before.
+- **Pause moved to a hold.** Before, a tap on the tab paused or resumed auto-decline. Now touch and hold it (Android's own long-press time) to pause or resume; tapping the mascot on the homepage still does it too. With no rule saved yet, both open Offer Filter. A hold is never a drag, and screen readers hear both actions by name.
+- **Notice 33.** The notice's "What it does" point no longer says it moves the split-screen divider (now 413 words), and the Terms and Privacy no longer describe the divider's moves or its one-time hint. Notices 20, 22 and 28 no longer say what split screen did. What's new says it in three short lines.
+- **Kept suites.** No tests were added. ConsentGateTest now expects notice 33 without the divider, LegalTextsTest the 0.6.33 texts without the split-screen sentence, and SameOfferAdapterTest's cleanup no longer resets the removed beside-Dasher sighting.
+
+No phone has run this build.
+
 ## 0.6.32 — Autopilot's bar can come down to 10%
 
 Version 0.6.32 (code 124) answers the owner's message of 22 October 2026 (01:45 UTC): "i think auto needs to be able to go below 50%, like maybe even 10%?"

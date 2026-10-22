@@ -158,7 +158,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static final long ASK_EVERY_MS = 30_000;
     /** Where the phone is, for the map's dot, asked at most this often while the map shows. */
     static final long HERE_EVERY_MS = 5_000;
-    private final Asked<Boolean> dasherInstalled = new Asked<>(() -> DasherSplit.launcher(this) != null);
+    private final Asked<Boolean> dasherInstalled = new Asked<>(() -> DasherLaunch.launcher(this) != null);
     private final Asked<Boolean> alertsAllowed = new Asked<>(() -> OfferAlerts.canNotify(this));
     private final Asked<Boolean> locationAllowed = new Asked<>(() -> AreaMap.hasPermission(this));
     private final Asked<Boolean> locationAlways = new Asked<>(() -> AreaMap.hasBackgroundPermission(this));
@@ -173,14 +173,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** The main page's scroller: it scrolls only where even the band and the lines need more. */
     private ScrollView mainPage;
     private ScenePage scene;
-    /** The header's Split with Dasher button (Swap in Dasher once split), while Dasher is not beside already. */
-    private View splitButton;
     /** The header's one-tap Open Dasher, filling the screen (F22). */
     private View openDasherButton;
     /** Whether Open Dasher was given Dasher's own icon yet (asked of Android once, as it first shows). */
     private boolean openDasherDressed;
-    /** The split screen's own lines: the divider hint beside Dasher, and the layout note beside another app. */
-    private SplitLines splitLines;
     private FrameLayout root;
     /** A card sliding up over the main page for the chosen offer's ticket or the map: the page itself never scrolls. */
     private FrameLayout sheet;
@@ -247,8 +243,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     private static long launchScreenLogged;
     /**
-     * The lines that need the user, under the header: setup, an update, Peek paused, a stop, the split screen's layout
-     * note, the one-time cards and note.
+     * The lines that need the user, under the header: setup, an update, Peek paused, a stop, the one-time cards and
+     * note.
      */
     private LinearLayout problems;
     /** The stored route's own line, only while its offer is older than the skyline's (0.6.3: else they mark it). */
@@ -419,7 +415,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         notice.setVisibility(shown ? View.VISIBLE : View.GONE);
         if (shown) {
             mainPage.setVisibility(View.GONE);
-            if (splitLines != null) splitLines.pageChanged();
             settingsPage.setVisibility(View.GONE);
             sheet.setVisibility(View.GONE);
             root.setBackgroundColor(ui.page);
@@ -505,22 +500,18 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // Opening the app checks at once; coming back to it checks at most every five minutes.
         Updater.check(this, freshScreen ? UpdateCadence.Trigger.OPENED : UpdateCadence.Trigger.RESUMED, null);
         freshScreen = false;
-        DasherSplit.windowMode(this);
-        DasherSplit.resumed(this);
-        // Whether Dasher is beside now, not at Dasher's next event: the page is laid out for it at once.
+        // Where Dasher is now, not at Dasher's next event: the tab over Dasher goes as this page comes in front.
         OfferFilterService.lookSoon(windowsLooked);
     }
 
     @Override public void onMultiWindowModeChanged(boolean inMultiWindow, Configuration configuration) {
         super.onMultiWindowModeChanged(inMultiWindow, configuration);
         followSplit(inMultiWindow);
-        DasherSplit.windowMode(this);
-        DasherSplit.resumed(this);
         OfferFilterService.lookSoon(windowsLooked);
         refresh();
     }
 
-    /** The screen reader looked at the windows for this page: laid out for what it saw (Dasher beside or not). */
+    /** The screen reader looked at the windows for this page: refreshed for what it saw. */
     private final Runnable windowsLooked = () -> {
         if (started) refresh();
     };
@@ -585,23 +576,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
     }
 
-    /** Offer Filter above, Dasher below, at the user's tap; already split, Dasher into the other half. */
-    private void splitWithDasher() {
-        String said = DasherSplit.start(this, this::toast);
-        if (said != null) toast(said);
-    }
-
-    /** The layout note's Swap: Dasher into this half, so the map beside it stays (at the user's tap only). */
-    private void swapInDasher() {
-        String said = DasherSplit.swapIn(this);
-        if (said != null) toast(said);
-    }
-
     @Override protected void onPause() {
         resumed = false;
         cancelReportShare();
         refreshScreenAwake();
-        DasherSplit.paused(this);
         Tilt.stop();
         Updater.background(this);
         super.onPause();
@@ -661,7 +639,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         showingSettings = settings;
         mainPage.setVisibility(settings ? View.GONE : View.VISIBLE);
         settingsPage.setVisibility(settings ? View.VISIBLE : View.GONE);
-        if (splitLines != null) splitLines.pageChanged();
         if (!settings) cancelReportShare();
         else if (!noticeShown()) refreshSettings();
         // Behind the status bar: the top of the main page's sky, or the Settings page.
@@ -691,7 +668,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (was) return;
         setupPage.view.setVisibility(View.VISIBLE);
         mainPage.setVisibility(View.GONE);
-        if (splitLines != null) splitLines.pageChanged();
         settingsPage.setVisibility(View.GONE);
         closeSheet();
         root.setBackgroundColor(ui.page);
@@ -702,8 +678,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /**
      * A sky strip across the top of a page: the title and its round buttons. Settings' ({@code back}) has its own strip
      * of sky, Back and the title. The main page's is only the band's buttons (0.6.3; {@link FluidLayout} puts them at
-     * the end of the chips' row, or on their own row under it in a narrow window): Navigate, Open Dasher, Split, the
-     * sun and Settings, each round button 48 dp with 4 dp before it and the sun 56 dp, after its title, an empty
+     * the end of the chips' row, or on their own row under it in a narrow window): Navigate, Open Dasher, the sun and
+     * Settings, each round button 48 dp with 4 dp before it and the sun 56 dp, after its title, an empty
      * heading only screen readers hear (the page's picture needs none) in the band's gap before them.
      */
     /**
@@ -764,15 +740,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
             header.addView(name, new LinearLayout.LayoutParams(ui.dp(FluidLayout.BAND_GAP_DP), ui.dp(48)));
             mainTitle = name;
             header.addView(bandButton(Glyph.Shape.PIN, "Navigate", this::chooseNavigation));
-            // One tap to Dasher filling the screen (with the tab over it), at the user's tap only.
-            openDasherButton = bandButton(Glyph.Shape.PHONE, DasherSplit.OPEN_LABEL, () -> {
-                String said = DasherSplit.openDasher(this);
+            // One tap to Dasher filling the screen (with the tab over it, whose tap comes back here), at the user's
+            // tap only.
+            openDasherButton = bandButton(Glyph.Shape.PHONE, DasherLaunch.OPEN_LABEL, () -> {
+                String said = DasherLaunch.openDasher(this);
                 if (said != null) toast(said);
             });
             openDasherButton.setVisibility(View.GONE);
             header.addView(openDasherButton);
-            splitButton = bandButton(Glyph.Shape.SPLIT, DasherSplit.SPLIT_LABEL, this::splitWithDasher);
-            header.addView(splitButton);
             // The existing sun/moon cycles modes directly; no chooser or duplicate Settings row.
             AppearanceButton sun = new AppearanceButton(this, ui);
             sun.show(Appearance.resolve(this));
@@ -965,11 +940,12 @@ public final class MainActivity extends Activity implements Updater.Busy {
         });
         // Dasher seen only on its launch screen after a start of this app's: the user may pick its card with the dash
         // in recent apps. Only their tap opens them; nothing automatic acts on Dasher for it.
-        launchScreen = new Readiness(problems, DasherSplit.LAUNCH_SCREEN_LINE, DasherSplit.LAUNCH_SCREEN_ACTION, () -> {
-            toast(DasherSplit.recentAppsForLaunchScreen(this));
-            refresh();
-        });
-        launchScreen.spokenAsButton(DasherSplit.LAUNCH_SCREEN_SPOKEN);
+        launchScreen = new Readiness(problems, DasherLaunch.LAUNCH_SCREEN_LINE, DasherLaunch.LAUNCH_SCREEN_ACTION,
+                () -> {
+                    toast(DasherLaunch.recentAppsForLaunchScreen(this));
+                    refresh();
+                });
+        launchScreen.spokenAsButton(DasherLaunch.LAUNCH_SCREEN_SPOKEN);
         // After a stop, with diagnostics after each dash off: one line offering a report the user still sends.
         // Offered once: the line goes as its dialog opens; the stop stays in diagnostics for a day.
         stopNotice = new Readiness(problems, AppName.NAME + " stopped unexpectedly last time", "Send report", () -> {
@@ -986,9 +962,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
             toast(ADOPTED_TOAST);
         });
         addFeeNotice(problems);
-        // Split screen's own words: the divider hint beside Dasher (over the page, once), the layout note (and Swap)
-        // beside another app.
-        splitLines = new SplitLines(this, ui, root, mainPage, problems, this::swapInDasher);
         // The stored route's own line, only for an offer older than the skyline's (refreshRoute).
         routeRow = ui.row();
         routeRow.setPadding(0, ui.dp(10), 0, 0);
@@ -1060,11 +1033,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
             line.setAutoSizeTextTypeUniformWithConfiguration(least, full, 1, android.util.TypedValue.COMPLEX_UNIT_PX);
         }
         return line;
-    }
-
-    /** Split screen with Dasher in the other half (as the screen reader last saw it). */
-    private boolean besideDasherNow() {
-        return isInMultiWindowMode() && OfferFilterService.dasherBeside();
     }
 
     private void addOffers() {
@@ -1931,23 +1899,15 @@ public final class MainActivity extends Activity implements Updater.Busy {
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
         shownState = state;
         hero.setAction(saved.enabled ? SetupPage.PAUSE : saved.hasAnyRule() ? SetupPage.RESUME : "Set up rules");
-        if (splitButton != null) {
-            splitButton.setVisibility(DasherSplit.offered(this, dasherInstalled.get()) ? View.VISIBLE : View.GONE);
-            String label = DasherSplit.label(this);
-            if (!label.equals(String.valueOf(splitButton.getContentDescription()))) {
-                splitButton.setContentDescription(label);
-                splitButton.setTooltipText(label);
-            }
-        }
         if (openDasherButton != null) {
-            int open = DasherSplit.opens(this, dasherInstalled.get()) ? View.VISIBLE : View.GONE;
+            // Whenever Dasher is installed (0.6.33: no Split button beside it any more).
+            int open = dasherInstalled.get() ? View.VISIBLE : View.GONE;
             if (open == View.VISIBLE && !openDasherDressed) {
                 openDasherDressed = true;
                 showDashersIcon(openDasherButton);
             }
             if (openDasherButton.getVisibility() != open) openDasherButton.setVisibility(open);
         }
-        if (splitLines != null) splitLines.refresh(besideDasherNow(), dasherInstalled.get());
 
         boolean readerConnected = OfferFilterService.isConnected();
         // Alerts are not needed to filter (0.6.26): auto-decline works with them off.
@@ -1969,7 +1929,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         long stuck = OfferFilterService.launchScreenHeldSince(this);
         if (stuck != 0 && stuck != launchScreenLogged) {
             launchScreenLogged = stuck;
-            DiagnosticLog.log(this, "split", "launch-screen line shown");
+            DiagnosticLog.log(this, "launch", "launch-screen line shown");
         }
         // No hold now: the next one is logged as shown, whenever it began.
         if (stuck == 0) launchScreenLogged = 0;

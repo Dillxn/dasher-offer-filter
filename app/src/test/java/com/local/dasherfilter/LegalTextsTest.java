@@ -43,7 +43,7 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "22 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.32";
+    static final String TERMS_VERSION = "0.6.33";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -51,10 +51,10 @@ public final class LegalTextsTest {
      * divider for a map in either half); 0.6.27 both (area scoring is the default, and whether the mode was picked is
      * kept); 0.6.29 both (independent working minimums, prospective personal evidence and local snapshots); 0.6.31
      * both (an acceptance's total pay weighs a quarter of each Autopilot Area score); 0.6.32 both (Autopilot's bar can
-     * come down to 10%).
+     * come down to 10%); 0.6.33 both (split screen retired: the divider is no longer moved for a map).
      */
     static final String PRIVACY_EFFECTIVE = "22 October 2026";
-    static final String PRIVACY_VERSION = "0.6.32";
+    static final String PRIVACY_VERSION = "0.6.33";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -381,10 +381,6 @@ public final class LegalTextsTest {
                 // After an update; the notification's ranking, and what the logs note of Dasher's channel
                 // (OfferNotificationService.logChannel).
                 "to reopen Offer Filter only over its own screen or the home screen",
-                // 0.6.21: which app is in each half of a split, only for a map's 70% (SplitDividerMover).
-                "In split screen (from 0.6.21), it checks which app is in each half the same way (window information "
-                        + "and, once for each window it does not already know as Dasher's or its own, that app's "
-                        + "identifier, never its text), only to give a navigation app's half about 70% of the screen.",
                 "whether it can pop up or sound, whether it sounded, and whether Do Not Disturb lets it through",
                 "Its logs note that channel's sound, vibration and importance settings, whether the notification asks "
                         + "to fill the screen, and the names (never the values) of the notification's fields.",

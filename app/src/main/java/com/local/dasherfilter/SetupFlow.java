@@ -409,7 +409,9 @@ final class SetupFlow {
 
     /** Where Accessibility keeps downloaded apps: One UI's name on a Galaxy, stock Android's elsewhere. */
     static String appsList() {
-        return "samsung".equals(DasherSplit.phone()) ? "Installed apps" : "Downloaded apps";
+        String maker = android.os.Build.MANUFACTURER == null ? ""
+                : android.os.Build.MANUFACTURER.toLowerCase(java.util.Locale.US);
+        return maker.contains("samsung") ? "Installed apps" : "Downloaded apps";
     }
 
     // ---- Coming back ----

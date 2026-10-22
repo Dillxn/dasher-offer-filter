@@ -2,7 +2,6 @@ package com.local.dasherfilter;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
@@ -10,6 +9,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.view.Gravity;
+import java.util.function.BooleanSupplier;
 import android.view.WindowManager;
 import android.widget.Toast;
 
@@ -24,9 +24,12 @@ import android.widget.Toast;
  * an offer or its confirmation, during a delivery, and on a screen not recognised during a dash, only a slim peek
  * shows, so it covers none of Dasher's offer or delivery; over an offer that passes it is green, over one that needs
  * review amber (presentation only). Away from an offer a tap on the peek brings the tab out for a few seconds; over an
- * offer the peek takes no touches at all, so every touch there is Dasher's. A tap on the tab pauses or resumes
- * auto-decline, as tapping the mascot does; with no rule saved yet, it opens Offer Filter. A tap during an automatic
- * decline is a touch like any other, so that offer is handed back to the user.
+ * offer the peek takes no touches at all, so every touch there is Dasher's. A tap on the tab brings Offer Filter's own
+ * screen in front of Dasher, as it was, and the homepage's Open Dasher goes back (0.6.33, with split screen retired:
+ * the owner, 22 October 2026, "instead can we have an easy way to swap back to the offerfilter app?"). A touch held
+ * on the tab pauses or resumes auto-decline, as tapping the mascot does (a tap did that before 0.6.33); with no rule
+ * saved yet, both open Offer Filter. A tap during an automatic decline is a touch like any other, so that offer is
+ * handed back to the user.
  *
  * <p>Beside the tab (or, in split screen beside another app, at the top of Dasher's half) a {@link DasherGuide} points
  * toward the best offer area, only while Dasher's screen positively shows the wait for offers
@@ -91,6 +94,11 @@ final class DasherOverlay implements DasherTab.Listener {
     private final Runnable tagAgain = this::tagTimedOut;
     /** What a tap on the chip does (the screen reader's: back to the map), or null for nothing. */
     private Runnable backToMap;
+    /**
+     * What a tap on the tab does (the screen reader's: Offer Filter's own screen in front), whether Android took it;
+     * null for nothing.
+     */
+    private BooleanSupplier openOurs;
     /** Whether the screen reader wants the chip shown now. */
     private boolean chipWanted;
     /**
@@ -162,6 +170,11 @@ final class DasherOverlay implements DasherTab.Listener {
     /** What a tap on the Back to map chip does (main thread). */
     void setBackToMap(Runnable tap) {
         backToMap = tap;
+    }
+
+    /** What a tap on the tab does (main thread): Offer Filter's own screen in front; whether Android took it. */
+    void setOpenOurs(BooleanSupplier tap) {
+        openOurs = tap;
     }
 
     /**
@@ -327,7 +340,8 @@ final class DasherOverlay implements DasherTab.Listener {
         if (view == null) return;
         // Only over Dasher: another app may have come in front since the screen reader last looked (Android tells it
         // nothing of other apps), so with Dasher not in front by Android's own list of windows now, a tap on the tab
-        // does nothing (never pauses auto-decline from over a map) and the tab goes until a look puts it back.
+        // does nothing (never opens anything, nor pauses auto-decline, from over a map) and the tab goes until a look
+        // puts it back.
         if (!OfferFilterService.isDasherOnScreenNow()) {
             suspend();
             return;
@@ -345,7 +359,50 @@ final class DasherOverlay implements DasherTab.Listener {
             // Over an offer it stays tucked away: the touch is only a touch.
             return;
         }
+        openOurs();
+    }
+
+    /**
+     * A touch held on the tab (or a screen reader's long press): pauses or resumes auto-decline, under the same rules as
+     * a tap. Tucked away, it only brings the tab out, as a tap does; over an offer it is only a touch.
+     */
+    @Override public void held() {
+        if (suspended) return;
+        DasherTab view = tab;
+        if (view == null) return;
+        if (!OfferFilterService.isDasherOnScreenNow()) {
+            suspend();
+            return;
+        }
+        if (view.look() == DasherTab.Look.PEEK) {
+            if (tucksAway()) tapped();
+            return;
+        }
+        if (tucksAway()) {
+            outUntil = SystemClock.uptimeMillis() + OUT_FOR_MS;
+            tuckLater();
+        }
         toggle(view);
+    }
+
+    /**
+     * The tab's tap: Offer Filter's own screen in front of Dasher, its task as it was, so a dash goes back and forth
+     * by the tab and the homepage's Open Dasher. The tab goes at once, never over Offer Filter's screen as it comes;
+     * a look puts it back over Dasher once Dasher is in front again. Refused, a toast says where Offer Filter is.
+     */
+    private void openOurs() {
+        BooleanSupplier open = openOurs;
+        boolean opened;
+        try {
+            opened = open != null && open.getAsBoolean();
+        } catch (RuntimeException refused) {
+            opened = false;
+        }
+        if (opened) {
+            suspend();
+            return;
+        }
+        Toast.makeText(service, "Open " + AppName.NAME + " from its icon.", Toast.LENGTH_SHORT).show();
     }
 
     @Override public void dragStarted() {
@@ -751,11 +808,7 @@ final class DasherOverlay implements DasherTab.Listener {
     private void toggle(DasherTab view) {
         FilterSettings saved = FilterStore.load(service);
         if (!saved.enabled && !saved.hasAnyRule()) {
-            try {
-                service.startActivity(new Intent(service, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            } catch (RuntimeException refused) {
-                Toast.makeText(service, "Open " + AppName.NAME + " to add a rule.", Toast.LENGTH_SHORT).show();
-            }
+            openOurs();
             return;
         }
         FilterSettings next = saved.withEnabled(!saved.enabled);

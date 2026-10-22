@@ -12,7 +12,7 @@ import android.os.Bundle;
  * Where a tap on one of Offer Filter's offer cards lands: a screen that never shows. It opens Dasher the way Dasher's
  * launcher icon does, so Dasher's task comes to the front with the offer it is showing (nothing in it is cleared or
  * reset), in its own half when it is already in one half of a split screen; never into the other half (no start of
- * Dasher by this app asks for one: {@link DasherSplit}); then it clears that card and is gone. Dasher's launcher
+ * Dasher by this app asks for one: {@link DasherLaunch}); then it clears that card and is gone. Dasher's launcher
  * resumes its task, and Dasher sometimes never draws a background offer it has to fetch, or draws it without its
  * details (the 0.4.72 report): with Dasher up and none of the offer's figures {@link Peek#PRESENT_MS} later, the
  * screen reader sends Dasher's own notification tap once for that offer ({@link OfferFilterService#cardOpened}). A card
@@ -41,7 +41,7 @@ public final class OpenDasherActivity extends Activity {
 
     /** As {@link #forCard(Context, String, PendingIntent)}; {@code preferDasherOwn}: Dasher's own intent first. */
     static PendingIntent forCard(Context context, String tag, PendingIntent dasherOwn, boolean preferDasherOwn) {
-        if (DasherSplit.launcher(context) == null) return dasherOwn;
+        if (DasherLaunch.launcher(context) == null) return dasherOwn;
         Intent tap = new Intent(context, OpenDasherActivity.class)
                 // One intent per card, so each tap clears its own card.
                 .setData(new Uri.Builder().scheme("dashbuddy").authority("card").appendPath(tag).build())
@@ -77,11 +77,11 @@ public final class OpenDasherActivity extends Activity {
         if (opened == null) {
             // Dasher's plain launch intent, wherever this screen opened: already in one half of a split screen, it
             // brings Dasher's task forward there; beside another app, or full screen, it starts as its icon does. Never
-            // launch-adjacent (DasherSplit): a launch-adjacent start of Dasher's launcher is what the owner's "dd is
+            // launch-adjacent (DasherLaunch): a launch-adjacent start of Dasher's launcher is what the owner's "dd is
             // stuck again" reports followed. Fresh window metadata only names the log's word.
             SplitWindows.CardPlacement placement = OfferFilterService.cardSplitPlacementNow();
             boolean beside = placement == SplitWindows.CardPlacement.DASHER_PRESENT;
-            Intent dasher = DasherSplit.launcher(this);
+            Intent dasher = DasherLaunch.launcher(this);
             if (dasher != null) {
                 try {
                     startActivity(dasher);

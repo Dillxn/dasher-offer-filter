@@ -77,7 +77,6 @@ public class SameOfferAdapterTest {
     public void stop() {
         listener.destroy();
         filter.destroy();
-        OfferFilterService.sawDasherBeside(0);
         OfferFilterService.scanLooperForTests = null;
     }
 

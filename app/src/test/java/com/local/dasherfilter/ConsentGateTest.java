@@ -165,7 +165,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         int words = 0;
         for (String[] point : Consent.POINTS) words += (point[0] + " " + point[1]).split("\\s+").length;
         assertTrue(words + " words", words <= 420);
-        assertEquals("32 (0.6.32): Autopilot's bar can come down to 10%", 32, Consent.VERSION);
+        assertEquals("33 (0.6.33): split screen retired, the divider no longer moved", 33, Consent.VERSION);
         // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
         String account = point("Your Dasher account.");
         assertEquals(AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash. DoorDash's terms ban "
@@ -178,8 +178,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "by tapping Decline and Dasher's usual question (\"Are you sure you want to decline this offer?\"). "
                         + "Any other question it leaves to you and pauses.",
                 "go Back after a Dasher error", "tap Dasher's ⚙ once to bring up a missing offer",
-                // 0.6.21 (notice 28): for a map in either half, not only during a delivery.
-                "move the split-screen divider for a map", "briefly turn offer sound down",
+                // 0.6.33 (notice 33): the split-screen divider is no longer moved (notice 28 to 32 said it was).
+                "briefly turn offer sound down",
                 "keep your unlocked screen on during a dash",
                 "Auto-accept is off unless you turn it on in Settings.", "Your touch stops it."}) {
             assertTrue(fact, does.contains(fact));
@@ -228,8 +228,6 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                         + "independently up or down",
                 "The newest acceptance replaces earlier accepted levels", "Auto-accept starts off.",
                 "it can press Back and retry the same offer, at most twice",
-                "it moves the divider, using the divider's own controls (the ones Android gives screen readers), to "
-                        + "give the map about 70% of the screen",
                 "Peek is on by default after you accept the current notice", "Peek may tap Dasher's ⚙ button once",
                 "You can turn Peek off in Settings.", "it keeps your unlocked screen from timing out",
                 "it can turn media and alarm sound down for a moment",
@@ -388,9 +386,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // account warning; 26, pay first by default and the 7-day floor; 27, the floor kept through Autopilot off and
         // on, and its accepts kept 7 days; 28, the 24-offer hold, the minimums no longer growing on their own, and the
         // divider moved for a map; 29, area scoring by default; 30, independent working minimums following each accept; 31, total pay in each
-        // Autopilot Area score; 32, Autopilot's bar down to 10%.
+        // Autopilot Area score; 32, Autopilot's bar down to 10%; 33, split screen retired with the divider's moves.
         // A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(32, Consent.VERSION);
+        assertEquals(33, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

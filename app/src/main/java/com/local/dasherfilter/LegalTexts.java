@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 22 October 2026 · for {app} 0.6.32
+            Beta terms, effective 22 October 2026 · for {app} 0.6.33
 
             ## What {app} is
 
@@ -159,12 +159,6 @@ final class LegalTexts {
             it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
             checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \
             stops this recovery; an unknown loading screen alone never permits it.
-            - In split screen, whenever a navigation app (Google Maps, Google Maps Go or Waze) is in one half and \
-            Dasher or {app} is in the other, it moves the divider, using the divider's own controls (the ones \
-            Android gives screen readers), to give the map about 70% of the screen, and puts it back once no half \
-            shows a map (from 0.6.21; from 0.6.11, it gave the navigating app more room during a delivery); if you \
-            move the divider yourself, it stops for that dash. It never moves it while an offer is up or during \
-            Dasher's own turn-by-turn navigation. Some phones' dividers offer no such controls; then nothing moves.
             - Peek is on by default after you accept the current notice. On an unlocked, quiet phone it can briefly \
             open Dasher for a fresh background offer and apply your normal rules. It can return to the app you were \
             using after completion evidence; while navigation is detected, it also returns for passing or unclear \
@@ -268,7 +262,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 22 October 2026 · for {app} 0.6.32
+            Beta privacy policy, effective 22 October 2026 · for {app} 0.6.33
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -317,10 +311,7 @@ final class LegalTexts {
             of the app you tapped it from, only to offer a Back to map button when that app is a navigation app \
             (Google Maps, Google Maps Go or Waze). After an update installed while {app}'s screen was open, it \
             checks which app is in front the same way (window information and that app's identifier, never its \
-            text), to reopen {app} only over its own screen or the home screen. In split screen (from 0.6.21), it \
-            checks which app is in each half the same way (window information and, once for each window it does not \
-            already know as Dasher's or its own, that app's identifier, never its text), only to give a navigation \
-            app's half about 70% of the screen.
+            text), to reopen {app} only over its own screen or the home screen.
             - When a finger lands on the screen, as a time only. While it declines an offer (and for a few seconds \
             after), while it checks an offer before an automatic Accept, and before and during a peek, an invisible \
             one-pixel watch notes when a finger lands, so your touch hands the offer back or keeps Peek from \
@@ -541,7 +532,7 @@ final class LegalTexts {
             local sun cycle using only an existing permitted approximate location, without a network request or a \
             separate saved location. When none is available it uses a disclosed local-clock fallback: day from 6 am \
             to 6 pm. Existing explicit day/night choices are preserved. Also where you moved the filter tab over \
-            Dasher, and whether one-time hints, such as the split-screen divider hint, were shown.
+            Dasher, and whether one-time hints were shown.
             - While it has turned media or alarm sound down during a decline, the level to put back, so the sound \
             is restored even after a crash; it goes once the sound is back.
             - Your other switches (such as Peek, the offer map and the sound turn-down), which notice you accepted \

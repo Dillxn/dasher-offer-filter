@@ -55,7 +55,10 @@ final class Consent {
     // an offer's total pay against it (the owner, 22 October 2026: "we must factor in overall pay").
     // 32 (0.6.32): Autopilot's bar can come down to 10% of its working references instead of stopping at 50% (the
     // owner, 22 October 2026: "i think auto needs to be able to go below 50%, like maybe even 10%?").
-    static final int VERSION = 32;
+    // 33 (0.6.33): split screen is retired, so the app no longer moves the split-screen divider for a map (the owner,
+    // 22 October 2026: "i say let's get rid of split screen mode. we haven't been able to get the auto resizing to work
+    // and it's so buggy").
+    static final int VERSION = 33;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -78,10 +81,9 @@ final class Consent {
         {"What it does.", "It reads Dasher's screen and notifications on this phone and declines offers that fail "
                 + "your rules, or come from stores on your skip list, by tapping Decline and Dasher's usual question "
                 + "(\"Are you sure you want to decline this offer?\"). Any other question it leaves to you and pauses. "
-                + "It may also go Back after a Dasher error, tap Dasher's ⚙ once to bring up a missing offer, move "
-                + "the split-screen divider for a map, briefly turn offer sound down and keep your unlocked screen on "
-                + "during a dash. Auto-accept is off unless you turn it on in Settings. Your touch stops "
-                + "it."},
+                + "It may also go Back after a Dasher error, tap Dasher's ⚙ once to bring up a missing offer, briefly "
+                + "turn offer sound down and keep your unlocked screen on during a dash. Auto-accept is off unless you "
+                + "turn it on in Settings. Your touch stops it."},
         {"On by default.", "Autopilot puts pay first. Its bar moves from " + FilterStore.BAR_MIN + "% to "
                 + FilterStore.BAR_MAX + "% of its working references. Each offer you accept yourself sets its "
                 + "readable active minimums up or down to that offer's values; the latest acceptance replaces earlier "

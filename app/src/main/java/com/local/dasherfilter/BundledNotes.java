@@ -75,17 +75,18 @@ final class BundledNotes {
                     + "update checks wait for this notice."};
 
     /**
-     * Notice 28's lines, also 0.6.21's card: an accept holds the bar for the next 24 offers, the minimums no longer grow
-     * on their own (learning raises what offers must meet; Autopilot is the buffer), and a map's half gets 70% of a
-     * split.
+     * Notice 28's lines, also 0.6.21's card: an accept holds the bar for the next 24 offers, and the minimums no longer
+     * grow on their own (learning raises what offers must meet; Autopilot is the buffer). Its third line, a map's half
+     * getting 70% of a split, went with split screen in 0.6.33; 0.6.21's card keeps it ({@link #MAP_SEVENTY}).
      */
-    private static final String[] HOLD_GROWTH_MAP = {
+    private static final String[] HOLD_GROWTH = {
             "An offer you accept yourself now holds Autopilot's bar for your next " + Autopilot.FLOOR_OFFERS
                     + " offers, instead of 7 days.",
             "Your minimums no longer grow on their own. Learning raises the minimums offers must meet when you accept "
-                    + "one that beats your best; Autopilot only moves its bar.",
-            "In split screen, a map in either half now gets " + SplitDivider.MAP_SHARE + "% of the screen, not only "
-                    + "during a delivery. Move the divider yourself and it stops for that dash."};
+                    + "one that beats your best; Autopilot only moves its bar."};
+    /** 0.6.21's card only: a map's half of a split screen got 70% (retired with split screen in 0.6.33). */
+    private static final String MAP_SEVENTY = "In split screen, a map in either half now gets 70% of the screen, not "
+            + "only during a delivery. Move the divider yourself and it stops for that dash.";
 
     /** Notice 29's lines, also 0.6.27's card: offers are scored by area by default, Strict a pick in the radar's middle. */
     private static final String[] AREA_BY_DEFAULT = {
@@ -118,6 +119,15 @@ final class BundledNotes {
                     + "are left to you, never auto-accepted.",
             "An offer you accept still sets its working minimums and holds the bar there for the 24 offers after "
                     + "it."};
+
+    /**
+     * Notice 33 and 0.6.33: split screen is gone, the divider's moves with it; the tab over Dasher comes back here, and
+     * a touch held on it pauses or resumes.
+     */
+    private static final String[] NO_SPLIT = {
+            "Split screen is gone: the app no longer splits the screen with Dasher or moves its divider for a map.",
+            "To come back here from Dasher, tap the tab on the screen's edge. Open Dasher, at the top here, goes back.",
+            "To pause or resume from Dasher, touch and hold the tab. Tapping the mascot here still does it too."};
 
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
@@ -186,8 +196,7 @@ final class BundledNotes {
                         + "version and whether this install was counted before.",
                 "Nothing about your offers, phone or account goes with it; the service keeps daily totals for 400 "
                         + "days. Settings → Send an anonymous daily count turns it off.",
-                "Also new: Strict or Area is a chip beside Autopilot's, the latest offer is a short label, and Split "
-                        + "opens Dasher first, then puts this app beside it.");
+                "Also new: Strict or Area is a chip beside Autopilot's, and the latest offer is a short label.");
         // 0.6.10 (the owner, 13 October 2026, of the #DeclineNow study: "yeah I want all its recommendations"): the
         // store skip list and the driver's cost per mile, both changing what gets declined, so one notice for both.
         notice(21,
@@ -200,9 +209,7 @@ final class BundledNotes {
         notice(22,
                 "When you accept an offer yourself above Autopilot's bar, the bar rises to that score for the rest of "
                         + "the dash, even past what your acceptance goal allows.",
-                "It starts over at your next dash or when you change your goal or minimums.",
-                "In split screen during a delivery, the app moves the divider to give the map more room, and puts it "
-                        + "back afterward. Move it yourself and it stops for that dash.");
+                "It starts over at your next dash or when you change your goal or minimums.");
         // 0.6.12 (the owner, 13 October 2026: "swap overall payout for pay per stop"): the pay minimum is per stop. Its
         // rule C counting (each stop but the pickup) was superseded by 0.6.14, so its lines no longer describe it.
         notice(23,
@@ -225,7 +232,7 @@ final class BundledNotes {
         // 0.6.21 (the owner, 15 October 2026: "We may have to do it by like two dozen orders", "mins should grow as we
         // accept offers with higher mins when adaptive / learned mins is on. autopilot is the buffer", "whenever one
         // half has nav open make it 70% height"). Notice 15's growth (0.5.1) is retired by it.
-        notice(28, HOLD_GROWTH_MAP);
+        notice(28, HOLD_GROWTH);
         // 0.6.27 (the owner, 17 October 2026: "it should be on area score mode by default").
         notice(29, AREA_BY_DEFAULT);
         notice(30, ACCEPTED_AXES);
@@ -234,6 +241,10 @@ final class BundledNotes {
         notice(31, TOTAL_PAY);
         // 0.6.32 (the owner, 22 October 2026: "i think auto needs to be able to go below 50%, like maybe even 10%?").
         notice(32, LOW_BAR);
+        // 0.6.33 (the owner, 22 October 2026: "i say let's get rid of split screen mode. we haven't been able to get the
+        // auto resizing to work and it's so buggy. instead can we have an easy way to swap back to the offerfilter
+        // app?"). Notices 20, 22 and 28 no longer say what split screen did.
+        notice(33, NO_SPLIT);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -375,7 +386,7 @@ final class BundledNotes {
                         + "longer sits below your best accept.",
                 "The notice is a short summary now, the details left to Terms and Privacy, and its diagnostics switch "
                         + "shows your choice.");
-        release("0.6.21", HOLD_GROWTH_MAP[0], HOLD_GROWTH_MAP[1], HOLD_GROWTH_MAP[2],
+        release("0.6.21", HOLD_GROWTH[0], HOLD_GROWTH[1], MAP_SEVENTY,
                 "Beside the tab over Dasher, each offer's score shows at a glance: ✕ 52% while it's declined, for "
                         + DasherOverlay.SCORE_STAYS_MS / 1000 + " seconds after.",
                 "The offer map's grid reaches its edges and fades out, with no outline.");
@@ -415,6 +426,8 @@ final class BundledNotes {
         release("0.6.31", TOTAL_PAY);
         // 0.6.32 (the owner, 22 October 2026: "i think auto needs to be able to go below 50%, like maybe even 10%?").
         release("0.6.32", LOW_BAR);
+        // 0.6.33 (the owner, 22 October 2026: "i say let's get rid of split screen mode").
+        release("0.6.33", NO_SPLIT);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

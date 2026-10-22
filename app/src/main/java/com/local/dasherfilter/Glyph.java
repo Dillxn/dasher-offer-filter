@@ -11,13 +11,13 @@ import android.graphics.drawable.Drawable;
 /**
  * The app's small line icons, drawn on a 24-unit grid so they scale to any size without image files: a clock for
  * minutes, a road for miles, a pin for stops, a coin for pay, a bag for the pickup, a house for the drop-off, sliders
- * for settings, a back arrow, a warning sign, the chevron at the end of a row that opens something, and a phone whole
- * or split for Dasher's screen. (The icons of the controls 0.5.0 retired, for the hotspot, the adaptive minimum,
- * adopting and undoing it, and score by area, went with them.)
+ * for settings, a back arrow, a warning sign, the chevron at the end of a row that opens something, and a phone for
+ * Dasher's screen. (The icons of the controls 0.5.0 retired, for the hotspot, the adaptive minimum, adopting and
+ * undoing it, and score by area, went with them, and 0.6.33's split phone with the Split button.)
  */
 final class Glyph extends Drawable {
     enum Shape {
-        CLOCK, ROAD, PIN, COIN, BAG, HOME, SLIDERS, BACK, SIGN, CHEVRON, SPLIT,
+        CLOCK, ROAD, PIN, COIN, BAG, HOME, SLIDERS, BACK, SIGN, CHEVRON,
         /** A whole phone with a pin in its middle: Dasher's map filling the screen (Open Dasher). */
         PHONE
     }
@@ -130,16 +130,8 @@ final class Glyph extends Drawable {
                 path.lineTo(9.5f, 18);
                 canvas.drawPath(path, stroke);
                 break;
-            case SPLIT:
-                // A phone split in two, with a pin in its lower half: Dasher's map under Offer Filter.
-                oval.set(6, 2.5f, 18, 21.5f);
-                canvas.drawRoundRect(oval, 2.5f, 2.5f, stroke);
-                canvas.drawLine(6, 12, 18, 12, stroke);
-                canvas.drawCircle(12, 16.3f, 1.8f, fill);
-                canvas.drawLine(9, 7.2f, 15, 7.2f, stroke);
-                break;
             case PHONE:
-                // The same phone whole, a pin in its middle: Dasher's map filling the screen.
+                // A whole phone, a pin in its middle: Dasher's map filling the screen.
                 oval.set(6, 2.5f, 18, 21.5f);
                 canvas.drawRoundRect(oval, 2.5f, 2.5f, stroke);
                 path.moveTo(12, 16.5f);
