@@ -102,6 +102,14 @@ final class BundledNotes {
             "Saved minimums and learned bests stay separate. The bar still moves working minimums together; unread "
                     + "and disabled measures stay as they are."};
 
+    /** Notice 31 and 0.6.31: a quarter of each Autopilot Area score is total pay against the latest acceptance's. */
+    private static final String[] TOTAL_PAY = {
+            "With Autopilot on, a quarter of each Area score is now an offer's total pay against your latest "
+                    + "acceptance's.",
+            "So a bigger offer a little under that acceptance's rates can pass, and a smaller one at its rates can be "
+                    + "declined.",
+            "The chart's pay line now shows that acceptance's total pay at the bar."};
+
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
                     + "pay line and the 100% line.";
@@ -212,6 +220,9 @@ final class BundledNotes {
         // 0.6.27 (the owner, 17 October 2026: "it should be on area score mode by default").
         notice(29, AREA_BY_DEFAULT);
         notice(30, ACCEPTED_AXES);
+        // 0.6.31 (the owner, 22 October 2026: "we must factor in overall pay", and "we had some issue before with
+        // overall pay compounding weird with pay per stop"): total against total, never pay per stop times stops.
+        notice(31, TOTAL_PAY);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -389,6 +400,8 @@ final class BundledNotes {
                 + "included, so they're judged like any other offer.",
                 "Reports and your history now keep a full-screen offer's own lines; nothing of Dasher's screen below "
                 + "the offer is kept.");
+        // 0.6.31 (the owner, 22 October 2026: "we must factor in overall pay").
+        release("0.6.31", TOTAL_PAY);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

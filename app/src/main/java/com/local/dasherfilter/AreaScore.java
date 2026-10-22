@@ -8,7 +8,13 @@ import java.math.RoundingMode;
 /** Shared exact three-axis floors, strict/area requirements and stable drawing geometry.
  * Decimal route facts and learned rate pairs remain rational through aggregation and the bar. Only the final
  * required pay rounds up to a cent. Display projections never decide a result. The pay axis is pay per stop (0.6.12):
- * it asks its rate for each stop, the pickup included ({@link #payUnits}). */
+ * it asks its rate for each stop, the pickup included ({@link #payUnits}).
+ *
+ * <p>Total pay (0.6.31, the owner: "we must factor in overall pay"): while Autopilot's working minimums apply in Area
+ * mode, a quarter of the score is the offer's total pay against the latest acceptance's ({@link AutopilotAxes#totalPay}),
+ * and three quarters its area, as before: R' = R^(3/4) · T^(1/4), held exactly as R'^8 = (R²)³ · T². T is total
+ * against total, its own number: never pay per stop × stops, never on the pay-per-stop spoke. Strict mode, the
+ * saved and learned baseline, add-ons and auto-accept never use it. */
 final class AreaScore {
     static final int PAY = 0, MILE = 1, MINUTE = 2, STOP = 3, HOTSPOT = 4, ITEM = 5, AXES = 6;
     static final float SPREAD = 30;
@@ -51,6 +57,8 @@ final class AreaScore {
         private final Fraction[] effective = new Fraction[AXES];
         /** The least an active axis whose own fact is unread can ask (pay per stop with stops unread: one stop). */
         private final Fraction[] lower = new Fraction[AXES];
+        /** Autopilot's total pay T at a bar of 100 while its working minimums apply (0.6.31), else null; Area mode only. */
+        private final Fraction totalPay;
         private final int count;
         /** The saved, accepted and effective projections once read (from any thread: a race makes the same twice). */
         private volatile BigDecimal[][] projections;
@@ -84,6 +92,8 @@ final class AreaScore {
             }
             missing = unread;
             count = axes;
+            AutopilotAxes.Rate whole = rules.hasAutopilotAxes() ? rules.autopilotAxes.totalPay() : null;
+            totalPay = whole == null ? null : new Fraction(whole.numerator, whole.denominator);
         }
         /** The saved asks in cents, a display projection. */
         BigDecimal[] fixedCents() { return projections()[0]; }
@@ -122,6 +132,17 @@ final class AreaScore {
             for (int axis : MONEY_AXES) result = maximum(result, effective[axis] != null ? effective[axis] : lower[axis]);
             return result;
         }
+        /**
+         * The requirement R as an exact power: R² (root 2), or, when Autopilot's total pay T counts in Area mode,
+         * R'^8 = (R²)³ · T² (root 8), so R' = R^(3/4) · T^(1/4) and an offer exactly like the latest acceptance still
+         * meets the bar exactly. Null as {@link #requiredSquare} is.
+         */
+        private Need required(boolean area, boolean partial) {
+            Fraction square = requiredSquare(area, partial);
+            if (square == null) return null;
+            if (!area || totalPay == null) return new Need(square, 2);
+            return new Need(square.square().times(square).times(totalPay.square()), 8);
+        }
         private Fraction requiredSquare(boolean area, boolean partial) {
             if (!area) {
                 Fraction highest = knownMaximum();
@@ -141,6 +162,26 @@ final class AreaScore {
     }
 
     static Floors floors(FilterSettings rules, OfferSnapshot offer) { return new Floors(rules, offer); }
+
+    /** An exact requirement R held as R^root, root 2 or 8 (a power of two, so its root is repeated square roots). */
+    private static final class Need {
+        final Fraction power;
+        final int root;
+        Need(Fraction power, int root) { this.power = power; this.root = root; }
+        boolean zero() { return power.zero(); }
+    }
+
+    /** Whether Autopilot's total pay counts for these rules: Area mode with its working minimums applying (0.6.31). */
+    static boolean totalPayCounts(FilterSettings rules) {
+        return rules.scoreByArea && rules.hasAutopilotAxes() && rules.autopilotAxes.totalPay() != null;
+    }
+
+    /** Autopilot's total pay in whole cents at a bar (the latest acceptance's own pay at its bar), or -1 when it doesn't count. */
+    static long totalPayCents(FilterSettings rules, int bar) {
+        if (!totalPayCounts(rules)) return -1;
+        AutopilotAxes.Rate whole = rules.autopilotAxes.totalPay();
+        return cents(new Fraction(whole.numerator, whole.denominator).square(), bar);
+    }
 
     /** Exact, unscaled per-axis raise at the supplied observed route (not rounded display values). */
     static boolean effectiveFloorsRaised(FilterSettings before, FilterSettings after, OfferSnapshot offer) {
@@ -177,11 +218,15 @@ final class AreaScore {
 
     /** Display-only unscaled requirement; null when no requirement or a selected-model fact is unread/degenerate. */
     static BigDecimal required100(FilterSettings rules, OfferSnapshot offer) {
-        Fraction square = floors(rules, offer).requiredSquare(rules.scoreByArea, false);
-        if (square == null) return null;
+        Need need = floors(rules, offer).required(rules.scoreByArea, false);
+        if (need == null) return null;
         if (!rules.scoreByArea) return asks(rules, offer).complete();
         // This approximate projection is never used by a decision, threshold, score, or cent ceiling.
-        BigDecimal value = square.display();
+        BigDecimal value = need.power.display();
+        for (int root = need.root; root > 1; root /= 2) value = squareRoot(value);
+        return value;
+    }
+    private static BigDecimal squareRoot(BigDecimal value) {
         if (value.signum() == 0) return BigDecimal.ZERO;
         int exponent = value.precision() - value.scale();
         BigDecimal root = BigDecimal.ONE.scaleByPowerOfTen(Math.floorDiv(exponent + 1, 2));
@@ -198,8 +243,8 @@ final class AreaScore {
     /** Final whole-cent requirement at a bar, or -1 when an active fact/area fitness cannot be determined. */
     static long requiredPay(FilterSettings rules, OfferSnapshot offer, int bar) {
         if (!rules.hasMonetaryRule()) return 0;
-        Fraction square = floors(rules, offer).requiredSquare(rules.scoreByArea, false);
-        return square == null ? -1 : cents(square, bar);
+        Need need = floors(rules, offer).required(rules.scoreByArea, false);
+        return need == null ? -1 : cents(need, bar);
     }
 
     /** Largest integer bar that is not a known decline, including REVIEW and the conservative +$ ceiling policy. */
@@ -208,34 +253,44 @@ final class AreaScore {
             return passThreshold(rules.withoutAutopilotAxes(), offer);
         }
         if (rules.maxStops > 0 && offer.stops != null && offer.stops > rules.maxStops) return 0;
-        Fraction square = floors(rules, offer).requiredSquare(rules.scoreByArea, true);
-        if (square == null || square.zero()) return Integer.MAX_VALUE;
-        if (offer.payCents != null) return percent(offer.payCents, square);
+        Need need = floors(rules, offer).required(rules.scoreByArea, true);
+        if (need == null || need.zero()) return Integer.MAX_VALUE;
+        if (offer.payCents != null) return percent(offer.payCents, need);
         if (offer.payAtMostCents == null) return Integer.MAX_VALUE;
-        int ceiling = percent(offer.payAtMostCents, square);
+        int ceiling = percent(offer.payAtMostCents, need);
         return ceiling >= 100 ? Integer.MAX_VALUE : ceiling;
     }
 
     static int scorePercent(FilterSettings rules, OfferSnapshot offer) {
-        Fraction square = floors(rules, offer).requiredSquare(rules.scoreByArea, false);
-        return offer.payCents == null || square == null ? -1 : percent(offer.payCents, square);
+        Need need = floors(rules, offer).required(rules.scoreByArea, false);
+        return offer.payCents == null || need == null ? -1 : percent(offer.payCents, need);
     }
     /** Original saved/enabled-learned score; a lowered working rate never relabels a below-minimum offer. */
     static int baselineScorePercent(FilterSettings rules, OfferSnapshot offer) {
         return scorePercent(rules.withoutAutopilotAxes(), offer);
     }
-    private static int percent(long pay, Fraction square) {
-        if (square.zero()) return -1;
-        BigInteger numerator = BigInteger.valueOf(pay).pow(2).multiply(BigInteger.valueOf(10_000)).multiply(square.d);
-        BigInteger score = sqrtFloor(numerator.divide(square.n));
+    private static int percent(long pay, Fraction square) { return percent(pay, new Need(square, 2)); }
+    /** ⌊100 × pay ÷ R⌋ exactly: the root of 100^root × pay^root ÷ R^root, floored. */
+    private static int percent(long pay, Need need) {
+        if (need.zero()) return -1;
+        BigInteger numerator = BigInteger.valueOf(pay).multiply(BigInteger.valueOf(100)).pow(need.root)
+                .multiply(need.power.d);
+        BigInteger score = rootFloor(numerator.divide(need.power.n), need.root);
         return score.min(BigInteger.valueOf(Integer.MAX_VALUE)).intValue();
     }
-    private static long cents(Fraction square, int bar) {
-        BigInteger n = square.n.multiply(BigInteger.valueOf(bar).pow(2));
-        BigInteger d = square.d.multiply(BigInteger.valueOf(10_000));
-        BigInteger whole = sqrtFloor(n.divide(d));
-        if (whole.pow(2).multiply(d).compareTo(n) < 0) whole = whole.add(BigInteger.ONE);
+    private static long cents(Fraction square, int bar) { return cents(new Need(square, 2), bar); }
+    /** ⌈bar × R ÷ 100⌉ exactly: the least whole cent whose root-th power reaches bar^root × R^root ÷ 100^root. */
+    private static long cents(Need need, int bar) {
+        BigInteger n = need.power.n.multiply(BigInteger.valueOf(bar).pow(need.root));
+        BigInteger d = need.power.d.multiply(BigInteger.valueOf(100).pow(need.root));
+        BigInteger whole = rootFloor(n.divide(d), need.root);
+        if (whole.pow(need.root).multiply(d).compareTo(n) < 0) whole = whole.add(BigInteger.ONE);
         return whole.min(BigInteger.valueOf(Long.MAX_VALUE)).longValue();
+    }
+    /** ⌊n^(1/root)⌋ for root a power of two: repeated floored square roots are exact for integers. */
+    private static BigInteger rootFloor(BigInteger n, int root) {
+        for (int left = root; left > 1; left /= 2) n = sqrtFloor(n);
+        return n;
     }
     private static BigInteger sqrtFloor(BigInteger n) {
         if (n.signum() == 0) return BigInteger.ZERO;

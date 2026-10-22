@@ -10,9 +10,14 @@ import java.util.Objects;
  * Autopilot's independent working rates. A confirmed personal acceptance replaces each observed active rate,
  * in either direction. The exact rate is normalized to the bar at that acceptance, so applying the bar once asks
  * exactly what that offer paid. Saved knobs and the best-ever learner remain separate.
+ *
+ * <p>From 0.6.31 the same acceptance also keeps its total pay, normalized the same way: Area mode weighs an offer's
+ * total pay against it for a quarter of the score ({@link AreaScore}; the owner's "ticket value"). It is total against total:
+ * never pay per stop × stops, and never drawn on the pay-per-stop spoke. State written before 0.6.31 has none until
+ * the next acceptance; nothing reconstructs it.
  */
 final class AutopilotAxes {
-    static final AutopilotAxes NONE = new AutopilotAxes(new Rate[3], 0, FilterSettings.BAR_AT_MINIMUMS);
+    static final AutopilotAxes NONE = new AutopilotAxes(new Rate[3], null, 0, FilterSettings.BAR_AT_MINIMUMS);
     private static final int MAX_ENCODED = 4096;
     private static final int MAX_INTEGER_DIGITS = 512;
 
@@ -21,6 +26,8 @@ final class AutopilotAxes {
     /** The shared bar at that acceptance; its existing next-24-offers protection starts here. */
     final int referenceBar;
     private final Rate[] rates;
+    /** The latest acceptance's whole pay in cents at a bar of 100, set with its rates; null before 0.6.31's first. */
+    private final Rate totalPay;
 
     /** Positive exact cents per unit at a bar of 100. Decimal miles retain their exact observed decimal value. */
     static final class Rate {
@@ -55,8 +62,9 @@ final class AutopilotAxes {
         @Override public int hashCode() { return Objects.hash(numerator, denominator); }
     }
 
-    private AutopilotAxes(Rate[] rates, long acceptedAt, int referenceBar) {
+    private AutopilotAxes(Rate[] rates, Rate totalPay, long acceptedAt, int referenceBar) {
         this.rates = rates.clone();
+        this.totalPay = totalPay;
         this.acceptedAt = acceptedAt;
         this.referenceBar = referenceBar;
     }
@@ -64,6 +72,8 @@ final class AutopilotAxes {
     boolean isEmpty() { return rates[0] == null && rates[1] == null && rates[2] == null; }
     boolean hasAxis(int axis) { return axis >= 0 && axis < rates.length && rates[axis] != null; }
     Rate rate(int axis) { return hasAxis(axis) ? rates[axis] : null; }
+    /** The latest acceptance's whole pay at a bar of 100, or null (none since 0.6.31, or no rates). */
+    Rate totalPay() { return isEmpty() ? null : totalPay; }
 
     /** Active means a saved or enabled learned minimum, never a retained Autopilot override alone. */
     static boolean active(FilterSettings rules, int axis) {
@@ -96,15 +106,20 @@ final class AutopilotAxes {
             observed = true;
         }
         if (!observed) return this;
-        AutopilotAxes result = new AutopilotAxes(next, at, rules.minimumScalePercent);
+        Rate whole = Rate.observed(offer.payCents, BigDecimal.ONE, rules.minimumScalePercent);
+        AutopilotAxes result = new AutopilotAxes(next, whole, at, rules.minimumScalePercent);
         return equals(result) ? this : result;
     }
 
-    /** Local bounded numeric state only, including the latest acceptance's hold metadata. */
+    /**
+     * Local bounded numeric state only, including the latest acceptance's hold metadata. Version 2 (0.6.31) adds the
+     * total pay as a seventh field; state without one keeps version 1's exact text.
+     */
     String encode() {
         if (isEmpty()) return "";
-        StringBuilder text = new StringBuilder("1|").append(acceptedAt).append('|').append(referenceBar);
+        StringBuilder text = new StringBuilder(totalPay == null ? "1|" : "2|").append(acceptedAt).append('|').append(referenceBar);
         for (Rate rate : rates) text.append('|').append(rate == null ? "-" : rate.encode());
+        if (totalPay != null) text.append('|').append(totalPay.encode());
         return text.toString();
     }
 
@@ -113,7 +128,8 @@ final class AutopilotAxes {
         if (encoded == null || encoded.isEmpty() || encoded.length() > MAX_ENCODED) return NONE;
         try {
             String[] fields = encoded.split("\\|", -1);
-            if (fields.length != 6 || !"1".equals(fields[0])) return NONE;
+            boolean withTotal = fields.length == 7 && "2".equals(fields[0]);
+            if (!withTotal && (fields.length != 6 || !"1".equals(fields[0]))) return NONE;
             long at = Long.parseLong(fields[1]);
             int bar = Integer.parseInt(fields[2]);
             if (at < 0 || bar < 1 || bar > 200) return NONE;
@@ -125,7 +141,13 @@ final class AutopilotAxes {
                 if (ratio.length != 2 || !positiveInteger(ratio[0]) || !positiveInteger(ratio[1])) return NONE;
                 rates[axis] = new Rate(new BigInteger(ratio[0]), new BigInteger(ratio[1]));
             }
-            AutopilotAxes result = new AutopilotAxes(rates, at, bar);
+            Rate total = null;
+            if (withTotal) {
+                String[] ratio = fields[6].split("/", -1);
+                if (ratio.length != 2 || !positiveInteger(ratio[0]) || !positiveInteger(ratio[1])) return NONE;
+                total = new Rate(new BigInteger(ratio[0]), new BigInteger(ratio[1]));
+            }
+            AutopilotAxes result = new AutopilotAxes(rates, total, at, bar);
             return result.isEmpty() ? NONE : result;
         } catch (IllegalArgumentException malformed) {
             return NONE;
@@ -142,7 +164,8 @@ final class AutopilotAxes {
     @Override public boolean equals(Object other) {
         if (!(other instanceof AutopilotAxes)) return false;
         AutopilotAxes that = (AutopilotAxes) other;
-        return acceptedAt == that.acceptedAt && referenceBar == that.referenceBar && Arrays.equals(rates, that.rates);
+        return acceptedAt == that.acceptedAt && referenceBar == that.referenceBar && Arrays.equals(rates, that.rates)
+                && Objects.equals(totalPay, that.totalPay);
     }
-    @Override public int hashCode() { return Objects.hash(Arrays.hashCode(rates), acceptedAt, referenceBar); }
+    @Override public int hashCode() { return Objects.hash(Arrays.hashCode(rates), totalPay, acceptedAt, referenceBar); }
 }

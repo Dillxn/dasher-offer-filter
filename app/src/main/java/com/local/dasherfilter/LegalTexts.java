@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 19 October 2026 · for {app} 0.6.29
+            Beta terms, effective 22 October 2026 · for {app} 0.6.31
 
             ## What {app} is
 
@@ -95,7 +95,14 @@ final class LegalTexts {
             acceptance rate Dasher shows when you decline. It initially scales your resolved saved and enabled \
             learned requirements. From 0.6.29, each positively confirmed standalone offer you accept yourself while \
             Autopilot is on sets each readable active working minimum to that offer's own pay per stop, pay per \
-            mile or pay per hour, independently up or down. Every stop counts, the pickup included. Unknown or zero \
+            mile or pay per hour, independently up or down. Every stop counts, the pickup included. From 0.6.31 \
+            that acceptance also sets a total-pay reference: its own whole pay, never its pay per stop times its \
+            stops. In area mode, a quarter of each Autopilot score weighs an offer's total pay against that \
+            reference at the current bar (the required pay is a weighted geometric mean, three quarters the rates' \
+            requirement and one quarter the reference at the bar), so a bigger offer a little under those rates can \
+            pass and a smaller offer at those rates can be declined. Strict mode, automatic acceptance and add-ons \
+            do not use it, and no radar spoke shows it. It is replaced and cleared with the working minimums; \
+            working minimums saved before 0.6.31 have no reference until your next such acceptance. Unknown or zero \
             denominators do not set that measure; a disabled measure stays disabled, and a known implausible figure \
             rejects the adjustment. Automatic acceptances, add-ons, skipped stores, ambiguous outcomes and \
             reconstructed history do not set these minimums. Acceptance learning may be off: Autopilot follows \
@@ -261,7 +268,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 19 October 2026 · for {app} 0.6.29
+            Beta privacy policy, effective 22 October 2026 · for {app} 0.6.31
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -605,12 +612,14 @@ final class LegalTexts {
             shows to move its shared bar between 50% and 150%. From 0.6.29 it also follows each new positively \
             confirmed personal standalone acceptance while on, whether or not acceptance learning is on: each \
             readable active pay-per-stop, pay-per-mile and pay-per-hour working minimum moves independently up or \
-            down to that offer's value. This happens between offers, at the screen reader's safe point. The latest \
-            acceptance replaces earlier accepted levels and starts the bar's next-24-offers hold again; earlier \
-            accepted scores do not override a newer lower acceptance. Later bar changes move these working minimums \
-            together. Turning Autopilot off uses exactly your saved and enabled learned minimums again; turning it \
-            on with the same goal restores its retained working adjustments. Autopilot never changes saved minimums \
-            or the learner's independent bests. Its earlier growth of saved minimums ended in 0.6.21.
+            down to that offer's value. From 0.6.31 it also keeps that offer's total pay, and in area mode a \
+            quarter of each Autopilot score weighs an offer's total pay against it. This happens between offers, at \
+            the screen reader's safe point. The latest acceptance replaces earlier accepted levels and starts the \
+            bar's next-24-offers hold again; earlier accepted scores do not override a newer lower acceptance. \
+            Later bar changes move these working minimums together. Turning Autopilot off uses exactly your saved \
+            and enabled learned minimums again; turning it on with the same goal restores its retained working \
+            adjustments. Autopilot never changes saved minimums or the learner's independent bests. Its earlier \
+            growth of saved minimums ended in 0.6.21.
 
             - What is kept. Only the latest acceptance-rate reading: a whole percent, when Dasher showed it, and \
             the offer it was shown for as a numeric fingerprint (pay in cents, miles, minutes, stops and, for \
@@ -640,18 +649,19 @@ final class LegalTexts {
             changed your goal or rules; that change removes them. They never leave the phone, not even in a report. \
             Numbers only.
             - Independent working minimums (from 0.6.29): at most three exact numeric rate pairs, the latest \
-            acceptance's time and the bar at that acceptance. Unread or disabled measures keep their prior value, \
-            without becoming active. A confirmed update waiting for the safe point also keeps one pending copy with \
-            numeric consent and policy markers so a stale update cannot apply later; the live observation permit is \
-            memory only. These rates have no age expiry. A newer eligible acceptance replaces the observed active \
-            rates; changing your goal, minimums, max stops, mode or learning, Clear history or uninstall clears the \
-            working adjustments. Pausing or turning Autopilot off retains committed rates, the prior bar and an \
-            already confirmed pending update, without collecting new adjustments while off. The latest 200 decision \
-            snapshots retain the exact adjustments used for their original decision until normal eviction, Clear \
-            history or uninstall; older history is not reinterpreted to create them. The stored exact rates and \
-            pending copies stay local and are not included in reports, automatic summaries or the timing study. \
-            Reports can identify a recorded score with the fixed category Autopilot, without exporting the working \
-            rates.
+            acceptance's time and the bar at that acceptance, and from 0.6.31 that acceptance's total pay as one \
+            more exact number (none for working minimums saved before 0.6.31). Unread or disabled measures keep \
+            their prior value, without becoming active. A confirmed update waiting for the safe point also keeps \
+            one pending copy with numeric consent and policy markers so a stale update cannot apply later; the live \
+            observation permit is memory only. These rates have no age expiry. A newer eligible acceptance replaces \
+            the observed active rates; changing your goal, minimums, max stops, mode or learning, Clear history or \
+            uninstall clears the working adjustments. Pausing or turning Autopilot off retains committed rates, the \
+            prior bar and an already confirmed pending update, without collecting new adjustments while off. The \
+            latest 200 decision snapshots retain the exact adjustments used for their original decision until \
+            normal eviction, Clear history or uninstall; older history is not reinterpreted to create them. The \
+            stored exact rates, the total pay and pending copies stay local and are not included in reports, \
+            automatic summaries or the timing study. Reports can identify a recorded score with the fixed category \
+            Autopilot, without exporting the working rates.
             - If Autopilot raised your minimums before 0.6.21, the app keeps a note of that last growth: when, by \
             how much, how many offers on how many days it rested on, your minimums and Autopilot's bar before and \
             after, and whether its note on the homepage (with Undo) is still waiting. Undo removes it; tapping OK \

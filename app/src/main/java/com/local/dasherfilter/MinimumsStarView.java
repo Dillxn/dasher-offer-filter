@@ -788,6 +788,8 @@ final class MinimumsStarView extends View {
             }
         }
         described += " " + (shownRules.scoreByArea ? "Area mode permits compensation between active measures."
+                + (AreaScore.totalPayCounts(shownRules) ? " Autopilot also weighs an offer's total pay against your "
+                        + "latest acceptance's, a quarter of its score; no spoke shows it." : "")
                 : "Strict mode checks every active minimum.")
                 + " Farther out means higher pay or pay rates. Solid blue is saved minimums; "
                 + (shownRules.acceptanceLearning ? "dashed green is your calculated learned minimums, the higher saved "

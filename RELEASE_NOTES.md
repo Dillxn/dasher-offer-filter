@@ -1,3 +1,16 @@
+## 0.6.31 — Autopilot counts total pay
+
+Version 0.6.31 (code 123) answers the owner's message of 22 October 2026 (00:00 UTC), with a screenshot of a $27.00 offer Autopilot declined at its lowest bar, 50%: "we must factor in overall pay. we declined an offer that payed a lot and was only negligibly less than the last accepted offer in area score. weighing in ticket value would have caught it", and "we had some issue before with overall pay compounding weird with pay per stop so we need to address that".
+
+- **Why it was declined.** His latest acceptance, $22.70 for 2 stops, 8.7 mi and 27 min, set Autopilot's working minimums to that offer's own rates at a 50% bar, the lowest Autopilot goes. The $27.00 offer (3 stops, 7.0 mi, 62 min) had 98.4% of the area those rates ask, so it scored 49% and needed $27.43.
+- **A quarter of each Autopilot Area score is total pay.** The latest personal acceptance also keeps its total pay. In Area mode, while Autopilot's working minimums apply, the required pay is a weighted geometric mean: the working rates' requirement three quarters, that acceptance's total pay at the bar one quarter (required = R^¾ × T^¼). The $27.00 offer now needs $26.17 and scores 51%, so it is kept. An offer exactly like the latest acceptance still meets the bar exactly. A smaller offer at the same rates asks a little more: after the $22.70 acceptance, $10 for 2 mi and 15 min went from 54% to 43% and is declined, while $15 for 3 mi and 20 min still passes at 52%.
+- **Total against total, never pay per stop times stops.** The total is the accepted offer's whole pay, compared with an offer's whole pay. It is never multiplied by stops and no radar spoke shows it; pay per stop still asks your number for every stop, pickups included. The skyline's solid pay line is now that acceptance's total at the bar ("Pay $22.70 ref" after his acceptance at 50%); before, it was a single order's working pay per stop times two.
+- **Where it doesn't apply.** Strict mode, Autopilot off, add-ons and automatic acceptance never use the total. Working minimums saved before 0.6.31 have no total until the next personal acceptance; nothing reconstructs one from history. The total stays on the phone, like the working rates: reports and summaries don't carry it.
+- **Where you see it.** Auto's details, How this offer was judged and the radar's spoken description say a quarter of the score is total pay against the latest acceptance's.
+- **Notice 31.** The notice's Autopilot point adds one sentence and stays at 420 words; Terms and Privacy say the total is kept and how it counts. What's new says it in three short lines.
+
+No phone has run this build.
+
 ## 0.6.30 — A busy offer's total is its whole pay, and reports keep a full-screen offer's lines
 
 Version 0.6.30 (code 122) answers the owner's three offer reports of 20 October 2026 from 0.6.29 (22:38 and 23:54 UTC), "seems like the app isn't reading them", and his choice on 21 October that Dasher's total already includes its +$ amount ("Included").

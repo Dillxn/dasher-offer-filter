@@ -51,7 +51,9 @@ final class Consent {
     // area score mode by default"). The notice's words are unchanged: the Terms and Privacy say it.
     // 30 (0.6.29): confirmed personal acceptances set independent Autopilot working minimums up or down;
     // readable plausible short trips can teach learned highs, and green shows the calculated learned envelope.
-    static final int VERSION = 30;
+    // 31 (0.6.31): that acceptance also keeps its total pay, and in Area mode a quarter of each Autopilot score weighs
+    // an offer's total pay against it (the owner, 22 October 2026: "we must factor in overall pay").
+    static final int VERSION = 31;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -81,11 +83,12 @@ final class Consent {
         {"On by default.", "Autopilot puts pay first. Its bar moves from " + FilterStore.BAR_MIN + "% to "
                 + FilterStore.BAR_MAX + "% of its working references. Each offer you accept yourself sets its "
                 + "readable active minimums up or down to that offer's values; the latest acceptance replaces earlier "
-                + "levels. This can allow offers below your saved or learned minimums, or decline offers that meet "
-                + "them. Learning separately raises learned minimums when you accept an offer that beats your best. "
-                + "Peek can briefly open Dasher to read an offer that came in the background. An anonymous daily "
-                + "count tells the developer how many people use the app. Turn any of them off: Autopilot from its "
-                + "chip, learning with Learn, Peek and the count in Settings."},
+                + "levels. In Area mode, a quarter of each score weighs an offer's total pay against the latest "
+                + "acceptance's. This can allow offers below your saved or learned minimums, or decline offers that "
+                + "meet them. Learning separately raises learned minimums when you accept an offer that beats your "
+                + "best. Peek can briefly open Dasher to read a background offer. An anonymous daily count tells the "
+                + "developer how many people use the app. Turn any of them off: Autopilot from its chip, learning "
+                + "with Learn, Peek and the count in Settings."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},
         {"Your data.", "Your offers, rules and history stay on this phone. Feedback and reports leave only when you "

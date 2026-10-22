@@ -614,10 +614,21 @@ final class AutopilotText {
     /** The actual rates in force, including the current bar, without rounding the rule itself. */
     static String detailsAxes(Status s) {
         if (!s.rules.hasAutopilotAxes()) return null;
+        long total = AreaScore.totalPayCents(s.rules, s.rules.minimumScalePercent);
         return "Working minimums now: " + workingMinimums(s.rules) + ". Your confirmed personal acceptance "
                 + ago(s.wallNow - s.rules.autopilotAxes.acceptedAt) + " set each readable active minimum to that "
                 + "offer's value, up or down. Unread and disabled measures stay as they are. Saved minimums and "
-                + "learned bests stay separate. ≈ marks a rate rounded up for display.";
+                + "learned bests stay separate. ≈ marks a rate rounded up for display."
+                + (total >= 0 ? " " + totalPaySaid(total) : "");
+    }
+
+    /**
+     * "Total pay counts a quarter of the score: each offer's total against $22.70, your latest acceptance's at this
+     * bar." (0.6.31, Area mode only; {@link AreaScore#totalPayCounts}).
+     */
+    static String totalPaySaid(long totalCents) {
+        return "Total pay counts a quarter of the score: each offer's total against " + DecisionLog.money(totalCents)
+                + ", your latest acceptance's at this bar.";
     }
 
     static String workingMinimums(FilterSettings rules) {

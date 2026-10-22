@@ -214,16 +214,21 @@ final class DecisionChartView extends View {
 
     /**
      * The lines for these rules: the minimums at 100%, Autopilot's bar, dashed, when it is not 100%, and the pay line,
-     * only with a pay minimum, at what it asks of a single order (Dasher's "2 stops") at the bar.
+     * only with a pay minimum, at what it asks of a single order (Dasher's "2 stops") at the bar. While Autopilot's
+     * total pay counts (0.6.31, {@link AreaScore#totalPayCounts}) the pay line is that total instead: the latest
+     * acceptance's own total pay at the bar, which every offer's total is weighed against, never pay per stop × 2.
      */
     void setRules(FilterSettings rules) {
-        long payout = Math.max(0, AreaScore.floors(rules, SINGLE_ORDER)
+        long total = AreaScore.totalPayCents(rules, rules.minimumScalePercent);
+        long payout = total >= 0 ? total : Math.max(0, AreaScore.floors(rules, SINGLE_ORDER)
                 .axisRequiredCents(AreaScore.PAY, rules.minimumScalePercent));
         if (minimumScalePercent == rules.minimumScalePercent && areaMode == rules.scoreByArea
-                && payoutMinimumCents == payout && independentAutopilot == rules.hasAutopilotAxes()) {
+                && payoutMinimumCents == payout && independentAutopilot == rules.hasAutopilotAxes()
+                && totalPayLine == total >= 0) {
             return;
         }
         payoutMinimumCents = payout;
+        totalPayLine = total >= 0;
         areaMode = rules.scoreByArea;
         independentAutopilot = rules.hasAutopilotAxes();
         minimumScalePercent = rules.minimumScalePercent;
@@ -234,6 +239,8 @@ final class DecisionChartView extends View {
     /** A single order as Dasher counts it, for the pay line: nothing else read. */
     private static final OfferSnapshot SINGLE_ORDER = new OfferSnapshot(null, null, null, 2);
     private boolean independentAutopilot;
+    /** The pay line is Autopilot's total pay, the latest acceptance's at the bar (0.6.31). */
+    private boolean totalPayLine;
 
     /** A tree stands only for a score this version's rules worked out: never a retired one. */
     private static boolean tree(DecisionLog.Entry entry) {
@@ -1024,7 +1031,9 @@ final class DecisionChartView extends View {
         return summary + selectedDescription() + " " + AutopilotText.skylineDescription(independentScores)
                 + (minimumScalePercent != 100 ? " Dashed line: " + AutopilotText.skylineBarRail(minimumScalePercent)
                 + "." : "")
-                + (payoutMinimumCents > 0 ? " Solid line: a single order's " + (areaMode
+                + (payoutMinimumCents > 0 ? totalPayLine ? " Solid line: your latest acceptance's total pay at the bar, "
+                + DecisionLog.money(payoutMinimumCents) + "; a quarter of each Autopilot score is an offer's total "
+                + "pay against it." : " Solid line: a single order's " + (areaMode
                 ? "pay reference at the bar (area can compensate), " : "minimum pay at the bar, ")
                 + DecisionLog.money(payoutMinimumCents) + "." : " No minimum pay is set.")
                 + (unknown > 0 ? " " + unknown + " recorded scores unavailable: no tree." : "")

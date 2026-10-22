@@ -148,6 +148,8 @@ final class MinimumsDetails {
                 + "for filtering, each adjusted independently from a confirmed personal acceptance. The used "
                 + "amounts include the bar and are rounded to cents for display; saved minimums and learned bests "
                 + "are unchanged by this adjustment.");
+        long total = AreaScore.totalPayCents(rules, judgedBar);
+        if (total >= 0) lines.add(AutopilotText.totalPaySaid(total));
         if (rules.scoreByArea) lines.add("Stronger measures can compensate for weaker ones; no individual money "
                 + "minimum is a hard floor in area mode. Max stops stays hard.");
         else lines.add(rules.hasAutopilotAxes() ? "Every active working minimum must be met at the bar."
