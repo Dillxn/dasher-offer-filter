@@ -1,3 +1,17 @@
+## 0.6.37 — Your decline raises Autopilot's bar just above that offer
+
+Version 0.6.37 (code 129) answers the owner's message of 23 October 2026 (00:47 UTC): "if i decline an offer then autopilot should raise my mins to its".
+
+- **Now.** With Autopilot on, when you decline an offer yourself (your Decline tap, or Dasher's decline question, counted once Dasher goes back to the wait for offers or shows another offer), Autopilot raises its bar to one point above that offer's score, up to 150%, so offers that score no better are declined. It holds the bar at least there for your next 24 offers, across dashes, even during an accept's hold and above what an acceptance goal allows.
+- **It only raises.** It never lowers the bar, and it changes none of Autopilot's working minimums, your saved minimums or your learned bests. Your next accept replaces it and sets Autopilot's minimums, with its own 24-offer hold, as before. A change of your goal, minimums, max stops, mode or learning ends it.
+- **What doesn't count.** Add-ons, offers from skipped stores, offers over your max stops, misread offers or ones with an unread figure, the app's own declines, offers left to time out, and offers you decline while auto-decline is paused.
+- **His example.** The $9.95 he declined at 6:17 PM on 22 October scored 39% with the bar at 36%: the bar would have gone to 40%, and his $8.30 at 60% would still have passed.
+- **Where it shows.** Auto's details: "The bar stays at 40% or more for your next 24 offers: you declined an offer that scored 39%, so offers no better are declined. Your next acceptance replaces this hold." When it rises, the status line ends "just above an offer you declined." The change waits for the screen reader's safe point, as Autopilot's changes do.
+- **Notice 36.** "On by default." now says "Each offer you decline yourself raises its bar just above that offer."; its Area sentence is shorter ("In Area mode, its scores also weigh total pay."), so the notice stays at 420 words. The Terms and Privacy, for 0.6.37, say what counts and what ends it; Privacy says the decline is read from the decision history and nothing new is kept. What's new says it in two lines.
+- **Kept suites.** No tests were added. ConsentGateTest expects notice 36 and LegalTextsTest the 0.6.37 texts. The 13 kept suites pass (197 tests).
+
+No phone has run this build.
+
 ## 0.6.36 — Your accept counts after another of Dasher's screens; a lower-case name is masked
 
 Version 0.6.36 (code 128) answers the owner's message of 22 October 2026 (22:30 UTC), with a screenshot from 6:29 PM: "why did the higher. offer here not bump up the purple?", and (23:42 UTC) "yes I accepted it", with a Share report.

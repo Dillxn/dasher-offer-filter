@@ -470,8 +470,9 @@ final class AutopilotText {
      */
     static String statusSaid(Status s) {
         if (showsRise(s)) {
-            return barSaid(s) + " Rising to " + risingTo(s) + (s.rules.hasAutopilotAxes()
-                    ? " percent, the bar held by your latest acceptance."
+            return barSaid(s) + " Rising to " + risingTo(s) + (s.plan.floorDeclined
+                    ? " percent, just above an offer you declined."
+                    : s.rules.hasAutopilotAxes() ? " percent, the bar held by your latest acceptance."
                     : " percent, the score of an offer you accepted.");
         }
         switch (s.kind) {
@@ -672,7 +673,10 @@ final class AutopilotText {
      * 15 offers: you accepted an offer that scored 63% of your minimums. Changing your goal or minimums lets it go
      * sooner."; while the bar is still below it ({@link #risingTo}, 0.6.19), when it rises: "The bar rises to 63% as
      * soon as no offer is up, and stays at 63% or more for your next 15 offers: …" (0.6.20; 0.6.19 said once Dasher is
-     * on screen). Null otherwise.
+     * on screen). From 0.6.37, while an offer the user declined by hand holds it
+     * ({@link Autopilot.Plan#floorDeclined}): "The bar stays at 40% or more for your next 24 offers: you declined an
+     * offer that scored 39%, so offers no better are declined. …" (at the top bar, "… scored 149% or more, and the bar
+     * goes no higher. …"). Null otherwise.
      */
     static String detailsFloor(Status s) {
         Autopilot.Plan plan = s.plan;
@@ -683,6 +687,10 @@ final class AutopilotText {
                 ? "The bar rises to " + plan.floor + "% as soon as no offer is up, and stays at " + plan.floor
                         + "% or more" + next
                 : "The bar stays at " + plan.floor + "% or more" + next;
+        if (plan.floorDeclined) return holds + ": you declined an offer that scored "
+                + (plan.floor >= Autopilot.BAR_MAX ? Autopilot.BAR_MAX - 1 + "% or more, and the bar goes no higher"
+                        : plan.floor - 1 + "%, so offers no better are declined")
+                + ". Your next acceptance replaces this hold. Changing your goal or minimums lets it go sooner.";
         if (s.rules.hasAutopilotAxes()) return holds + ": your latest personal acceptance set the working minimums "
                 + "at this bar. A newer acceptance replaces those levels and this hold. Changing your goal or "
                 + "minimums lets it go sooner.";
@@ -1072,8 +1080,9 @@ final class AutopilotText {
     /**
      * One plan: "plan 82% RECOVERY: need 80%, pass 18/20 at 82%, share bar 82%, ar 55% dasher (12 min ago, 2 since),
      * recovering yes, extra 0, lambda 17.1/h, mix 20, best 86%, ok 86-100%", then the accepted floor when there is one
-     * ("floor 63%") and, when it binds, the mode's own target ("own 50%"). Figures a gated plan did not work out (the
-     * need, the share bar, the value's best and acceptable bars) are left out.
+     * ("floor 63%"; "floor 40% declined" for a decline's, 0.6.37) and, when it binds, the mode's own target
+     * ("own 50%"). Figures a gated plan did not work out (the need, the share bar, the value's best and acceptable
+     * bars) are left out.
      *
      * @param readingAt when Dasher's reading behind the plan was seen (wall clock), or -1
      */
@@ -1089,7 +1098,7 @@ final class AutopilotText {
         parts.add("mix " + plan.mixSize);
         if (plan.bestBar >= 0) parts.add("best " + plan.bestBar + "%");
         if (plan.acceptableLow >= 0) parts.add("ok " + plan.acceptableLow + "-" + plan.acceptableHigh + "%");
-        if (plan.floor >= 0) parts.add("floor " + plan.floor + "%");
+        if (plan.floor >= 0) parts.add("floor " + plan.floor + "%" + (plan.floorDeclined ? " declined" : ""));
         if (plan.floorBinds()) parts.add("own " + plan.ownTarget + "%");
         return "plan " + plan.target + "% " + plan.mode.name() + ": " + String.join(", ", parts);
     }

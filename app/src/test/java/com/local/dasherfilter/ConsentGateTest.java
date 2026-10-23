@@ -166,7 +166,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         int words = 0;
         for (String[] point : Consent.POINTS) words += (point[0] + " " + point[1]).split("\\s+").length;
         assertTrue(words + " words", words <= 420);
-        assertEquals("35 (0.6.35): paused, offers are read and scored, nothing tapped", 35, Consent.VERSION);
+        assertEquals("36 (0.6.37): a decline by hand raises Autopilot's bar just above that offer", 36,
+                Consent.VERSION);
         // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
         String account = point("Your Dasher account.");
         assertEquals(AppName.NAME + " is not made by, endorsed by or affiliated with DoorDash. DoorDash's terms ban "
@@ -389,9 +390,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // on, and its accepts kept 7 days; 28, the 24-offer hold, the minimums no longer growing on their own, and the
         // divider moved for a map; 29, area scoring by default; 30, independent working minimums following each accept; 31, total pay in each
         // Autopilot Area score; 32, Autopilot's bar down to 10%; 33, split screen retired with the divider's moves;
-        // 34, one Share anonymous diagnostics switch; 35, paused offers read and scored, nothing tapped. A phone that
-        // accepted 14 (0.5.0) sees it again too.
-        assertEquals(35, Consent.VERSION);
+        // 34, one Share anonymous diagnostics switch; 35, paused offers read and scored, nothing tapped; 36, a decline
+        // by hand raises Autopilot's bar just above that offer. A phone that accepted 14 (0.5.0) sees it again too.
+        assertEquals(36, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

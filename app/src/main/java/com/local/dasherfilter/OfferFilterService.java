@@ -10315,7 +10315,18 @@ public final class OfferFilterService extends AccessibilityService {
                 recordAcceptance(note.accepted, note.detail);
                 continue;
             }
-            step(note.line, note.kind, note.detail);
+            if (note.kind == DecisionLog.StepKind.DECLINE_COUNTED && note.line != null) {
+                // A decline by hand can raise Autopilot's bar just above that offer (0.6.37), as an accept holds it:
+                // the plan reads the line with its step, and commits only at the next safe point.
+                OfferSnapshot line = note.line;
+                String said = note.detail;
+                onMain(() -> {
+                    DecisionLog.markStep(this, line, DecisionLog.StepKind.DECLINE_COUNTED, said, STEP_WINDOW_MS);
+                    AutopilotRuntime.requestPlan(this, AutopilotRuntime.Trigger.DECLINED);
+                });
+            } else {
+                step(note.line, note.kind, note.detail);
+            }
             DiagnosticLog.log(this, "outcome", note.line.summary() + ": " + note);
             if (note.screen != null) {
                 List<String> screen = new ArrayList<>(note.screen);

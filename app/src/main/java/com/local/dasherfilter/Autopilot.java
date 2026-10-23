@@ -36,9 +36,11 @@ import java.util.TimeZone;
  * working rates set by the latest prospective personal acceptance ({@link AutopilotAxes}). This planner protects
  * that acceptance's reference bar for the next {@value #FLOOR_OFFERS} counted offers, and optimizes its shared buffer
  * over that working shape. A newer lower acceptance replaces an older higher one. Before a working shape exists,
- * the legacy highest-accepted-score hold ({@link #acceptedFloor}, at most 150%) remains. The saved minimums and
- * learner's independent bests are never changed here. From 0.5.1 to 0.6.20 a plan could also grow saved minimums
- * ({@link Growth}); that is retired.
+ * the legacy highest-accepted-score hold ({@link #acceptedFloor}, at most 150%) remains. From 0.6.37 a decline by
+ * hand since the latest acceptance raises that protection, never lowers it: the bar stays one point above the
+ * declined offer's score for the next {@value #FLOOR_OFFERS} counted offers ({@link #declinedFloor}). The saved
+ * minimums and learner's independent bests are never changed here. From 0.5.1 to 0.6.20 a plan could also grow saved
+ * minimums ({@link Growth}); that is retired.
  */
 final class Autopilot {
     // ---- Bar ----
@@ -56,7 +58,8 @@ final class Autopilot {
      * offers have come without the bar coming down for them, and nothing lets go while the user isn't dashing (0.6.21,
      * the owner: "I feel like 7 days is too strong. should be like 24h", then "24h may b too aggressive. We may have to
      * do it by like two dozen orders or something"; the last 7 days from 0.6.18 to 0.6.20). Offers are Autopilot's
-     * counted lines ({@link #countedLines}). The user's own change still restarts it.
+     * counted lines ({@link #countedLines}). The user's own change still restarts it. From 0.6.37 a decline by hand
+     * holds the bar just above that offer for as many offers after it ({@link #declinedFloor}).
      */
     static final int FLOOR_OFFERS = 24;
     /** The bar while Autopilot is off: exactly the minimums. */
@@ -211,7 +214,12 @@ final class Autopilot {
          */
         ACCEPTED(false, "you accepted an offer at this score"),
         /** A prospective acceptance replaced independent working rates, possibly in both directions at once. */
-        ACCEPTED_AXES(false, "you accepted an offer; Autopilot minimums followed each measure");
+        ACCEPTED_AXES(false, "you accepted an offer; Autopilot minimums followed each measure"),
+        /**
+         * The bar rose to, or stays held at, one point above the score of an offer the user declined by hand since
+         * their latest accept (0.6.37, {@link #declinedFloor}), for the 24 offers after that decline.
+         */
+        DECLINED(false, "just above an offer you declined");
 
         /** A change the next commit must follow at once: the user's or a lesson's; it goes straight to the target. */
         final boolean jump;
@@ -278,6 +286,11 @@ final class Autopilot {
          * {@link DecisionLog#handAcceptedAt}); {@link #NEVER} when it has none.
          */
         final long acceptedByHandAt;
+        /**
+         * When the user declined it by hand: the wall time of the line's DECLINE_COUNTED step (0.6.37,
+         * {@link DecisionLog#handDeclinedAt}); {@link #NEVER} when it has none.
+         */
+        final long declinedByHandAt;
 
         /** A line decided at exactly the minimums with Autopilot off, under the current rules model. */
         OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
@@ -306,7 +319,15 @@ final class Autopilot {
         OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
                     boolean arExempt, int bar, boolean autopilot, int model, FilterSettings scoringRules,
                     boolean skipped, long acceptedByHandAt) {
+            this(facts, at, addOn, replay, accepted, declined, arExempt, bar, autopilot, model, scoringRules, skipped,
+                    acceptedByHandAt, NEVER);
+        }
+
+        OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
+                    boolean arExempt, int bar, boolean autopilot, int model, FilterSettings scoringRules,
+                    boolean skipped, long acceptedByHandAt, long declinedByHandAt) {
             this.acceptedByHandAt = acceptedByHandAt;
+            this.declinedByHandAt = declinedByHandAt;
             this.skipped = skipped;
             this.scoringRules = scoringRules;
             this.facts = facts == null ? OfferSnapshot.UNKNOWN : facts.withoutPayBound();
@@ -682,14 +703,18 @@ final class Autopilot {
         /**
          * The accepted floor (0.6.11, {@link #acceptedFloor}): the best score of an offer the user accepted by hand
          * since their own last change and fewer than {@value #FLOOR_OFFERS} offers ago (0.6.21; the last 7 days from
-         * 0.6.18; this dash before), under these rules; -1 when none, and always -1 while off or with no money minimum.
+         * 0.6.18; this dash before), under these rules; from 0.6.37 the declined floor ({@link #declinedFloor}) when
+         * that is as high: one point above the best score of an offer the user declined by hand since their latest
+         * accept; -1 when none, and always -1 while off or with no money minimum.
          */
         final int floor;
         /**
-         * How many more offers an accept scoring {@link #floor} holds it for (0.6.21, {@link #floorOffersLeft}): 1 to
-         * {@value #FLOOR_OFFERS}; 0 when there is no floor.
+         * How many more offers an accept scoring {@link #floor}, or the decline it is one above, holds it for (0.6.21,
+         * {@link #floorOffersLeft}): 1 to {@value #FLOOR_OFFERS}; 0 when there is no floor.
          */
         final int floorOffersLeft;
+        /** The floor is a decline's ({@link #declinedFloor}, 0.6.37), not an accept's. */
+        final boolean floorDeclined;
         /** The committed bar the plan started from. */
         final int current;
         final int goal;
@@ -760,6 +785,7 @@ final class Autopilot {
             this.ownTarget = target;
             this.floor = mode == Mode.OFF || mode == Mode.NO_RULES ? -1 : d.floor;
             this.floorOffersLeft = floor < 0 ? 0 : d.floorOffersLeft;
+            this.floorDeclined = floor >= 0 && d.floorDeclined;
             this.target = Math.max(target, floor);
             this.current = d.state.current;
             this.goal = d.rules.autopilotGoalPercent;
@@ -821,7 +847,7 @@ final class Autopilot {
             return (1_200L * lambdaNumerator + lambdaDenominator) / (2 * lambdaDenominator);
         }
 
-        /** The accepted floor holds the bar above what the mode alone would want. */
+        /** The accepted (or, from 0.6.37, declined) floor holds the bar above what the mode alone would want. */
         boolean floorBinds() {
             return floor > ownTarget;
         }
@@ -862,6 +888,7 @@ final class Autopilot {
         int checkpointAr;
         int floor = -1;
         int floorOffersLeft;
+        boolean floorDeclined;
 
         Draft(Inputs in, List<OfferRecord> window, int[] thetas, List<MixLine> mix, ArNow ar, Rate rate,
               boolean exemptionsIgnored) {
@@ -957,6 +984,17 @@ final class Autopilot {
             List<HandAccept> accepts = handAccepts(rules, in.newestFirst, in.keptAccepts);
             draft.floor = acceptedFloor(accepts, in.floorSince, counted);
             draft.floorOffersLeft = floorOffersLeft(accepts, in.floorSince, counted, draft.floor);
+        }
+        // A decline of the user's own since their latest accept raises the floor to just above that offer, for the 24
+        // offers after it, and never lowers it (0.6.37; the owner, 23 October 2026: "if i decline an offer then
+        // autopilot should raise my mins to its"). The latest accept still decides alone what came before it.
+        List<HandDecline> declines = handDeclines(rules, in.newestFirst,
+                Math.max(in.floorSince, latestAccept(rules, in.newestFirst, in.keptAccepts)));
+        int declined = declinedFloor(declines, counted);
+        if (declined >= BAR_MIN && declined >= draft.floor) {
+            draft.floor = declined;
+            draft.floorOffersLeft = declinedOffersLeft(declines, counted, declined);
+            draft.floorDeclined = true;
         }
 
         if (!rules.autopilot) return draft.gated(Mode.OFF);
@@ -1124,6 +1162,83 @@ final class Autopilot {
     private static boolean holds(HandAccept accept, long since, List<OfferRecord> counted) {
         return accept.at >= since && accept.score >= BAR_MIN
                 && offersBetween(counted, accept.at, Long.MAX_VALUE) < FLOOR_OFFERS;
+    }
+
+    // ---- (c) The declined floor (0.6.37) ----
+
+    /**
+     * When the user last accepted an offer by hand that Autopilot counts (wall clock): the latest of
+     * {@link #handAccepts} over the history and {@code kept}, or the acceptance that set the working shape
+     * ({@link AutopilotAxes#acceptedAt}); {@link #NEVER} when none. Declines before it no longer hold the bar: that
+     * accept replaced what they asked. An add-on, a skipped store's offer or a misread one, which sets nothing, does
+     * not count.
+     */
+    static long latestAccept(FilterSettings rules, List<OfferRecord> newestFirst, List<OfferRecord> kept) {
+        long latest = rules != null && rules.hasAutopilotAxes() ? rules.autopilotAxes.acceptedAt : NEVER;
+        for (HandAccept accept : handAccepts(rules, newestFirst, kept)) latest = Math.max(latest, accept.at);
+        return latest;
+    }
+
+    /** An offer the user declined by hand: when (its DECLINE_COUNTED step, wall clock) and the bar that declines it. */
+    static final class HandDecline {
+        final long at;
+        /** One point above its score under the plan's rules, at most {@link #BAR_MAX}. */
+        final int above;
+
+        HandDecline(long at, int above) {
+            this.at = at;
+            this.above = above;
+        }
+    }
+
+    /**
+     * Offers the user declined by hand after {@code after} (wall clock), newest first, each with one point above its
+     * score under these rules ({@link AreaScore#scorePercent}, recomputed like {@link #handAccepts}), at most
+     * {@link #BAR_MAX}: at that bar the same offer is declined, and a better one passes. Left out, as there: an
+     * add-on, a replay, a skipped store's offer, a misread offer, one with more stops than max stops allows (declined
+     * at every bar anyway), and one whose pay or a needed figure was not read.
+     */
+    static List<HandDecline> handDeclines(FilterSettings rules, List<OfferRecord> newestFirst, long after) {
+        List<HandDecline> declines = new ArrayList<>();
+        if (rules == null || newestFirst == null) return declines;
+        for (OfferRecord record : newestFirst) {
+            if (record == null || record.declinedByHandAt == NEVER || record.declinedByHandAt <= after
+                    || record.addOn || record.replay || record.skipped || OfferSanity.looksMisread(record.facts)) {
+                continue;
+            }
+            if (rules.maxStops > 0 && record.facts.stops != null && record.facts.stops > rules.maxStops) continue;
+            int score = AreaScore.scorePercent(rules, record.facts);
+            if (score < 0) continue;
+            declines.add(new HandDecline(record.declinedByHandAt, Math.min(BAR_MAX, score + 1)));
+        }
+        return Collections.unmodifiableList(declines);
+    }
+
+    /**
+     * The declined floor: the highest of {@code declines}' bars ({@link HandDecline#above}) with fewer than
+     * {@value #FLOOR_OFFERS} of {@code counted} decided after its decline; -1 when none reaches {@link #BAR_MIN}.
+     */
+    static int declinedFloor(List<HandDecline> declines, List<OfferRecord> counted) {
+        int floor = -1;
+        if (declines == null) return floor;
+        for (HandDecline decline : declines) {
+            if (decline.above >= BAR_MIN && offersBetween(counted, decline.at, Long.MAX_VALUE) < FLOOR_OFFERS) {
+                floor = Math.max(floor, decline.above);
+            }
+        }
+        return floor;
+    }
+
+    /** How many more offers the declined floor {@code floor} holds for, as {@link #floorOffersLeft} for accepts. */
+    static int declinedOffersLeft(List<HandDecline> declines, List<OfferRecord> counted, int floor) {
+        int left = 0;
+        if (declines == null || floor < BAR_MIN) return left;
+        for (HandDecline decline : declines) {
+            if (decline.above != floor) continue;
+            int after = offersBetween(counted, decline.at, Long.MAX_VALUE);
+            if (after < FLOOR_OFFERS) left = Math.max(left, FLOOR_OFFERS - after);
+        }
+        return left;
     }
 
     /** How many of {@code counted} were decided after {@code from} and before {@code to} (wall clock). */
@@ -1484,8 +1599,8 @@ final class Autopilot {
      * As {@link #step(int, int, boolean, long, long, int, int)}, with the accepted floor (0.6.11): a bar below
      * {@code floor} goes straight up to it (at most 150), past the commit spacing, the deadband, the raise wait and
      * the 5-point limit, and never down for it. A bar the floor put ({@code floorHeld}: the last change was
-     * {@link Reason#ACCEPTED} and landed on the current bar) that no floor holds any more goes straight back to the
-     * plan's own target, as it rose.
+     * {@link Reason#ACCEPTED}, or from 0.6.37 {@link Reason#DECLINED}, and landed on the current bar) that no floor
+     * holds any more goes straight back to the plan's own target, as it rose.
      *
      * @param floor the plan's accepted floor ({@link Plan#floor}), -1 for none
      * @param floorHeld the last change was the floor's, to the current bar
@@ -1504,14 +1619,15 @@ final class Autopilot {
     /**
      * Why a commit from {@code from} to {@code to} happened: the pending jump when there is one (landing on a binding
      * accepted floor, the jump of a change that keeps the floor, a lesson or turning Autopilot on (0.6.19), says the
-     * floor's words); otherwise the floor's when the commit lands on a binding one; otherwise the plan's mode, with
-     * value moves up or down. Off and no-rules plans only ever return to exactly the minimums.
+     * floor's words); otherwise the floor's when the commit lands on a binding one (an accept's, or from 0.6.37 a
+     * decline's: {@link Reason#DECLINED}); otherwise the plan's mode, with value moves up or down. Off and no-rules
+     * plans only ever return to exactly the minimums.
      */
     static Reason commitReason(Plan plan, int from, int to, Reason jumpCause) {
         if (jumpCause != null && !jumpCause.jump) throw new IllegalArgumentException("not a jump cause: " + jumpCause);
         if ((jumpCause == null || jumpCause == Reason.LEARNED || jumpCause == Reason.TURNED_ON) && plan.floorBinds()
                 && to == plan.target) {
-            return Reason.ACCEPTED;
+            return plan.floorDeclined ? Reason.DECLINED : Reason.ACCEPTED;
         }
         if (jumpCause != null) return jumpCause;
         switch (plan.mode) {

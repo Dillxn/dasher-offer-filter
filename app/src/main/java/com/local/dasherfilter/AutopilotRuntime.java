@@ -86,7 +86,9 @@ final class AutopilotRuntime {
         /** After a commit, or after a commit found its plan stale. */
         COMMIT,
         /** An offer the user accepted by hand (0.6.11): its line has its ACCEPTED step. */
-        ACCEPTED
+        ACCEPTED,
+        /** An offer the user declined by hand (0.6.37): its line has its DECLINE_COUNTED step. */
+        DECLINED
     }
 
     /**
@@ -456,8 +458,9 @@ final class AutopilotRuntime {
      * accepted ({@link DecisionLog#accepted}), declined (the app's decline went through, a "not accepted" or "counted
      * as your Decline" step, or a hidden notification of a failing offer), Dasher's "does not lower acceptance rate"
      * mark, and the bar it was decided at, whether Autopilot set it, and its rules model, and when
-     * the user accepted it by hand ({@link DecisionLog#handAcceptedAt}, for the accepted floor). An offer read while
-     * auto-decline was paused (0.6.35: its score shows, nothing is tapped) is not counted at all, so taking a low one
+     * the user accepted it by hand ({@link DecisionLog#handAcceptedAt}, for the accepted floor) or declined it by hand
+     * ({@link DecisionLog#handDeclinedAt}, for the declined floor, 0.6.37). An offer read while auto-decline was paused
+     * (0.6.35: its score shows, nothing is tapped) is not counted at all, so taking a low one or declining a good one
      * by hand moves nothing of Autopilot's.
      */
     static List<Autopilot.OfferRecord> records(List<DecisionLog.Entry> newestFirst) {
@@ -479,7 +482,7 @@ final class AutopilotRuntime {
                 entry.action == DecisionLog.Action.REPLAY, DecisionLog.accepted(entry), declined,
                 DecisionLog.hasStep(entry, DecisionLog.StepKind.AR_EXEMPT), entry.barPercent, entry.autopilot,
                 entry.model, entry.scoringRules, OfferRule.SKIP_LIST.equals(entry.reason),
-                DecisionLog.handAcceptedAt(entry));
+                DecisionLog.handAcceptedAt(entry), DecisionLog.handDeclinedAt(entry));
     }
 
     // ---- Commits ----
@@ -657,13 +660,14 @@ final class AutopilotRuntime {
     }
 
     /**
-     * The plan's next step, with its accepted floor: up to it at once, and a bar the floor put (the last change was
-     * the floor's, to this bar) straight back once no floor holds it.
+     * The plan's next step, with its accepted or declined floor: up to it at once, and a bar the floor put (the last
+     * change was the floor's, to this bar) straight back once no floor holds it.
      */
     private static Autopilot.Step step(Context app, Autopilot.Plan plan, Autopilot.Reason jump, long elapsed) {
         AutopilotStore.Change last = AutopilotStore.lastChange(app);
         boolean floorHeld = last != null && (Autopilot.Reason.ACCEPTED.name().equals(last.why)
-                || Autopilot.Reason.ACCEPTED_AXES.name().equals(last.why))
+                || Autopilot.Reason.ACCEPTED_AXES.name().equals(last.why)
+                || Autopilot.Reason.DECLINED.name().equals(last.why))
                 && last.to == plan.current;
         return Autopilot.step(plan.current, plan.target, jump != null, elapsed - lastCommitElapsed,
                 elapsed - lastRaiseElapsed, plan.offersSinceRaise, plan.barShare, plan.floor, floorHeld);

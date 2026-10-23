@@ -154,6 +154,11 @@ final class BundledNotes {
             "New in Settings: Decline after 10 seconds waits that long before declining an offer on Dasher's screen; a "
                     + "touch in that time keeps it yours.",
             "Offers that come while you're in another app are still declined at once."};
+    /** Notice 36's lines, also 0.6.37's card: an offer you decline yourself raises Autopilot's bar just above it. */
+    private static final String[] DECLINE_RAISES = {
+            "When you decline an offer yourself, Autopilot now raises its bar to just above that offer, so offers no "
+                    + "better are declined, and holds it there for your next 24 offers.",
+            "It never lowers the bar. Your next accept replaces it and sets Autopilot's minimums, as before."};
 
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
@@ -276,6 +281,8 @@ final class BundledNotes {
         // 0.6.35 (the owner, 22 October 2026: "we still show what we would recommend and it's score even if the user
         // toggles off actual decline"), reversing his "Read nothing" of 6 October.
         notice(35, PAUSED_SCORES);
+        // 0.6.37 (the owner, 23 October 2026: "if i decline an offer then autopilot should raise my mins to its").
+        notice(36, DECLINE_RAISES);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -471,6 +478,8 @@ final class BundledNotes {
                 + "after its wait for offers, as long as no other offer came in between.",
                 "Counted, it sets Autopilot's minimums and can raise your learned ones, like your other accepts.",
                 "Reports now also mask a customer's name written in lower case after Deliver to.");
+        // 0.6.37 (the owner, 23 October 2026: "if i decline an offer then autopilot should raise my mins to its").
+        release("0.6.37", DECLINE_RAISES);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

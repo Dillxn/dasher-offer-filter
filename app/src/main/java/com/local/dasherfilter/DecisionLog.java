@@ -615,6 +615,20 @@ final class DecisionLog {
         return Long.MIN_VALUE;
     }
 
+    /**
+     * When the user declined the offer by hand (0.6.37, Autopilot's declined floor): the time of the line's first
+     * {@link StepKind#DECLINE_COUNTED} step, a Decline of the user's own that Dasher's next screen confirmed (never the
+     * app's own decline, which is not counted as the user's); {@link Long#MIN_VALUE} when it has none, or when the line
+     * also counts as accepted ({@link #accepted}).
+     */
+    static long handDeclinedAt(Entry entry) {
+        if (entry == null || accepted(entry)) return Long.MIN_VALUE;
+        for (Step step : entry.steps) {
+            if (step.kind == StepKind.DECLINE_COUNTED) return step.at;
+        }
+        return Long.MIN_VALUE;
+    }
+
     /** A failing offer counts as filtered only when the app did something about it; one left to the user is review. */
     static Tally tally(Entry entry) {
         Outcome outcome = outcome(entry);
