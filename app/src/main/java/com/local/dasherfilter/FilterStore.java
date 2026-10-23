@@ -1001,6 +1001,13 @@ final class FilterStore {
         final int consentVersion;
         final OfferSnapshot observed;
         private boolean consumed;
+        /** The offer's Autopilot score as its latest decision showed it (0.6.40); -1 until one was worked out. */
+        private volatile int seenScore = -1;
+
+        /** This showing's latest decision scored it {@code score} (-1, not worked out, keeps the last known one). */
+        void noteScore(int score) {
+            if (score >= 0) seenScore = score;
+        }
 
         private AutopilotPermit(SharedPreferences prefs, SharedPreferences consent, OfferSnapshot observed) {
             epoch = prefs.getLong(AUTOPILOT_AXES_EPOCH, 0);
@@ -1110,7 +1117,7 @@ final class FilterStore {
             // A shape still waiting for its safe point moves the bar to its reference there (0.6.40): this one is
             // worked out from that bar, as if the first had landed.
             AutopilotAxes next = previous.withOffer(merge ? before.withMinimumScalePercent(previous.referenceBar)
-                    : before, offer, acceptedAt);
+                    : before, offer, acceptedAt, permit.seenScore);
             if (next == previous || next.isEmpty()) return AutopilotAcceptance.UNKNOWN;
             try {
                 PendingAutopilotAxes update = new PendingAutopilotAxes(next, before, consent);
@@ -1146,31 +1153,6 @@ final class FilterStore {
                     || !pending.matches(context, read(prefs))) return false;
             prefs.edit().putString(AUTOPILOT_AXES, pending.axes.encode()).remove(AUTOPILOT_AXES_PENDING)
                     .putInt(AUTOPILOT_BAR, clamp(pending.axes.referenceBar, BAR_MIN, BAR_MAX)).apply();
-            return true;
-        }
-    }
-
-    /** A working shape saved by 0.6.29 to 0.6.39 waits for its once-only rebase (0.6.40): cheap, from its text. */
-    static boolean autopilotAxesUnsettled(Context context) {
-        String raw = prefs(context).getString(AUTOPILOT_AXES, "");
-        return !raw.isEmpty() && !raw.startsWith("3|");
-    }
-
-    /**
-     * 0.6.40's rebase of a working shape saved by 0.6.29 to 0.6.39, by compare-and-set: the shape becomes
-     * {@code rebased} (settled) and the bar {@code bar}, only while Autopilot is on, the stored shape is still
-     * {@code expected}, the bar still {@code expectedBar} and no acceptance waits for its safe point.
-     */
-    static boolean rebaseAutopilotAxes(Context context, AutopilotAxes expected, int expectedBar, AutopilotAxes rebased,
-                                       int bar) {
-        synchronized (FilterStore.class) {
-            SharedPreferences prefs = prefs(context);
-            FilterSettings now = read(prefs);
-            if (!now.autopilot || !now.autopilotAxes.equals(expected) || now.minimumScalePercent != expectedBar
-                    || !prefs.getString(AUTOPILOT_AXES_PENDING, "").isEmpty() || !rebased.settled) return false;
-            SharedPreferences.Editor edit = prefs.edit().putString(AUTOPILOT_AXES, rebased.encode());
-            if (bar != expectedBar) edit.putInt(AUTOPILOT_BAR, clamp(bar, BAR_MIN, BAR_MAX));
-            edit.apply();
             return true;
         }
     }

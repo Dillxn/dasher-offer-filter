@@ -139,8 +139,10 @@ public final class LegalTextsTest {
                         + "hour, independently up or down",
                 // 0.6.40: the bar moves to the accepted offer's own score and holds there.
                 "From 0.6.40 the shared bar moves at the same time to that offer's own Autopilot score",
-                "The newest acceptance replaces earlier accepted levels and holds the bar at least at that score "
+                "The newest acceptance replaces earlier accepted levels and holds the bar at least at that level "
                         + "for the next 24 counted offers, across dashes",
+                "add-ons and automatic acceptance, which ask your saved and enabled learned minimums at the bar, "
+                        + "follow the bar to its new level",
                 "A change of your goal (turning Autopilot on with another goal included), minimums, max stops, "
                         + "mode or learning ends that hold and clears the working adjustments",
                 "a pause, turning Autopilot off and on again with the same goal, and Adopt keep them, including "

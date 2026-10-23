@@ -196,8 +196,6 @@ final class AutopilotRuntime {
     private static volatile long lastCommitElapsed = elapsedClock.getAsLong();
     private static volatile long lastRaiseElapsed = lastCommitElapsed;
     private static final AtomicLong deferralLoggedAt = new AtomicLong(Long.MIN_VALUE);
-    /** A working shape saved by 0.6.29 to 0.6.39 was rebased or settled this process ({@link #settleLegacyShape}). */
-    private static final AtomicBoolean legacyShapeSettled = new AtomicBoolean();
     /** The last plan logged: its target and mode, and when (elapsed). */
     private static volatile int loggedTarget = -1;
     private static volatile Autopilot.Mode loggedMode;
@@ -510,10 +508,6 @@ final class AutopilotRuntime {
             if (!Consent.accepted(app)) return Commit.NO_PLAN;
             FilterStore.PendingAutopilotAxes pendingAxes = FilterStore.pendingAutopilotAxes(app);
             if (pendingAxes != null) return commitAcceptedAxes(app, pendingAxes);
-            if (legacyShapeDue(app)) {
-                Commit settled = settleLegacyShape(app);
-                if (settled != null) return settled;
-            }
             Autopilot.Plan plan = latest.get();
             if (plan == null) return Commit.NO_PLAN;
             FilterSettings rules = FilterStore.load(app);
@@ -623,89 +617,6 @@ final class AutopilotRuntime {
         return result;
     }
 
-    /** A working shape saved by 0.6.29 to 0.6.39 still waits for its rebase, while Autopilot is on. Cheap. */
-    private static boolean legacyShapeDue(Context app) {
-        return !legacyShapeSettled.get() && FilterStore.autopilotAxesUnsettled(app) && FilterStore.load(app).autopilot;
-    }
-
-    /**
-     * Once, at a safe point (0.6.40): a working shape saved by 0.6.29 to 0.6.39 was normalized to the bar at its
-     * acceptance, so from then on its accepted offer scored that bar, not the score it showed (the owner's 32% offer,
-     * accepted at a 25% bar, scored 25% after it, and the bar stayed at 25%). It is rebased to that offer's recorded
-     * Autopilot score, as an acceptance sets it now ({@link AutopilotAxes#referenceFor}), and the bar scaled by the
-     * same factor, so every requirement stays as it was (to the bar's rounding). Its history line not found or
-     * unscored, or the scaled bar outside 10–150, the shape is only settled. Null when nothing was written (an
-     * acceptance waits, or the shape moved meanwhile): the commit goes on as usual.
-     */
-    private static Commit settleLegacyShape(Context app) {
-        FilterSettings rules = FilterStore.load(app);
-        AutopilotAxes axes = rules.autopilotAxes;
-        if (!rules.autopilot || axes.isEmpty() || axes.settled) {
-            if (axes.isEmpty() || axes.settled) legacyShapeSettled.set(true);
-            return null;
-        }
-        if (FilterStore.pendingAutopilotAxes(app) != null) return null;
-        int from = rules.minimumScalePercent;
-        int reference = axes.referenceBar;
-        int score = acceptedScore(DecisionLog.recent(app, HISTORY_LINES), axes.acceptedAt);
-        int bar = from;
-        if (score >= 0) {
-            int scored = Math.max(Autopilot.BAR_MIN, Math.min(Autopilot.BAR_MAX, score));
-            // The bar times scored ÷ reference, to the nearest whole percent: what it asks stays what it asked.
-            long scaled = ((long) from * scored * 2 + reference) / (2L * reference);
-            if (scaled >= Autopilot.BAR_MIN && scaled <= Autopilot.BAR_MAX) {
-                reference = scored;
-                bar = (int) scaled;
-            }
-        }
-        AutopilotAxes rebased = axes.rebasedTo(reference);
-        Commit result;
-        synchronized (LOCK) {
-            if (!FilterStore.rebaseAutopilotAxes(app, axes, from, rebased, bar)) return null;
-            legacyShapeSettled.set(true);
-            // The rules' key changed with the shape's text: plans made before are for other rules.
-            goalEpoch.incrementAndGet();
-            latest.set(null);
-            if (bar != from) {
-                // On the acceptance's own hold, the bar is that hold's at the new scale, released as it would be.
-                Autopilot.Reason why = from == axes.referenceBar ? Autopilot.Reason.ACCEPTED_AXES
-                        : Autopilot.Reason.REBASED;
-                AutopilotStore.recordChange(app, from, bar, why.name(), wallClock.getAsLong(), bar > from);
-                lastCommitElapsed = elapsedClock.getAsLong();
-                result = Commit.COMMITTED;
-            } else {
-                result = Commit.HELD;
-            }
-        }
-        log(app, bar != from ? "working minimums rescaled to your latest accepted offer's score: bar " + from + "% to "
-                + bar + "%, what offers need unchanged" : "working minimums settled; bar unchanged");
-        notifyListeners();
-        requestPlan(app, Trigger.COMMIT);
-        return result;
-    }
-
-    /**
-     * The recorded Autopilot score of the offer accepted by hand at {@code acceptedAt} (its line's ACCEPTED step within
-     * {@link Autopilot#DEDUP_MS}, the nearest), a standalone line this rules model scored; -1 when none.
-     */
-    static int acceptedScore(List<DecisionLog.Entry> newestFirst, long acceptedAt) {
-        int score = -1;
-        long nearest = Long.MAX_VALUE;
-        if (newestFirst == null || acceptedAt <= 0) return score;
-        for (DecisionLog.Entry entry : newestFirst) {
-            long at = DecisionLog.handAcceptedAt(entry);
-            if (at == Long.MIN_VALUE || entry.addOn || entry.model < DecisionLog.MODEL || entry.scorePercent < 0) {
-                continue;
-            }
-            long apart = Math.abs(at - acceptedAt);
-            if (apart <= Autopilot.DEDUP_MS && apart < nearest) {
-                nearest = apart;
-                score = entry.scorePercent;
-            }
-        }
-        return score;
-    }
-
     /**
      * Drops a plan that can no longer be committed from and asks for a new one; {@code stale} is its log line, null
      * when the plan is only behind the bar (its own last commit moved it), which is no news.
@@ -728,7 +639,6 @@ final class AutopilotRuntime {
         try {
             if (!Consent.accepted(app)) return false;
             if (FilterStore.pendingAutopilotAxes(app) != null) return FilterStore.load(app).autopilot;
-            if (legacyShapeDue(app)) return true;
             Autopilot.Plan plan = latest.get();
             if (plan == null) return false;
             FilterSettings rules = FilterStore.load(app);

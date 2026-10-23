@@ -167,8 +167,7 @@ final class BundledNotes {
      */
     private static final String[] BAR_FOLLOWS = {
             "When you accept an offer yourself, Autopilot's bar now moves to that offer's own score and holds there "
-                    + "for your next 24 offers, so the offer keeps the score it showed. Offers need the same as "
-                    + "before.",
+                    + "for your next 24 offers, so the offer keeps the score it showed.",
             "The chart's purple bar line now follows the bar offer by offer, with a word where it moved (accepted, "
                     + "hold over, 1 in 5 pass…)."};
 

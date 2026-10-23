@@ -219,13 +219,7 @@ final class Autopilot {
          * The bar rose to, or stays held at, one point above the score of an offer the user declined by hand since
          * their latest accept (0.6.37, {@link #declinedFloor}), for the 24 offers after that decline.
          */
-        DECLINED(false, "just above an offer you declined"),
-        /**
-         * 0.6.40's once-only rebase of a working shape saved by 0.6.29 to 0.6.39 (normalized to the bar at its
-         * acceptance) to its accepted offer's own score, with the bar scaled alike: what offers need is unchanged. A
-         * bar sitting on that acceptance's hold is noted {@link #ACCEPTED_AXES} instead.
-         */
-        REBASED(false, "rescaled to your latest accepted offer's score; what offers need is unchanged");
+        DECLINED(false, "just above an offer you declined");
 
         /** A change the next commit must follow at once: the user's or a lesson's; it goes straight to the target. */
         final boolean jump;
@@ -721,6 +715,11 @@ final class Autopilot {
         final int floorOffersLeft;
         /** The floor is a decline's ({@link #declinedFloor}, 0.6.37), not an accept's. */
         final boolean floorDeclined;
+        /**
+         * The floor is a hand accept's that the history holds after the working shape's own, which set no shape (its
+         * live evidence missed): 0.6.40's healed hold, at its score now.
+         */
+        final boolean floorHealed;
         /** The committed bar the plan started from. */
         final int current;
         final int goal;
@@ -792,6 +791,7 @@ final class Autopilot {
             this.floor = mode == Mode.OFF || mode == Mode.NO_RULES ? -1 : d.floor;
             this.floorOffersLeft = floor < 0 ? 0 : d.floorOffersLeft;
             this.floorDeclined = floor >= 0 && d.floorDeclined;
+            this.floorHealed = floor >= 0 && d.floorHealed;
             this.target = Math.max(target, floor);
             this.current = d.state.current;
             this.goal = d.rules.autopilotGoalPercent;
@@ -895,6 +895,7 @@ final class Autopilot {
         int floor = -1;
         int floorOffersLeft;
         boolean floorDeclined;
+        boolean floorHealed;
 
         Draft(Inputs in, List<OfferRecord> window, int[] thetas, List<MixLine> mix, ArNow ar, Rate rate,
               boolean exemptionsIgnored) {
@@ -990,12 +991,14 @@ final class Autopilot {
             // therefore naturally self healing"): a hand accept the history holds after the one that set the shape
             // (its live evidence missed, so no shape followed it) still sets the floor at its score, the latest
             // deciding, for the 24 offers after it.
-            HandAccept newer = newestAccept(handAccepts(rules, in.newestFirst, in.keptAccepts), in.floorSince);
+            // Only an offer judged with Autopilot on counts: one taken while it was off was never Autopilot's.
+            HandAccept newer = newestAccept(handAccepts(rules, judgedByAutopilot(in.newestFirst)), in.floorSince);
             if (newer != null && newer.at > rules.autopilotAxes.acceptedAt + DEDUP_MS) {
                 int left = FLOOR_OFFERS - offersBetween(counted, newer.at, Long.MAX_VALUE);
                 boolean holds = left > 0 && newer.score >= BAR_MIN;
                 draft.floor = holds ? newer.score : -1;
                 draft.floorOffersLeft = holds ? left : 0;
+                draft.floorHealed = holds;
             }
         } else {
             List<HandAccept> accepts = handAccepts(rules, in.newestFirst, in.keptAccepts);
@@ -1012,6 +1015,7 @@ final class Autopilot {
             draft.floor = declined;
             draft.floorOffersLeft = declinedOffersLeft(declines, counted, declined);
             draft.floorDeclined = true;
+            draft.floorHealed = false;
         }
 
         if (!rules.autopilot) return draft.gated(Mode.OFF);
@@ -1139,6 +1143,13 @@ final class Autopilot {
             if (score < 0) continue;
             accepts.add(new HandAccept(record.acceptedByHandAt, Math.min(BAR_MAX, score)));
         }
+    }
+
+    /** The lines decided while Autopilot was on (0.6.40's healed hold counts only their accepts). */
+    private static List<OfferRecord> judgedByAutopilot(List<OfferRecord> lines) {
+        List<OfferRecord> on = new ArrayList<>();
+        if (lines != null) for (OfferRecord line : lines) if (line != null && line.autopilot) on.add(line);
+        return on;
     }
 
     /** The latest of {@code accepts} made at or after {@code since} (wall clock); null when none. */

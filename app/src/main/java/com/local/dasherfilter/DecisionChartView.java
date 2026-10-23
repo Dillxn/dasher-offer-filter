@@ -98,6 +98,8 @@ final class DecisionChartView extends View {
     private List<AutopilotStore.Change> barChanges = Collections.emptyList();
     /** The bar line's words as last drawn, for the description and tests: "accepted", "hold over", … */
     private final List<String> barWords = new ArrayList<>();
+    /** Where those words were drawn, backdrops and all (for {@link #highestWithin}). */
+    private final List<RectF> barWordBoxes = new ArrayList<>();
     /** What the pay minimum asks of a single order at today's bar, in cents; 0 with no pay minimum. */
     private long payoutMinimumCents;
     /** What screen readers hear with no offer yet (nothing is drawn but the street). */
@@ -412,12 +414,13 @@ final class DecisionChartView extends View {
         }
         drawWindows(canvas);
         // Autopilot's bar over the street (0.6.40): its level is what each tree is weighed against.
-        drawBarLine(canvas);
+        List<BarRun> runs = barRuns();
+        drawBarLine(canvas, runs);
         // The lines' words, then the badge over everything, so no label's backdrop covers it.
         float badgeX = Float.isNaN(markedRoof) ? Float.NaN : buildingCenter(marked, slot);
         float badgeY = Float.isNaN(markedRoof) ? Float.NaN : Math.max(markedRoof - ui.dp(12), ui.dp(10));
         drawThresholdLabels(canvas, left, right, badgeX, badgeY);
-        drawBarWords(canvas);
+        drawBarWords(canvas, runs);
         if (!Float.isNaN(markedRoof)) {
             float center = buildingCenter(marked, slot);
             drawBadge(canvas, center, markedRoof - ui.dp(12), DecisionLog.outcome(entries.get(marked)),
@@ -665,9 +668,10 @@ final class DecisionChartView extends View {
         BarRun last = runs.isEmpty() ? null : runs.get(runs.size() - 1);
         boolean newestJudged = last != null && last.at == entries.get(n - 1).at;
         if (newestJudged && last.bar == minimumScalePercent) return runs;
-        float split = Math.min(end - ui.dp(4), treeCenter(n - 1, slot) + treeWidth(slot) / 2f + ui.dp(2));
+        // Today's level runs on into the chart's margin, so it shows beside the newest offer.
+        float split = Math.min(end - ui.dp(2), treeCenter(n - 1, slot) + treeWidth(slot) / 2f + ui.dp(2));
         if (newestJudged) runs.set(runs.size() - 1, new BarRun(last.from, split, last.bar, last.at));
-        runs.add(new BarRun(split, end, minimumScalePercent, Long.MAX_VALUE));
+        runs.add(new BarRun(split, getWidth(), minimumScalePercent, Long.MAX_VALUE));
         return runs;
     }
 
@@ -675,8 +679,7 @@ final class DecisionChartView extends View {
      * Autopilot's bar, dashed purple over the buildings and trees: each level of {@link #barRuns} (none drawn at
      * exactly 100%, where the minimums' line stands) and a step between touching levels that differ.
      */
-    private void drawBarLine(Canvas canvas) {
-        List<BarRun> runs = barRuns();
+    private void drawBarLine(Canvas canvas, List<BarRun> runs) {
         if (runs.isEmpty()) return;
         float top = plotTop(), bottom = plotBottom();
         long maxScore = scoreScaleMax();
@@ -702,16 +705,21 @@ final class DecisionChartView extends View {
      * orders graph"). Under a step down and over a step up, beside it; the newest {@value #BAR_WORDS_MOST} steps that
      * have words, none over another.
      */
-    private void drawBarWords(Canvas canvas) {
+    private void drawBarWords(Canvas canvas, List<BarRun> runs) {
         barWords.clear();
-        List<BarRun> runs = barRuns();
+        barWordBoxes.clear();
         if (runs.size() < 2 || barChanges.isEmpty()) return;
         float top = plotTop(), bottom = plotBottom();
         long maxScore = scoreScaleMax();
         float end = getWidth() - ui.dp(SIDE_DP);
         label.setTypeface(Ui.MEDIUM);
         label.setTextSize(Math.min(ui.sp(10), ui.dp(13)));
+        // The lines' own words keep their places: "100%" at the right end, the pay line's at the left.
         List<RectF> taken = new ArrayList<>();
+        taken.add(lineLabelBox("100%", end - ui.dp(2), hundredY(), true));
+        if (payoutMinimumCents > 0) {
+            taken.add(lineLabelBox(payLabel(), ui.dp(SIDE_DP) + ui.dp(2), payoutThresholdY(), false));
+        }
         for (int i = runs.size() - 1; i > 0 && barWords.size() < BAR_WORDS_MOST; i--) {
             BarRun before = runs.get(i - 1), after = runs.get(i);
             if (before.bar == after.bar || Math.abs(after.from - before.to) >= 1f) continue;
@@ -730,6 +738,7 @@ final class DecisionChartView extends View {
             for (RectF other : taken) if (RectF.intersects(other, box)) clear = false;
             if (!clear) continue;
             taken.add(box);
+            barWordBoxes.add(box);
             barWords.add(0, word);
             fill.setColor((ui.page & 0x00FFFFFF) | 0xE0000000);
             canvas.drawRoundRect(box, ui.dp(3), ui.dp(3), fill);
@@ -741,6 +750,15 @@ final class DecisionChartView extends View {
         label.setTypeface(null);
         label.setTextSize(ui.sp(11));
         label.setColor(ui.inkMuted);
+    }
+
+    /** Where a line's words stand (as {@link #drawLineLabel} draws them), with their backdrop's margin. */
+    private RectF lineLabelBox(String text, float x, float lineY, boolean end) {
+        float wide = label.measureText(text);
+        float baseline = lineY - ui.dp(3) - label.descent();
+        float textLeft = end ? x - wide : x;
+        return new RectF(textLeft - ui.dp(3), baseline + label.ascent() - ui.dp(1), textLeft + wide + ui.dp(3),
+                baseline + label.descent() + ui.dp(1));
     }
 
     /** The bar line's words at most: the newest steps only, so the street stays readable. */
@@ -766,7 +784,9 @@ final class DecisionChartView extends View {
      */
     private String barSaid() {
         List<BarRun> runs = barRuns();
-        if (runs.isEmpty()) return null;
+        boolean drawn = false;
+        for (BarRun run : runs) drawn |= run.bar != 100;
+        if (!drawn) return null;
         StringBuilder said = new StringBuilder("Autopilot's bar, offer by offer: ");
         int shown = -1;
         for (int i = 0; i < runs.size(); i++) {
@@ -1007,6 +1027,14 @@ final class DecisionChartView extends View {
         float reach = Math.max(barWidth / 2f, ui.dp(9));
         float labelHigh = ui.dp(3) + Math.min(ui.sp(10), ui.dp(13)) * 1.2f;
         highest = Math.min(highest, Math.min(scoreThresholdY(), hundredY()) - ui.dp(1));
+        // The bar line's levels where they cross the span (0.6.40), and its words.
+        long maxScore = scoreScaleMax();
+        for (BarRun run : barRuns()) {
+            if (run.to >= from && run.from <= to) {
+                highest = Math.min(highest, y(run.bar, maxScore, plotTop(), plotBottom()) - ui.dp(1));
+            }
+        }
+        for (RectF box : barWordBoxes) if (box.right >= from && box.left <= to) highest = Math.min(highest, box.top);
         // "100%" sits over its line at the right end, the pay line's words at the left.
         if (to >= right - ui.dp(30)) highest = Math.min(highest, hundredY() - labelHigh);
         if (payoutMinimumCents > 0) {

@@ -480,6 +480,9 @@ final class AutopilotStore {
             if (raised) edit.putLong(RAISED_AT, wall);
             if (from != to) {
                 List<Change> kept = new ArrayList<>(readChanges(prefs));
+                // The first kept change: the note of the one before it (from before 0.6.40) starts the list.
+                Change before = prefs.contains(CHANGES) ? null : lastChange(context);
+                if (before != null && before.from != before.to) kept.add(before);
                 kept.add(new Change(wall, from, to, why, released));
                 while (kept.size() > CHANGES_KEPT) kept.remove(0);
                 JSONArray array = new JSONArray();

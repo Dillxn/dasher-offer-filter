@@ -8,15 +8,17 @@ import java.util.Objects;
 
 /**
  * Autopilot's independent working rates. A confirmed personal acceptance replaces each observed active rate,
- * in either direction. The exact rate is normalized to that offer's own Autopilot score (0.6.40; the bar at that
- * acceptance from 0.6.29), and the bar moves to that score, so applying it once asks exactly what that offer paid and
- * the accepted offer keeps the score it showed. Saved knobs and the best-ever learner remain separate.
+ * in either direction. The exact rate is normalized to that offer's own Autopilot score, the one its ticket showed
+ * (0.6.40; the bar at that acceptance from 0.6.29), and the bar moves to that score with it, so applying it once asks
+ * exactly what that offer paid and the accepted offer keeps its score. Saved knobs and the best-ever learner remain
+ * separate.
  *
  * <p>Why the score and not the bar (the owner, 23 October 2026, beside a 32% offer accepted at a 25% bar: "the app
  * should be declarative and therefore naturally self healing: the 32% accepted offer within 11 orders from most
- * recent should be setting the auto bar"): normalized to the bar, every acceptance above it shrank every score by the
- * bar ÷ its score, so the scores and the bar sank together, acceptance after acceptance, toward the lowest bar. The
- * requirement either way is the same: that offer's own rates.
+ * recent should be setting the auto bar"): normalized to the bar, every acceptance above it shrank every later score
+ * by the bar ÷ its score, so the scores and the bar sank together, acceptance after acceptance, toward the lowest bar.
+ * What a standalone offer needs is the same either way: that offer's own rates at the bar it set. What asks the saved
+ * minimums at the bar (add-ons, automatic accepts) follows the bar.
  *
  * <p>From 0.6.31 the same acceptance also keeps its total pay, normalized the same way: Area mode weighs an offer's
  * total pay against it for a quarter of the score ({@link AreaScore}; the owner's "ticket value"). It is total against total:
@@ -24,26 +26,21 @@ import java.util.Objects;
  * the next acceptance; nothing reconstructs it.
  */
 final class AutopilotAxes {
-    static final AutopilotAxes NONE = new AutopilotAxes(new Rate[3], null, 0, FilterSettings.BAR_AT_MINIMUMS, true);
+    static final AutopilotAxes NONE = new AutopilotAxes(new Rate[3], null, 0, FilterSettings.BAR_AT_MINIMUMS);
     private static final int MAX_ENCODED = 4096;
     private static final int MAX_INTEGER_DIGITS = 512;
 
     /** The latest prospective acceptance which set at least one active, observed rate. */
     final long acceptedAt;
     /**
-     * The bar this acceptance set, its next-24-offers protection: that offer's own Autopilot score, held to 10–150
-     * (0.6.40); the shared bar at that acceptance for working minimums saved by 0.6.29 to 0.6.39.
+     * The bar this acceptance set and its next-24-offers protection: that offer's own Autopilot score as seen, held to
+     * 10–150 (0.6.40); the shared bar at that acceptance when its score was not known, and for working minimums saved
+     * by 0.6.29 to 0.6.39.
      */
     final int referenceBar;
     private final Rate[] rates;
     /** The latest acceptance's whole pay in cents at a bar of 100, set with its rates; null before 0.6.31's first. */
     private final Rate totalPay;
-    /**
-     * Made by 0.6.40's rule ({@link #referenceFor}), or settled since: false for a shape saved by 0.6.29 to 0.6.39,
-     * normalized to the bar at its acceptance, which the runtime rebases once ({@link #rebasedTo}) to its accepted
-     * offer's recorded score, the requirement unchanged.
-     */
-    final boolean settled;
 
     /** Positive exact cents per unit at a bar of 100. Decimal miles retain their exact observed decimal value. */
     static final class Rate {
@@ -83,12 +80,11 @@ final class AutopilotAxes {
         @Override public int hashCode() { return Objects.hash(numerator, denominator); }
     }
 
-    private AutopilotAxes(Rate[] rates, Rate totalPay, long acceptedAt, int referenceBar, boolean settled) {
+    private AutopilotAxes(Rate[] rates, Rate totalPay, long acceptedAt, int referenceBar) {
         this.rates = rates.clone();
         this.totalPay = totalPay;
         this.acceptedAt = acceptedAt;
         this.referenceBar = referenceBar;
-        this.settled = settled;
     }
 
     boolean isEmpty() { return rates[0] == null && rates[1] == null && rates[2] == null; }
@@ -111,20 +107,25 @@ final class AutopilotAxes {
     /**
      * The confirmed offer's known active rates replace the old ones exactly; no averaging, cent rounding, or saved
      * minimum clamp. Unknown and disabled axes keep their stored values. Eligibility/provenance and the safe point
-     * are the runtime's responsibility; a known implausible figure still rejects the entire offer here. The rates are
-     * normalized to {@link #referenceFor} that offer, the bar the commit then sets.
+     * are the runtime's responsibility; a known implausible figure still rejects the entire offer here.
+     *
+     * @param seenScore the offer's Autopilot score as its ticket showed it, at its decision (0.6.40): the rates are
+     *     normalized to it, held to 10–150, and it becomes the reference bar, the bar the commit sets; -1 when it was
+     *     not worked out (a needed figure unread), for the bar of the moment, as from 0.6.29. Never scored again here:
+     *     by the acceptance, the learner may already have learned from this very offer.
      */
-    AutopilotAxes withOffer(FilterSettings rules, OfferSnapshot offer, long at) {
+    AutopilotAxes withOffer(FilterSettings rules, OfferSnapshot offer, long at, int seenScore) {
         if (rules == null || !rules.autopilot || at < 0 || offer == null || offer.payCents == null || offer.payCents <= 0
                 || offer.payAtMostCents != null || OfferSanity.looksMisread(offer)
                 || (rules.maxStops > 0 && offer.stops != null && offer.stops > rules.maxStops)) return this;
-        int reference = referenceFor(rules, offer);
+        int reference = seenScore < 0 ? rules.minimumScalePercent
+                : Math.max(FilterStore.BAR_MIN, Math.min(FilterStore.BAR_MAX, seenScore));
+        BigInteger now = BigInteger.valueOf(rules.minimumScalePercent), to = BigInteger.valueOf(reference);
         Rate[] next = rates.clone();
         BigDecimal[] units = {offer.stops == null ? null : BigDecimal.valueOf(offer.stops),
                 offer.miles == null ? null : BigDecimal.valueOf(offer.miles),
                 offer.minutes == null ? null : BigDecimal.valueOf(offer.minutes)};
         boolean observed = false;
-        BigInteger now = BigInteger.valueOf(rules.minimumScalePercent), to = BigInteger.valueOf(reference);
         for (int axis = 0; axis < next.length; axis++) {
             if (!active(rules, axis) || units[axis] == null || units[axis].signum() <= 0) {
                 // A rate this offer did not read keeps asking, at the bar this sets, what it asks at today's.
@@ -138,51 +139,19 @@ final class AutopilotAxes {
         }
         if (!observed) return this;
         Rate whole = Rate.observed(offer.payCents, BigDecimal.ONE, reference);
-        AutopilotAxes result = new AutopilotAxes(next, whole, at, reference, true);
+        AutopilotAxes result = new AutopilotAxes(next, whole, at, reference);
         return equals(result) ? this : result;
     }
 
     /**
-     * The bar an acceptance of {@code offer} sets (0.6.40): its Autopilot score under {@code rules} with these working
-     * rates, the score its ticket and tree show, held to {@link FilterStore#BAR_MIN}–{@link FilterStore#BAR_MAX}; the
-     * bar of the moment when a figure it needs was not read (the partial update keeps 0.6.29's normalization).
-     */
-    int referenceFor(FilterSettings rules, OfferSnapshot offer) {
-        int score = AreaScore.scorePercent(rules.withAutopilotAxes(this), offer);
-        if (score < 0) return rules.minimumScalePercent;
-        return Math.max(FilterStore.BAR_MIN, Math.min(FilterStore.BAR_MAX, score));
-    }
-
-    /**
-     * These rates and total pay scaled to a new reference bar and settled, the requirement unchanged: each rate times
-     * {@link #referenceBar} ÷ {@code reference}, so at {@code reference} they ask what they asked at the old one, and
-     * {@code reference} becomes the reference bar. Only settled for a {@code reference} outside 1–200 or the same.
-     */
-    AutopilotAxes rebasedTo(int reference) {
-        if (isEmpty()) return this;
-        if (reference < 1 || reference > 200 || reference == referenceBar) {
-            return settled ? this : new AutopilotAxes(rates, totalPay, acceptedAt, referenceBar, true);
-        }
-        Rate[] next = new Rate[rates.length];
-        BigInteger from = BigInteger.valueOf(referenceBar), to = BigInteger.valueOf(reference);
-        for (int axis = 0; axis < rates.length; axis++) {
-            if (rates[axis] != null) next[axis] = rates[axis].scaled(from, to);
-        }
-        return new AutopilotAxes(next, totalPay == null ? null : totalPay.scaled(from, to), acceptedAt, reference,
-                true);
-    }
-
-    /**
      * Local bounded numeric state only, including the latest acceptance's hold metadata. Version 2 (0.6.31) adds the
-     * total pay as a seventh field; state without one keeps version 1's exact text. Version 3 (0.6.40) is a
-     * {@link #settled} shape, its seventh field the total pay or "-".
+     * total pay as a seventh field; state without one keeps version 1's exact text.
      */
     String encode() {
         if (isEmpty()) return "";
-        String version = settled ? "3|" : totalPay == null ? "1|" : "2|";
-        StringBuilder text = new StringBuilder(version).append(acceptedAt).append('|').append(referenceBar);
+        StringBuilder text = new StringBuilder(totalPay == null ? "1|" : "2|").append(acceptedAt).append('|').append(referenceBar);
         for (Rate rate : rates) text.append('|').append(rate == null ? "-" : rate.encode());
-        if (settled || totalPay != null) text.append('|').append(totalPay == null ? "-" : totalPay.encode());
+        if (totalPay != null) text.append('|').append(totalPay.encode());
         return text.toString();
     }
 
@@ -191,9 +160,8 @@ final class AutopilotAxes {
         if (encoded == null || encoded.isEmpty() || encoded.length() > MAX_ENCODED) return NONE;
         try {
             String[] fields = encoded.split("\\|", -1);
-            boolean settled = fields.length == 7 && "3".equals(fields[0]);
-            boolean withTotal = fields.length == 7 && ("2".equals(fields[0]) || settled && !"-".equals(fields[6]));
-            if (!withTotal && !settled && (fields.length != 6 || !"1".equals(fields[0]))) return NONE;
+            boolean withTotal = fields.length == 7 && "2".equals(fields[0]);
+            if (!withTotal && (fields.length != 6 || !"1".equals(fields[0]))) return NONE;
             long at = Long.parseLong(fields[1]);
             int bar = Integer.parseInt(fields[2]);
             if (at < 0 || bar < 1 || bar > 200) return NONE;
@@ -211,7 +179,7 @@ final class AutopilotAxes {
                 if (ratio.length != 2 || !positiveInteger(ratio[0]) || !positiveInteger(ratio[1])) return NONE;
                 total = new Rate(new BigInteger(ratio[0]), new BigInteger(ratio[1]));
             }
-            AutopilotAxes result = new AutopilotAxes(rates, total, at, bar, settled);
+            AutopilotAxes result = new AutopilotAxes(rates, total, at, bar);
             return result.isEmpty() ? NONE : result;
         } catch (IllegalArgumentException malformed) {
             return NONE;
@@ -229,9 +197,7 @@ final class AutopilotAxes {
         if (!(other instanceof AutopilotAxes)) return false;
         AutopilotAxes that = (AutopilotAxes) other;
         return acceptedAt == that.acceptedAt && referenceBar == that.referenceBar && Arrays.equals(rates, that.rates)
-                && Objects.equals(totalPay, that.totalPay) && settled == that.settled;
+                && Objects.equals(totalPay, that.totalPay);
     }
-    @Override public int hashCode() {
-        return Objects.hash(Arrays.hashCode(rates), totalPay, acceptedAt, referenceBar, settled);
-    }
+    @Override public int hashCode() { return Objects.hash(Arrays.hashCode(rates), totalPay, acceptedAt, referenceBar); }
 }

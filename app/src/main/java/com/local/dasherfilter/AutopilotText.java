@@ -691,9 +691,12 @@ final class AutopilotText {
                 + (plan.floor >= Autopilot.BAR_MAX ? Autopilot.BAR_MAX - 1 + "% or more, and the bar goes no higher"
                         : plan.floor - 1 + "%, so offers no better are declined")
                 + ". Your next acceptance replaces this hold. Changing your goal or minimums lets it go sooner.";
-        if (s.rules.hasAutopilotAxes()) return holds + ": your latest acceptance set this bar, the score it showed, "
-                + "and the working minimums to that offer's own rates. A newer acceptance replaces those levels and "
-                + "this hold. Changing your goal or minimums lets it go sooner.";
+        if (plan.floorHealed) return holds + ": an offer you accepted after the one Autopilot's working minimums "
+                + "follow scores " + plan.floor + "% now, and it holds the bar like any accept. Your next acceptance "
+                + "replaces this hold. Changing your goal or minimums lets it go sooner.";
+        if (s.rules.hasAutopilotAxes()) return holds + ": your latest acceptance set the working minimums to that "
+                + "offer's own rates, and this hold. A newer acceptance replaces those levels and this hold. Changing "
+                + "your goal or minimums lets it go sooner.";
         return holds + ": you accepted an offer that scored " + plan.floor + "% of your minimums. Changing your goal "
                 + "or minimums lets it go sooner.";
     }
@@ -1036,7 +1039,6 @@ final class AutopilotText {
             case "RULES_CHANGED": return "new rules";
             case "CLEARED": return "cleared";
             case "MINIMUMS_GREW": return "mins grew";
-            case "REBASED": return "rescaled";
             default: return null;
         }
     }

@@ -684,7 +684,7 @@ public class PrivacyBoundaryTest {
             String asked = String.valueOf(org.robolectric.Shadows.shadowOf(confirm).getMessage());
             assertEquals(MainActivity.CLEAR_HISTORY, asked);
             assertTrue("it names both things of Autopilot's that go: " + asked,
-                    asked.contains("Autopilot's acceptance-rate reading and last change from this phone"));
+                    asked.contains("Autopilot's acceptance-rate reading and recent bar changes from this phone"));
             confirm.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
             settle();
         }
