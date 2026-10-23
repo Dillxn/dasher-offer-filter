@@ -227,6 +227,17 @@ final class PersonalText {
     private static final Pattern CUSTOMER_NAME = Pattern.compile(
             "\\b(" + CUSTOMER_HEADING + ")( +|, +)(" + NAME_WORDS + ")");
     /**
+     * A customer's name after its heading as the customer typed it, in lower case ("Deliver to sam p"): the owner's
+     * 22 October 2026 report kept one so. Up to three words, never a time's or a place's small word ("by 6:28 PM");
+     * words that follow a heading without being a name stay ({@link #NOT_NAMES}).
+     */
+    private static final String ANY_CASE_NAME_WORD =
+            "(?!(?i:by|at|in|on|for|from|to|and|or|with|before|after)\\b)\\p{L}[\\p{L}'’-]*\\.?";
+    private static final String ANY_CASE_NAME_WORDS = ANY_CASE_NAME_WORD + "(?: " + ANY_CASE_NAME_WORD + "){0,2}";
+    private static final Pattern ANY_CASE_NAME_LABEL = Pattern.compile(ANY_CASE_NAME_WORDS);
+    private static final Pattern CUSTOMER_NAME_ANY_CASE = Pattern.compile(
+            "\\b(" + CUSTOMER_HEADING + ")( +|, +)(" + ANY_CASE_NAME_WORDS + ")(?![\\p{L}'’-])");
+    /**
      * A name standing alone as Dasher writes a customer's, a first name (or two) and a last initial ("Sam P", "Noel
      * G.", "Mary Ann S"), with no heading before it to say so: an order's details on its pickup screen list the
      * customer this way (0.6.11's report: the name after "Help", above "Make this delivery count"). The two stores whose
@@ -506,10 +517,11 @@ final class PersonalText {
                     || UNQUOTED_INSTRUCTIONS_LABEL.matcher(trimmed).matches()) instructions = true;
             String next = i + 1 < labels.size() && labels.get(i + 1) != null ? labels.get(i + 1).trim() : null;
             String before = i > 0 && labels.get(i - 1) != null ? labels.get(i - 1).trim() : null;
+            boolean customer = before != null && CUSTOMER_HEADING_LABEL.matcher(before).matches();
             boolean named = (next != null && (COMPLETED.matcher(next).find() || BADGE.matcher(next).matches()
                     || DASHING_NOW.matcher(next).matches() || (sideMenu && MENU_ITEM.matcher(next).matches())))
-                    || (before != null && CUSTOMER_HEADING_LABEL.matcher(before).matches());
-            if (named && isName(trimmed)) {
+                    || customer;
+            if ((named && isName(trimmed)) || (customer && anyCaseName(trimmed))) {
                 out.add(NAME);
             } else if (before != null && CARD_HEADING_LABEL.matcher(before).matches()
                     && DIGIT.matcher(label).find()) {
@@ -595,6 +607,7 @@ final class PersonalText {
             if (!wholeLabel) out = STREET_ALONE_ITEM.matcher(out).replaceAll("$1" + Matcher.quoteReplacement(STREET));
         }
         out = names(CUSTOMER_NAME, out, 3, "$1$2");
+        out = anyCaseCustomerNames(out);
         out = names(GREETING, out, 2, "$1");
         out = possessives(out);
         out = names(NAME_BEFORE_COMPLETED, out, 2, "$1", "$3");
@@ -765,10 +778,31 @@ final class PersonalText {
 
     /** Shaped like a name, and its first word is not one of the words that only look like one. */
     private static boolean isName(String text) {
-        if (text == null || !NAME_LABEL.matcher(text).matches()) return false;
+        return text != null && NAME_LABEL.matcher(text).matches() && !notName(text);
+    }
+
+    /** As {@link #isName}, in any case: only after a customer's heading ({@link #CUSTOMER_NAME_ANY_CASE}). */
+    private static boolean anyCaseName(String text) {
+        return text != null && ANY_CASE_NAME_LABEL.matcher(text).matches() && !notName(text);
+    }
+
+    /** Whether the first word is one that can follow a heading without being a name ({@link #NOT_NAMES}). */
+    private static boolean notName(String text) {
         int space = text.indexOf(' ');
         String first = (space < 0 ? text : text.substring(0, space)).replaceAll("[.'’-]+$", "");
-        return !NOT_NAMES.contains(first.toLowerCase(Locale.US));
+        return NOT_NAMES.contains(first.toLowerCase(Locale.US));
+    }
+
+    /** Each customer's name {@link #CUSTOMER_NAME_ANY_CASE} finds, as {@link #NAME}. */
+    private static String anyCaseCustomerNames(String text) {
+        Matcher found = CUSTOMER_NAME_ANY_CASE.matcher(text);
+        StringBuffer out = new StringBuffer();
+        while (found.find()) {
+            found.appendReplacement(out, anyCaseName(found.group(3))
+                    ? "$1$2" + Matcher.quoteReplacement(NAME) : Matcher.quoteReplacement(found.group()));
+        }
+        found.appendTail(out);
+        return out.toString();
     }
 
     private PersonalText() {}

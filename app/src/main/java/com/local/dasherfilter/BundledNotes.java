@@ -465,6 +465,12 @@ final class BundledNotes {
         // 0.6.35 (the owner, 22 October 2026: the score while paused, and "we could also make auto decline timing
         // configurable like immediate vs 10s").
         release("0.6.35", PAUSED_SCORES[0], PAUSED_SCORES[1], DECLINE_WAIT[0], DECLINE_WAIT[1]);
+        // 0.6.36 (the owner, 22 October 2026, of his $8.30 at 6:17 PM: "why did the higher. offer here not bump up the
+        // purple?", then "yes I accepted it").
+        release("0.6.36", "An offer you accept yourself now counts even when Dasher showed another screen for a while "
+                + "after its wait for offers, as long as no other offer came in between.",
+                "Counted, it sets Autopilot's minimums and can raise your learned ones, like your other accepts.",
+                "Reports now also mask a customer's name written in lower case after Deliver to.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

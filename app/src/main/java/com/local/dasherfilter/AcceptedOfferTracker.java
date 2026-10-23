@@ -438,13 +438,17 @@ final class AcceptedOfferTracker {
      * When the first screen of neither since {@link #lastClear} was read while no offer was watched, else -1. It uses
      * {@link #lastClear} up once it had stayed {@link #SETTLE_MS} when the next offer came ({@link #clearBefore}); one
      * replaced sooner is passed over, as after an offer watched (the owner's 15 October 2026 4:56 AM $9.45, taken right
-     * after two of the app's declines, went uncounted when a frame of neither came between the wait and it).
+     * after two of the app's declines, went uncounted when a frame of neither came between the wait and it). The wait
+     * for offers outlasts one that stayed when Dasher's notifications show no other offer came
+     * ({@link #onlyThisOffer}).
      */
     private long neitherSince = -1;
     /** Why {@link #lastClear} is null, in the fixed words of {@link #waitBefore()}. */
     private String clearGone = "unknown";
     /** Where Dasher's offer notifications stood as {@link #lastClear} read the wait for offers, else -1. */
     private long waitStamp = -1;
+    /** The wait for offers in {@link #lastClear} outlasted a screen of neither that stayed ({@link #onlyThisOffer}). */
+    private boolean waitOutlasted;
     private final List<Note> notes = new ArrayList<>();
 
     private static final class Watch {
@@ -574,29 +578,51 @@ final class AcceptedOfferTracker {
     /**
      * {@link #lastClear} as an offer coming {@code now} finds it: a screen of neither read since, with no offer watched,
      * uses it up once it had stayed {@link #SETTLE_MS}. Its words need not have stayed the same: anything but the wait,
-     * a delivery or the dash's end for that long is no wait the offer came during.
+     * a delivery or the dash's end for that long is no wait the offer came during, unless it was the wait for offers
+     * and no other offer came since ({@link #onlyThisOffer}).
      */
     private After clearBefore(long now) {
-        if (lastClear != null && neitherSince >= 0 && now - neitherSince >= SETTLE_MS) used("unclear");
+        if (lastClear != null && neitherSince >= 0 && now - neitherSince >= SETTLE_MS) {
+            if (onlyThisOffer()) {
+                waitOutlasted = true;
+            } else {
+                used("unclear");
+            }
+        }
         return lastClear;
+    }
+
+    /**
+     * Whether Dasher's offer notifications, watched throughout, show no offer since the wait for offers was read but
+     * the one coming now (its notification may come before its screen or after it): none the user could have
+     * accepted unseen, so no delivery began since, whatever screen of neither stood between (the owner's 22 October
+     * 2026 6:17 PM $8.30, taken 17 s after the wait was read, went uncounted when such a screen stayed). Stamps one
+     * apart mean exactly one offer's notification came between, as at a peek ({@link #peekBegan}).
+     */
+    private boolean onlyThisOffer() {
+        if (lastClear != After.WAITING || waitStamp < 0) return false;
+        long stamp = offerStamp.getAsLong();
+        return stamp == waitStamp || stamp == waitStamp + 1;
     }
 
     /** A delivery, the wait for offers or the dash's end was read: what the next offer comes after. */
     private void cleared(After shown) {
         lastClear = shown;
         neitherSince = -1;
+        waitOutlasted = false;
     }
 
     /** What was read before is used up (by an offer, a screen of neither, a peek or a restart: {@code why}). */
     private void used(String why) {
         lastClear = null;
         neitherSince = -1;
+        waitOutlasted = false;
         clearGone = why;
     }
 
     /** The fixed words for what an offer came after ({@link #waitBefore()}). */
     private String waitBefore(After clear) {
-        if (clear == After.WAITING) return "seen";
+        if (clear == After.WAITING) return waitOutlasted ? "seen_one_offer" : "seen";
         if (clear == After.ROUTE) return "delivery";
         if (clear == After.DASH_OVER) return "dash_over";
         return clearGone;
@@ -604,7 +630,8 @@ final class AcceptedOfferTracker {
 
     /**
      * What was read before the offer watched (or the one an Accept tap waits on) came, in fixed words for the outcome's
-     * diagnostics: "seen" (the wait for offers), "delivery", "dash_over", "stored_route", or, with none of those since
+     * diagnostics: "seen" (the wait for offers), "seen_one_offer" (the wait, through a screen of neither that stayed,
+     * with no other offer's notification since), "delivery", "dash_over", "stored_route", or, with none of those since
      * the offer before it, why: "offer" (another offer came, or the app declined one, since), "unclear" (a screen of
      * neither stayed {@link #SETTLE_MS}, or a watch ended on one or on nothing), "peek" (a peek began without the wait
      * standing), "unknown" (nothing read since a start or a reset). "none" when no offer is followed.
@@ -964,7 +991,8 @@ final class AcceptedOfferTracker {
         if (w == null) {
             // A wait read before an unrelated/unclear screen is not proof the user was waiting when the next offer
             // arrived, once that screen had stayed SETTLE_MS (clearBefore): one replaced sooner, such as the next offer
-            // drawing in over the wait, is passed over. With a watched offer the existing settling path decides instead.
+            // drawing in over the wait, is passed over, and the wait outlasts one that stayed when Dasher's
+            // notifications show no other offer came since. With a watched offer the existing settling path decides.
             if (shown == After.UNCLEAR && lastClear != null && neitherSince < 0) neitherSince = now;
             return;
         }
