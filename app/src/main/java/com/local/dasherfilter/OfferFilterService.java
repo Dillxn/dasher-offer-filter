@@ -583,12 +583,18 @@ public final class OfferFilterService extends AccessibilityService {
     private String lastPeekTiming;
     /**
      * The latest fresh post refused only because the screen was off or the phone locked (memory only): looked at
-     * again at the unlock ({@link Peek#UNLOCK_POST_MS}).
+     * again at the unlock ({@link Peek#UNLOCK_POST_MS}). Or ({@link #lockedPostForFront}) refused only because no app
+     * was in front, the shade or another system surface active: looked at again right after the read that finds an
+     * app in front, no older than it could have been then ({@link #lockedPostMaxAge}).
      */
     private Peek.Request lockedPost;
     /** When it was kept (Peek's clock), and how old its post was then: its age at the unlock goes by both. */
     private long lockedPostKeptAt = NEVER;
     private long lockedPostAgeWhenKept;
+    /** Whether it waits for an app in front, not for the unlock. */
+    private boolean lockedPostForFront;
+    /** The oldest its post may be when looked at again. */
+    private long lockedPostMaxAge = Peek.UNLOCK_POST_MS;
     /** Dasher's own window changes as it was kept: one since, and the user opened Dasher; the catch-up does not arm. */
     private long lockedPostDasherWindows;
     /** Dasher's own window changes as the peek under way was armed (or, for a catch-up, as its post was kept). */
@@ -4598,7 +4604,7 @@ public final class OfferFilterService extends AccessibilityService {
         service.scanner.postAtFrontOfQueue(() -> {
             if (service.lockedPost != null) {
                 service.lockedPost = null;
-                Peek.log(service, CARD_BEFORE_UNLOCK);
+                Peek.log(service, cardBeforeLookAgain(service.lockedPostForFront));
             }
             service.peekOver("left Dasher up because you tapped the offer's card", Peek.Outcome.INTERRUPTED);
             // Tapped from a navigation app: the Back to map chip waits for the offer to end.
@@ -5153,25 +5159,30 @@ public final class OfferFilterService extends AccessibilityService {
      * installing, no takeover in force and no acceptance lately; one full-screen app in front that is not Dasher, can
      * be gone back to, and is not a system screen standing in for a moment. Then the touch watch goes up, and Dasher
      * opens once the phone is quiet ({@link #peekTick}). A post refused only for the lock or the screen off is kept
-     * (memory only) for the unlock.
+     * (memory only) for the unlock; one refused only because no app was in front (the shade or another system surface
+     * active), for an app in front.
      */
     private void startPeek(Peek.Request request) {
-        startPeek(request, false);
+        startPeek(request, false, Peek.POST_AGE_MS);
     }
 
-    /** @param afterUnlock a post refused for the lock, looked at again after the unlock: up to its own age limit */
-    private void startPeek(Peek.Request request, boolean afterUnlock) {
+    /**
+     * @param catchUp a post kept for later (for the unlock, or for an app in front), looked at again: up to its own
+     *     age limit
+     * @param maxAge the oldest its post may be: {@link Peek#UNLOCK_POST_MS} once the lock kept it back, else
+     *     {@link Peek#POST_AGE_MS}, as for any fresh post
+     */
+    private void startPeek(Peek.Request request, boolean catchUp, long maxAge) {
         try {
             if (stopped || scannerFaulted) {
                 peekNotTaken(request, "screen reading stopped");
                 return;
             }
             long now = Peek.now();
-            String why = Peek.refusal(this, request, FilterStore.load(this), screen.dasherReadable, -1,
-                    afterUnlock ? Peek.UNLOCK_POST_MS : Peek.POST_AGE_MS);
-            // A post kept for the unlock: Dasher's update of the same offer while the phone was locked revokes nothing
-            // (only what would revoke any peek does).
-            if (why == null && !(afterUnlock ? OfferNotificationService.renewForUnlock(request)
+            String why = Peek.refusal(this, request, FilterStore.load(this), screen.dasherReadable, -1, maxAge);
+            // A post kept for the unlock (or for an app in front): Dasher's update of the same offer meanwhile revokes
+            // nothing (only what would revoke any peek does).
+            if (why == null && !(catchUp ? OfferNotificationService.renewForUnlock(request)
                     : OfferNotificationService.peekCurrent(request))) {
                 why = "the offer notification was removed or replaced";
             }
@@ -5195,6 +5206,7 @@ public final class OfferFilterService extends AccessibilityService {
                 why = "you opened Dasher from an offer's card";
             }
             Peek.Front front = null;
+            boolean noAppInFront = false;
             if (why == null) {
                 Look look;
                 try {
@@ -5207,6 +5219,10 @@ public final class OfferFilterService extends AccessibilityService {
                 if (why == null) {
                     front = front(look);
                     why = frontRefusal(front, look);
+                    // No application window active: the shade or another system surface is in front (the owner's
+                    // 23 October 2026 report, "bug, misread": the shade up as the offer came, Offer Filter in front
+                    // again 3.5 s later, and no second look).
+                    noAppInFront = look.activeApp == null;
                 }
             }
             ComponentName dasher = why == null ? launcher(DASHER_PACKAGE) : null;
@@ -5214,19 +5230,21 @@ public final class OfferFilterService extends AccessibilityService {
             if (why != null) {
                 peekNotTaken(request, why);
                 if (why.equals(phone) && isLockRefusal(phone)) keepForUnlock(request);
+                else if (noAppInFront) keepForFront(request, maxAge);
                 return;
             }
             describeDasherActivity(dasher.getClassName(), true);
-            // For a post kept for the unlock, Dasher's own window changing since it was kept means the user is opening
-            // Dasher (its notification on the lock screen, its icon): the quiet wait then ends with no peek.
-            catchUpArming = afterUnlock;
-            armedDasherWindows = afterUnlock ? lockedPostDasherWindows : dasherWindowEvents.get();
+            // For a post kept for later, Dasher's own window changing since it was kept means the user is opening
+            // Dasher (its notification on the lock screen or in the shade, its icon): the quiet wait then ends with no
+            // peek.
+            catchUpArming = catchUp;
+            armedDasherWindows = catchUp ? lockedPostDasherWindows : dasherWindowEvents.get();
             // Armed from now, after the lookups above (another app's root, the package manager): a slow one must not
             // count toward the quiet the touch watch has to see. A post looked at again after the unlock keeps its
             // own age limit while the quiet is waited for.
-            peek.arm(request, front, dasher, Peek.now(), afterUnlock ? Peek.UNLOCK_POST_MS : Peek.POST_AGE_MS);
+            peek.arm(request, front, dasher, Peek.now(), maxAge);
             // The lock came between the offer and this look at it: its offer gone by then is never an empty peek.
-            if (afterUnlock) peek.lockDelayed();
+            if (catchUp && maxAge > Peek.POST_AGE_MS) peek.lockDelayed();
             // The touch watch goes up now, before Dasher is opened: the phone must be quiet first.
             syncAutomation();
             schedulePeekTick();
@@ -5250,11 +5268,27 @@ public final class OfferFilterService extends AccessibilityService {
      * looked at again when the phone is unlocked ({@link #unlocked}).
      */
     private void keepForUnlock(Peek.Request request) {
+        keep(request, false, Peek.UNLOCK_POST_MS);
+        Peek.note(this, "offer arrived while locked; waiting for unlock");
+    }
+
+    /**
+     * A fresh post refused only because no app was in front (the shade or another system surface active): the latest
+     * is kept in memory, as for the unlock, and looked at again right after the read that finds an app in front
+     * ({@link #unlocked}), its post no older than {@code maxAge} then.
+     */
+    private void keepForFront(Peek.Request request, long maxAge) {
+        keep(request, true, maxAge);
+        Peek.note(this, "offer arrived with no app in front (a system screen up); waiting for an app in front");
+    }
+
+    private void keep(Peek.Request request, boolean forFront, long maxAge) {
         lockedPost = request;
         lockedPostKeptAt = Peek.now();
         lockedPostAgeWhenKept = Math.max(0, System.currentTimeMillis() - request.postTime);
         lockedPostDasherWindows = dasherWindowEvents.get();
-        Peek.note(this, "offer arrived while locked; waiting for unlock");
+        lockedPostForFront = forFront;
+        lockedPostMaxAge = maxAge;
     }
 
     /**
@@ -6715,7 +6749,9 @@ public final class OfferFilterService extends AccessibilityService {
      * Dasher themselves since it was kept (one of our cards, Dasher's own window). Every other refusal applies to it as
      * to any post, and it counts toward the gap and the cap; the quiet starts after the unlock. Android's word that
      * the user is present can come while the keyguard still says locked: the unlock is looked at again then, every
-     * {@link #UNLOCK_RETRY_MS} for {@link #UNLOCK_RETRY_WINDOW_MS}.
+     * {@link #UNLOCK_RETRY_MS} for {@link #UNLOCK_RETRY_WINDOW_MS}. A post kept for an app in front (the shade or
+     * another system surface was in front) is looked at the same way, right after the read that finds an app in front,
+     * its post no older than it could have been when it was kept ({@link Peek#POST_AGE_MS} for a fresh post).
      *
      * @param read whether a held peek reads at once as it resumes (not when a read follows anyway)
      * @param userPresent whether this is Android's word that the user is present
@@ -6739,12 +6775,14 @@ public final class OfferFilterService extends AccessibilityService {
         Peek.Request kept = lockedPost;
         lockedPost = null;
         if (kept == null) return;
+        long maxAge = lockedPostMaxAge;
+        String when = lockedPostForFront ? IN_FRONT_AGAIN : "unlocked";
         if (cardTapAt != NEVER && cardTapAt >= lockedPostKeptAt) {
-            Peek.log(this, CARD_BEFORE_UNLOCK);
+            Peek.log(this, cardBeforeLookAgain(lockedPostForFront));
             return;
         }
         if (dasherWindowEvents.get() != lockedPostDasherWindows) {
-            Peek.log(this, "unlocked: you are opening Dasher; not checked");
+            Peek.log(this, when + ": you are opening Dasher; not checked");
             return;
         }
         // As old as it was when kept, plus the time since on Peek's clock (which runs in deep sleep and never jumps),
@@ -6754,29 +6792,40 @@ public final class OfferFilterService extends AccessibilityService {
         // Dasher's update of the same offer is that offer still posted; another post on its key replaced it.
         OfferNotificationService.Posted posted = OfferNotificationService.postStillUp(kept);
         if (posted == OfferNotificationService.Posted.REPLACED) {
-            Peek.log(this, "unlocked: offer notification replaced since; left to Dasher's notification");
+            Peek.log(this, when + ": offer notification replaced since; left to Dasher's notification");
             return;
         }
         if (posted == OfferNotificationService.Posted.UNKNOWN) {
-            Peek.log(this, "unlocked: offer notification not known; left as it is");
+            Peek.log(this, when + ": offer notification not known; left as it is");
             return;
         }
         if (posted != OfferNotificationService.Posted.POSTED) {
-            Peek.log(this, "unlocked too late: offer notification gone");
+            Peek.log(this, when + " too late: offer notification gone");
             return;
         }
-        if (age > Peek.UNLOCK_POST_MS) {
-            Peek.log(this, "unlocked too late: " + Peek.seconds(age) + " after the post");
+        if (age > maxAge) {
+            Peek.log(this, when + " too late: " + Peek.seconds(age) + " after the post");
             return;
         }
-        Peek.log(this, "unlocked in time: checking it (" + Peek.seconds(Math.max(0, age)) + " after the post)");
-        startPeek(kept, true);
+        Peek.log(this, when + " in time: checking it (" + Peek.seconds(Math.max(0, age)) + " after the post)");
+        startPeek(kept, true, maxAge);
     }
 
-    /** The user tapped one of our cards (on the lock screen, say) after a post was kept for the unlock. */
-    private static final String CARD_BEFORE_UNLOCK = "unlocked: you opened Dasher from an offer's card; not checked";
+    /** How the lines of a post kept for an app in front begin, as "unlocked" begins those of one kept for the lock. */
+    private static final String IN_FRONT_AGAIN = "an app in front again";
 
-    /** A read found the phone unlocked with a post still kept for the unlock: it is looked at after that read. */
+    /**
+     * The user tapped one of our cards (on the lock screen or in the shade, say) after a post was kept for the unlock
+     * or for an app in front.
+     */
+    private static String cardBeforeLookAgain(boolean forFront) {
+        return (forFront ? IN_FRONT_AGAIN : "unlocked") + ": you opened Dasher from an offer's card; not checked";
+    }
+
+    /**
+     * A read found the phone unlocked with a post still kept for the unlock, or an app in front with one kept for an
+     * app in front: it is looked at after that read.
+     */
     private final Runnable unlockedByRead = () -> unlocked(true, false);
 
     /**
@@ -7650,10 +7699,11 @@ public final class OfferFilterService extends AccessibilityService {
         takeOverIfTouched();
         // A peek held for the lock, read with the phone unlocked: the unlock came (Android's word of it may come later,
         // or came while the keyguard still said locked), and this read is the fresh one it resumes from. A post kept
-        // for the unlock is looked at right after this read.
+        // for the unlock is looked at right after this read; one kept for an app in front, after the read that finds
+        // one (below).
         if (peek.suspended()) {
             resumeAfterUnlock(false);
-        } else if (lockedPost != null) {
+        } else if (lockedPost != null && !lockedPostForFront) {
             scanner.removeCallbacks(unlockedByRead);
             scanner.postAtFrontOfQueue(unlockedByRead);
         }
@@ -7676,6 +7726,12 @@ public final class OfferFilterService extends AccessibilityService {
         waitingBefore = waitingKey;
         waitingKey = "";
         Look look = look();
+        // A post kept for an app in front (the shade or another system surface was): looked at right after this read
+        // once it finds one, as a post kept for the unlock is ({@link #unlocked}).
+        if (lockedPost != null && lockedPostForFront && look.activeApp != null) {
+            scanner.removeCallbacks(unlockedByRead);
+            scanner.postAtFrontOfQueue(unlockedByRead);
+        }
         if (consumeDeclineError()) return declineError.pending();
         if (!look.activeKnown) {
             if (peek.active()) {

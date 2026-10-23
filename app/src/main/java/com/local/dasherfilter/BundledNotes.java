@@ -484,6 +484,10 @@ final class BundledNotes {
         // OfferFilter.org printed").
         release("0.6.38", "OfferFilter.org now shows beside the mascot, where the latest offer's pay was.",
                 "The latest offer moved to the line under it: its badge, pay, trip and how long ago.");
+        // 0.6.39 (the owner's report of 23 October 2026, "bug, misread": an offer that came at 7:36 AM with a system
+        // screen in front showed "Pay unknown", Offer Filter in front again 3.5 s later).
+        release("0.6.39", "An offer that came while the notification shade or another system screen was open showed "
+                + "\"Pay unknown\". Peek now reads it once you're back in an app, within 10 seconds of the offer.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

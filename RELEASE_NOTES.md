@@ -1,3 +1,14 @@
+## 0.6.39 — An offer that came with the shade down is read once an app is back in front
+
+Version 0.6.39 (code 131) answers the owner's report of 23 October 2026 (11:37 UTC), with a screenshot and a Share report: "bug, misread, reports sent". His 7:36 AM offer showed only what Dasher's notification says: "Pay unknown", "? mi · ? min · ? stops".
+
+- **Why.** As the offer's notification came (7:36:24), a system screen was in front: the notification shade or another of Android's own surfaces, with no app's window active. Peek checks which app it will return you to before opening Dasher, found none, and skipped ("the app in front is unknown"). Offer Filter was in front again 3.5 seconds later, but Peek never looked at that offer again, so its pay and trip were never read. His four offers before it, between 7:31 and 7:33, were read and declined as usual.
+- **Now.** An offer skipped only because no app was in front is kept in memory, the way an offer that came while the phone was locked is, and looked at again right after the screen reader next finds an app in front. Everything else is checked again as for any background offer: it must still be fresh (no more than 10 seconds since its notification), its notification must still be up, the phone quiet for a moment, and you must not have opened Dasher yourself (from the shade, its icon or one of the app's cards) in between. With his 7:36 offer, Offer Filter was in front again 3.5 seconds after the notification, so Peek would have looked again then.
+- **Not changed.** An offer that came while the phone was locked is still looked at within 40 seconds of it, at the unlock. An offer whose notification you dismissed in the shade is left alone. No notice change; Terms and Privacy unchanged (still for 0.6.37): Peek still opens Dasher only for a fresh background offer on an unlocked, quiet phone. What's new says it in two sentences.
+- **Kept suites.** No tests were added or changed. The 13 kept suites pass (197 tests). A throwaway offline walk-through (never committed) shows the shade down as an offer comes, Maps in front again 3.5 s later and Dasher opened for it; the shade down for 11 s, no peek; Dasher opened from the shade, or the notification dismissed there, no peek; the unlock catch-up and an ordinary peek as before.
+
+No phone has run this build.
+
 ## 0.6.38 — OfferFilter.org beside the mascot
 
 Version 0.6.38 (code 130) answers the owner's message of 23 October 2026 (03:53 UTC): "right beside the mascot logo in the place the offer value is now we need OfferFilter.org printed".
