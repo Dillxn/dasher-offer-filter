@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 23 October 2026 · for {app} 0.6.37
+            Beta terms, effective 23 October 2026 · for {app} 0.6.40
 
             ## What {app} is
 
@@ -117,12 +117,21 @@ final class LegalTexts {
             rejects the adjustment. Automatic acceptances, add-ons, skipped stores, ambiguous outcomes and \
             reconstructed history do not set these minimums. Acceptance learning may be off: Autopilot follows \
             these acceptances separately. The change takes effect between offers at the screen reader's next safe \
-            point, with the shared bar unchanged. Later bar movements scale the independent working references \
-            together. The newest acceptance replaces earlier accepted levels and holds the bar at least at the \
-            value it had at that acceptance for the next 24 counted offers, across dashes, even above what an \
-            acceptance goal allows. A change of your goal (turning Autopilot on with another goal included), \
-            minimums, max stops, mode or learning ends that hold and clears the working adjustments; a pause, \
-            turning Autopilot off and on again with the same goal, and Adopt keep them, including an already \
+            point. From 0.6.40 the shared bar moves at the same time to that offer's own Autopilot score, held \
+            between 10% and 150%, so that offer keeps the score it showed and an offer exactly like it meets the \
+            bar exactly; before 0.6.40 the bar stayed where it was and that offer then scored the bar. What each \
+            offer needs is the same either way. Later bar movements scale the independent working references \
+            together. The newest acceptance replaces earlier accepted levels and holds the bar at least at that \
+            score for the next 24 counted offers, across dashes, even above what an acceptance goal allows. An \
+            acceptance of yours that the decision history holds after the one that set the working minimums, but \
+            that set none itself (its live evidence was missed), still holds the bar at least at its score, worked \
+            out again under the current minimums, for the 24 counted offers after it. Working minimums saved by \
+            0.6.29 to 0.6.39 are rescaled once after updating to 0.6.40, at a safe point, to their acceptance's \
+            recorded Autopilot score, with the bar scaled by the same factor, so what each offer needs stays the \
+            same to the bar's whole percent; where that acceptance's line is gone or the scaled bar would leave 10% \
+            to 150%, they are kept as they are. A change of your goal (turning Autopilot on with another goal \
+            included), minimums, max stops, mode or learning ends that hold and clears the working adjustments; a \
+            pause, turning Autopilot off and on again with the same goal, and Adopt keep them, including an already \
             confirmed pending update. After the 24 offers the hold ends and the usual bar adjustment continues; the \
             independent references remain until replaced or cleared. From 0.6.37, a standalone offer you decline \
             yourself while Autopilot is on and auto-decline is not paused (a Decline of yours, counted once Dasher \
@@ -283,7 +292,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 23 October 2026 · for {app} 0.6.37
+            Beta privacy policy, effective 23 October 2026 · for {app} 0.6.40
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -652,14 +661,16 @@ final class LegalTexts {
             decision history is marked so, and Autopilot leaves that offer out of its acceptance-rate count (unless \
             Dasher says so of most of your recent declines, which Autopilot then takes as Dasher's general \
             wording).
-            - Autopilot also keeps a note of its last change (time, old and new bar, a fixed reason), when the bar \
-            last rose, a pending reason for its next change (a fixed word, such as that you turned it on) when it \
-            last noted that Dasher's "does not lower" wording looked general, and when you last changed your goal \
-            or rules (an accepted offer holds its bar only after that; before 0.6.19, turning it on or off counted \
-            too), and, while it is on, its working figures: whether it is recovering toward your goal, a correction \
-            of at most 10 points and, for that correction, the acceptance rate it carried forward from Dasher's \
-            reading at its last checkpoint (replaced after 25 more counted offers, and dropped when you change the \
-            goal or turn Autopilot off or on). All of this is numbers and fixed words, never screen text.
+            - Autopilot also keeps a note of its last change (time, old and new bar, a fixed reason), from 0.6.40 \
+            its last 40 changes of the bar for the chart's bar line (each its time, old and new bar, a fixed reason \
+            and whether a hold ended), when the bar last rose, a pending reason for its next change (a fixed word, \
+            such as that you turned it on) when it last noted that Dasher's "does not lower" wording looked \
+            general, and when you last changed your goal or rules (an accepted offer holds its bar only after that; \
+            before 0.6.19, turning it on or off counted too), and, while it is on, its working figures: whether it \
+            is recovering toward your goal, a correction of at most 10 points and, for that correction, the \
+            acceptance rate it carried forward from Dasher's reading at its last checkpoint (replaced after 25 more \
+            counted offers, and dropped when you change the goal or turn Autopilot off or on). All of this is \
+            numbers and fixed words, never screen text.
             - The offers you accept yourself while Autopilot is on (from 0.6.19): for each, its pay in cents, \
             miles, minutes, stops and item count, and when you accepted it, so an accept still counts after newer \
             offers have pushed it out of the decision history. These legacy records supply the accepted-score hold \
@@ -669,19 +680,20 @@ final class LegalTexts {
             changed your goal or rules; that change removes them. They never leave the phone, not even in a report. \
             Numbers only.
             - Independent working minimums (from 0.6.29): at most three exact numeric rate pairs, the latest \
-            acceptance's time and the bar at that acceptance, and from 0.6.31 that acceptance's total pay as one \
-            more exact number (none for working minimums saved before 0.6.31). Unread or disabled measures keep \
-            their prior value, without becoming active. A confirmed update waiting for the safe point also keeps \
-            one pending copy with numeric consent and policy markers so a stale update cannot apply later; the live \
-            observation permit is memory only. These rates have no age expiry. A newer eligible acceptance replaces \
-            the observed active rates; changing your goal, minimums, max stops, mode or learning, Clear history or \
-            uninstall clears the working adjustments. Pausing or turning Autopilot off retains committed rates, the \
-            prior bar and an already confirmed pending update, without collecting new adjustments while off. The \
-            latest 200 decision snapshots retain the exact adjustments used for their original decision until \
-            normal eviction, Clear history or uninstall; older history is not reinterpreted to create them. The \
-            stored exact rates, the total pay and pending copies stay local and are not included in reports, \
-            automatic summaries or the timing study. Reports can identify a recorded score with the fixed category \
-            Autopilot, without exporting the working rates.
+            acceptance's time and the bar it set (from 0.6.40 that offer's own Autopilot score, with a marker that \
+            working minimums saved before were rescaled once; before, the bar at that acceptance), and from 0.6.31 \
+            that acceptance's total pay as one more exact number (none for working minimums saved before 0.6.31). \
+            Unread or disabled measures keep their prior value, without becoming active. A confirmed update waiting \
+            for the safe point also keeps one pending copy with numeric consent and policy markers so a stale \
+            update cannot apply later; the live observation permit is memory only. These rates have no age expiry. \
+            A newer eligible acceptance replaces the observed active rates; changing your goal, minimums, max \
+            stops, mode or learning, Clear history or uninstall clears the working adjustments. Pausing or turning \
+            Autopilot off retains committed rates, the prior bar and an already confirmed pending update, without \
+            collecting new adjustments while off. The latest 200 decision snapshots retain the exact adjustments \
+            used for their original decision until normal eviction, Clear history or uninstall; older history is \
+            not reinterpreted to create them. The stored exact rates, the total pay and pending copies stay local \
+            and are not included in reports, automatic summaries or the timing study. Reports can identify a \
+            recorded score with the fixed category Autopilot, without exporting the working rates.
             - If Autopilot raised your minimums before 0.6.21, the app keeps a note of that last growth: when, by \
             how much, how many offers on how many days it rested on, your minimums and Autopilot's bar before and \
             after, and whether its note on the homepage (with Undo) is still waiting. Undo removes it; tapping OK \
@@ -700,8 +712,9 @@ final class LegalTexts {
             history line and goes with it in Share report, the diagnostics sent with feedback and the summary after \
             each dash; Report this offer leaves it out.
             - Clear history removes the reading, Autopilot's working figures, the accepted offers it keeps, its \
-            independent working minimums and any pending adjustment, its last-change note, the note of its last \
-            growth (and with it the Undo) and its other notes above. Your rules and Autopilot's settings stay.
+            independent working minimums and any pending adjustment, its last-change note and its kept changes, the \
+            note of its last growth (and with it the Undo) and its other notes above. Your rules and Autopilot's \
+            settings stay.
 
             The acceptance learner and independent Autopilot minimums add no new recipient or automatic-sharing \
             choice. Existing diagnostics can include scoring mode, learning on/off and the recorded score kind, \

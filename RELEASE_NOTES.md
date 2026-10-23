@@ -1,3 +1,16 @@
+## 0.6.40 — Your accept sets Autopilot's bar; the chart tracks the bar
+
+Version 0.6.40 (code 132) answers the owner's message of 23 October 2026, with a screenshot of a $11.05 offer accepted at 11:11 AM whose ticket read "Autopilot score 32% · bar 25%": "the app should be declarative and therefore naturally self healing: the 32% accepted offer within 11 orders from most recent should be setting the auto bar from what I see here. if auto bar was lowered I should see why on the orders graph (bldgs + trees).. we should track it's level rather than it be static across the bar".
+
+- **Why the bar said 25%.** Since 0.6.29 an accept set Autopilot's working minimums to that offer's own rates at the bar of the moment and left the bar where it was, so the accepted offer then scored the bar (25%), not the 32% its ticket and tree showed. Each accept above the bar shrank every later score that way, and the scores and the bar sank together. What offers needed was right; the numbers were not.
+- **Now.** An accept moves the bar to that offer's own Autopilot score (10% to 150%) and sets the working minimums to its rates there, so the offer keeps the score it showed and an offer exactly like it meets the bar exactly. The bar holds there for your next 24 offers, as before. Every offer needs exactly what it needed before.
+- **It heals itself.** If an accept you made never reached Autopilot (its live evidence was missed), the history still holds the bar at that offer's score for the 24 offers after it. Working minimums saved by 0.6.29 to 0.6.39 are rescaled once after the update, between offers, to their accept's recorded score, with the bar scaled alike: your 32% accept scores 32% again (and, while its hold lasts, the bar reads 32%), and what offers need stays the same.
+- **The chart tracks the bar.** The purple dashed line now follows the bar offer by offer: over each offer it stands at the bar that offer was judged at, steps where Autopilot moved it, and runs on at today's bar after the newest. At its newest three steps a word or two says why: accepted, declined, hold over, 1 in 5 pass, for AR goal, offers slower… The app keeps the bar's last 40 changes on the phone for this.
+- **Notice 37.** Its words are unchanged; the Terms and Privacy, for 0.6.40, say how an accept now sets the bar, the healed hold, the rescale and the kept changes. Accept it once more to keep filtering. What's new says it in two lines.
+- **Kept suites.** No tests were added (the owner's rule of 22 October). ConsentGateTest expects notice 37, and LegalTextsTest the 0.6.40 texts, its pinned sentences for the accept's hold and Clear history corrected to the new ones. A throwaway offline probe (never committed) checked the arithmetic, the rescale and the chart, rendered by day and by night.
+
+No phone has run this build.
+
 ## 0.6.39 — An offer that came with the shade down is read once an app is back in front
 
 Version 0.6.39 (code 131) answers the owner's report of 23 October 2026 (11:37 UTC), with a screenshot and a Share report: "bug, misread, reports sent". His 7:36 AM offer showed only what Dasher's notification says: "Pay unknown", "? mi · ? min · ? stops".

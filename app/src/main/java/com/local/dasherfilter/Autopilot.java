@@ -219,7 +219,13 @@ final class Autopilot {
          * The bar rose to, or stays held at, one point above the score of an offer the user declined by hand since
          * their latest accept (0.6.37, {@link #declinedFloor}), for the 24 offers after that decline.
          */
-        DECLINED(false, "just above an offer you declined");
+        DECLINED(false, "just above an offer you declined"),
+        /**
+         * 0.6.40's once-only rebase of a working shape saved by 0.6.29 to 0.6.39 (normalized to the bar at its
+         * acceptance) to its accepted offer's own score, with the bar scaled alike: what offers need is unchanged. A
+         * bar sitting on that acceptance's hold is noted {@link #ACCEPTED_AXES} instead.
+         */
+        REBASED(false, "rescaled to your latest accepted offer's score; what offers need is unchanged");
 
         /** A change the next commit must follow at once: the user's or a lesson's; it goes straight to the target. */
         final boolean jump;
@@ -980,6 +986,17 @@ final class Autopilot {
             // Re-scoring history would also lose partial-axis accepts and reintroduce the learner's pay +1 cent.
             draft.floorOffersLeft = anchorOffersLeft(rules.autopilotAxes, counted);
             draft.floor = draft.floorOffersLeft > 0 ? rules.autopilotAxes.referenceBar : -1;
+            // Declarative, so it heals (0.6.40; the owner, 23 October 2026: "the app should be declarative and
+            // therefore naturally self healing"): a hand accept the history holds after the one that set the shape
+            // (its live evidence missed, so no shape followed it) still sets the floor at its score, the latest
+            // deciding, for the 24 offers after it.
+            HandAccept newer = newestAccept(handAccepts(rules, in.newestFirst, in.keptAccepts), in.floorSince);
+            if (newer != null && newer.at > rules.autopilotAxes.acceptedAt + DEDUP_MS) {
+                int left = FLOOR_OFFERS - offersBetween(counted, newer.at, Long.MAX_VALUE);
+                boolean holds = left > 0 && newer.score >= BAR_MIN;
+                draft.floor = holds ? newer.score : -1;
+                draft.floorOffersLeft = holds ? left : 0;
+            }
         } else {
             List<HandAccept> accepts = handAccepts(rules, in.newestFirst, in.keptAccepts);
             draft.floor = acceptedFloor(accepts, in.floorSince, counted);
@@ -1122,6 +1139,15 @@ final class Autopilot {
             if (score < 0) continue;
             accepts.add(new HandAccept(record.acceptedByHandAt, Math.min(BAR_MAX, score)));
         }
+    }
+
+    /** The latest of {@code accepts} made at or after {@code since} (wall clock); null when none. */
+    static HandAccept newestAccept(List<HandAccept> accepts, long since) {
+        HandAccept newest = null;
+        if (accepts != null) for (HandAccept accept : accepts) {
+            if (accept.at >= since && (newest == null || accept.at > newest.at)) newest = accept;
+        }
+        return newest;
     }
 
     /** {@link #acceptedFloor(List, long, List)} with no offer after any accept yet. */

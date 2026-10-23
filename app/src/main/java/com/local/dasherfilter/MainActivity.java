@@ -2437,7 +2437,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void updateMeter() {
         if (minimums == null) return;
         FilterSettings rules = FilterStore.load(this);
-        if (chart != null) chart.setRules(rules);
+        if (chart != null) {
+            chart.setRules(rules);
+            chart.setBarChanges(AutopilotStore.changes(this));
+        }
         minimums.show(rules, CHART_COMPARISON, recentEntries);
         offerClock = OfferClock.of(recentEntries, rules, ZoneId.systemDefault(), System.currentTimeMillis());
         if (clockFace != null) clockFace.setBar(rules.autopilot ? rules.minimumScalePercent : 100);

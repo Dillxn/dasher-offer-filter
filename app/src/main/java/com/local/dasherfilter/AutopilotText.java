@@ -691,9 +691,9 @@ final class AutopilotText {
                 + (plan.floor >= Autopilot.BAR_MAX ? Autopilot.BAR_MAX - 1 + "% or more, and the bar goes no higher"
                         : plan.floor - 1 + "%, so offers no better are declined")
                 + ". Your next acceptance replaces this hold. Changing your goal or minimums lets it go sooner.";
-        if (s.rules.hasAutopilotAxes()) return holds + ": your latest personal acceptance set the working minimums "
-                + "at this bar. A newer acceptance replaces those levels and this hold. Changing your goal or "
-                + "minimums lets it go sooner.";
+        if (s.rules.hasAutopilotAxes()) return holds + ": your latest acceptance set this bar, the score it showed, "
+                + "and the working minimums to that offer's own rates. A newer acceptance replaces those levels and "
+                + "this hold. Changing your goal or minimums lets it go sooner.";
         return holds + ": you accepted an offer that scored " + plan.floor + "% of your minimums. Changing your goal "
                 + "or minimums lets it go sooner.";
     }
@@ -776,8 +776,10 @@ final class AutopilotText {
         AutopilotStore.Change change = s.lastChange;
         if (change == null) return null;
         if (Autopilot.Reason.ACCEPTED_AXES.name().equals(change.why)) return "Last change "
-                + ago(s.wallNow - change.at) + ": Autopilot's working minimums followed each readable measure of "
-                + "your accepted offer.";
+                + ago(s.wallNow - change.at) + ": " + (change.from == change.to ? ""
+                        : change.from + "% → " + change.to + "%, the score of the offer you accepted, and ")
+                + "Autopilot's working minimums followed each readable measure of " + (change.from == change.to
+                        ? "your accepted offer." : "it.");
         String words = reasonWords(change.why);
         return "Last change " + ago(s.wallNow - change.at) + ": " + change.from + "% → " + change.to + "%"
                 + (words.isEmpty() ? "" : " (" + words + ")") + ".";
@@ -1007,6 +1009,36 @@ final class AutopilotText {
     /** The dashed rail at the bar: "Bar 82%". */
     static String skylineBarRail(int barPercent) {
         return "Bar " + barPercent + "%";
+    }
+
+    /**
+     * The skyline's words where its bar line steps (0.6.40): why the bar moved, in a word or two ("hold over" when an
+     * accept's or a decline's hold ended and the bar came back); null for a reason this version has no word for.
+     */
+    static String barStepWord(AutopilotStore.Change change) {
+        if (change == null) return null;
+        if (change.released) return "hold over";
+        switch (change.why) {
+            case "ACCEPTED":
+            case "ACCEPTED_AXES": return "accepted";
+            case "DECLINED": return "declined";
+            case "PINNED": return "lowest bar";
+            case "RECOVERY": return "AR below goal";
+            case "GOAL": return "for AR goal";
+            case "PASS_FLOOR": return "1 in 5 pass";
+            case "VALUE_UP": return "offers busier";
+            case "VALUE_DOWN": return "offers slower";
+            case "AT_MINIMUMS": return "at minimums";
+            case "LEARNING": return "learning";
+            case "LEARNED": return "learned mins";
+            case "TURNED_ON": return "turned on";
+            case "GOAL_CHANGED": return "new goal";
+            case "RULES_CHANGED": return "new rules";
+            case "CLEARED": return "cleared";
+            case "MINIMUMS_GREW": return "mins grew";
+            case "REBASED": return "rescaled";
+            default: return null;
+        }
     }
 
     /** The solid payout rail, only with a minimum pay: "Pay $3.28 min" ({@code ⌈bar × flat ÷ 100⌉}); else null. */
