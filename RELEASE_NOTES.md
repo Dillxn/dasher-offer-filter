@@ -1,3 +1,15 @@
+## 0.6.41 — Your accept sets Autopilot's bar (the chart's bar line waits)
+
+Version 0.6.41 (code 133) is 0.6.40's accept half alone. On the owner's phone, Google Play Protect blocked 0.6.40 as a harmful app (23 October 2026, about 21:15 UTC: "this is the first release that did not pass the android safety scan"). 0.6.40's file is 0.6.39's in everything but its code, so the owner asked: "why don't we commit half the code difference, deploy and test and go from there".
+
+- **In.** As in 0.6.40: an accept moves Autopilot's bar to that offer's own score and holds it there for your next 24 offers, an accept the history holds heals the hold, and Auto's details say both.
+- **Out, for now.** The chart's bar line that follows the bar offer by offer, its words, and the bar's kept changes behind them. The purple line is one level across again, and Clear history's words are 0.6.39's.
+- **What comes next.** If Play Protect lets 0.6.41 install, the chart's half follows in a build of its own. If it blocks 0.6.41 too, the next build is 0.6.39's code under a new number, to tell whether Google now blocks any new file of this app.
+- **Notice 37 stays.** The Terms (for 0.6.40) are unchanged. The Privacy, for 0.6.41, no longer names the kept changes. A phone that accepted notice 37 on 0.6.40 isn't asked again; one coming from 0.6.39 accepts it once. What's new says the accept's line.
+- **Kept suites.** No tests were added. LegalTextsTest expects the 0.6.41 Privacy (its Clear history sentence back to 0.6.39's, the kept changes' pin removed), PrivacyBoundaryTest the Clear history dialog's "last change" again, and ConsentGateTest's comment says what notice 37 covers now.
+
+No phone has run this build.
+
 ## 0.6.40 — Your accept sets Autopilot's bar; the chart tracks the bar
 
 Version 0.6.40 (code 132) answers the owner's message of 23 October 2026, with a screenshot of a $11.05 offer accepted at 11:11 AM whose ticket read "Autopilot score 32% · bar 25%": "the app should be declarative and therefore naturally self healing: the 32% accepted offer within 11 orders from most recent should be setting the auto bar from what I see here. if auto bar was lowered I should see why on the orders graph (bldgs + trees).. we should track it's level rather than it be static across the bar".

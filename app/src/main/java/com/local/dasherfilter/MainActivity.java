@@ -132,8 +132,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     static final String CLEAR_HISTORY = "Removes the offer decisions, waiting estimates, captured screen text, offer "
             + "areas, cached place names, unsent automatic diagnostics, and Autopilot's acceptance-rate reading and "
-            + "recent bar changes from this phone, with its note that your minimums grew, learned bests and adoption "
-            + "Undo. "
+            + "last change from this phone, with its note that your minimums grew, learned bests and adoption Undo. "
             + "Your saved rules (including adopted minimums) and Autopilot settings "
             + "stay.";
     /** The view of Autopilot's details' words ({@link #showAutopilotDetails}). */
@@ -2438,10 +2437,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private void updateMeter() {
         if (minimums == null) return;
         FilterSettings rules = FilterStore.load(this);
-        if (chart != null) {
-            chart.setRules(rules);
-            chart.setBarChanges(AutopilotStore.changes(this));
-        }
+        if (chart != null) chart.setRules(rules);
         minimums.show(rules, CHART_COMPARISON, recentEntries);
         offerClock = OfferClock.of(recentEntries, rules, ZoneId.systemDefault(), System.currentTimeMillis());
         if (clockFace != null) clockFace.setBar(rules.autopilot ? rules.minimumScalePercent : 100);

@@ -1014,35 +1014,6 @@ final class AutopilotText {
         return "Bar " + barPercent + "%";
     }
 
-    /**
-     * The skyline's words where its bar line steps (0.6.40): why the bar moved, in a word or two ("hold over" when an
-     * accept's or a decline's hold ended and the bar came back); null for a reason this version has no word for.
-     */
-    static String barStepWord(AutopilotStore.Change change) {
-        if (change == null) return null;
-        if (change.released) return "hold over";
-        switch (change.why) {
-            case "ACCEPTED":
-            case "ACCEPTED_AXES": return "accepted";
-            case "DECLINED": return "declined";
-            case "PINNED": return "lowest bar";
-            case "RECOVERY": return "AR below goal";
-            case "GOAL": return "for AR goal";
-            case "PASS_FLOOR": return "1 in 5 pass";
-            case "VALUE_UP": return "offers busier";
-            case "VALUE_DOWN": return "offers slower";
-            case "AT_MINIMUMS": return "at minimums";
-            case "LEARNING": return "learning";
-            case "LEARNED": return "learned mins";
-            case "TURNED_ON": return "turned on";
-            case "GOAL_CHANGED": return "new goal";
-            case "RULES_CHANGED": return "new rules";
-            case "CLEARED": return "cleared";
-            case "MINIMUMS_GREW": return "mins grew";
-            default: return null;
-        }
-    }
-
     /** The solid payout rail, only with a minimum pay: "Pay $3.28 min" ({@code ⌈bar × flat ÷ 100⌉}); else null. */
     static String skylinePayRail(int flatCents, int barPercent) {
         if (flatCents <= 0) return null;

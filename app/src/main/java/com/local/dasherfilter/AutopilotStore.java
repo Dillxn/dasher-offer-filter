@@ -61,10 +61,6 @@ final class AutopilotStore {
     private static final String CHANGED_TO = "changed_to";
     private static final String CHANGED_WHY = "changed_why";
     private static final String RAISED_AT = "raised_at";
-    /** The bar's recent changes (0.6.40), oldest first, for the skyline: [[at, from, to, why, released], …]. */
-    private static final String CHANGES = "changes_v1";
-    /** How many of the bar's changes are kept: enough for every offer the skyline shows, and the times between. */
-    static final int CHANGES_KEPT = 40;
     private static final String EXEMPT_LOGGED_AT = "exempt_logged_at";
     /** The last growth: when (also the minimums' "since" it wrote), points, offers and days, before and after. */
     private static final String GREW_AT = "grew_at";
@@ -433,19 +429,12 @@ final class AutopilotStore {
         final int from;
         final int to;
         final String why;
-        /** The bar came back down as an accept's or a decline's hold ended (0.6.40; in {@link #changes} only). */
-        final boolean released;
 
         Change(long at, int from, int to, String why) {
-            this(at, from, to, why, false);
-        }
-
-        Change(long at, int from, int to, String why, boolean released) {
             this.at = at;
             this.from = from;
             this.to = to;
             this.why = why == null ? "" : why;
-            this.released = released;
         }
     }
 
@@ -464,67 +453,12 @@ final class AutopilotStore {
      * {@code raised} also keeps {@code wall} as when the bar last rose. It replaces the note before it.
      */
     static void recordChange(Context context, int from, int to, String why, long wall, boolean raised) {
-        recordChange(context, from, to, why, wall, raised, false);
-    }
-
-    /**
-     * As {@link #recordChange(Context, int, int, String, long, boolean)}; {@code released}: a hold ended. A change that
-     * moved the bar is also kept among {@link #changes}, at most {@value #CHANGES_KEPT}, the newest.
-     */
-    static void recordChange(Context context, int from, int to, String why, long wall, boolean raised,
-                             boolean released) {
         synchronized (AutopilotStore.class) {
-            SharedPreferences prefs = prefs(context);
-            SharedPreferences.Editor edit = prefs.edit().putLong(CHANGED_AT, wall)
+            SharedPreferences.Editor edit = prefs(context).edit().putLong(CHANGED_AT, wall)
                     .putInt(CHANGED_FROM, from).putInt(CHANGED_TO, to).putString(CHANGED_WHY, why == null ? "" : why);
             if (raised) edit.putLong(RAISED_AT, wall);
-            if (from != to) {
-                List<Change> kept = new ArrayList<>(readChanges(prefs));
-                // The first kept change: the note of the one before it (from before 0.6.40) starts the list.
-                Change before = prefs.contains(CHANGES) ? null : lastChange(context);
-                if (before != null && before.from != before.to) kept.add(before);
-                kept.add(new Change(wall, from, to, why, released));
-                while (kept.size() > CHANGES_KEPT) kept.remove(0);
-                JSONArray array = new JSONArray();
-                for (Change change : kept) {
-                    array.put(new JSONArray().put(change.at).put(change.from).put(change.to).put(change.why)
-                            .put(change.released));
-                }
-                edit.putString(CHANGES, array.toString());
-            }
             edit.apply();
             version++;
-        }
-    }
-
-    /**
-     * The bar's kept changes, oldest first (0.6.40), for the skyline's bar line and its words: where none were kept
-     * yet, the last change's note alone. Damaged text reads as none.
-     */
-    static List<Change> changes(Context context) {
-        synchronized (AutopilotStore.class) {
-            SharedPreferences prefs = prefs(context);
-            if (prefs.contains(CHANGES)) return readChanges(prefs);
-            Change last = lastChange(context);
-            return last == null || last.from == last.to ? Collections.<Change>emptyList()
-                    : Collections.singletonList(last);
-        }
-    }
-
-    private static List<Change> readChanges(SharedPreferences prefs) {
-        String raw = prefs.getString(CHANGES, "");
-        if (raw.isEmpty() || raw.length() > 16_384) return Collections.emptyList();
-        try {
-            JSONArray array = new JSONArray(raw);
-            List<Change> changes = new ArrayList<>();
-            for (int i = 0; i < array.length() && i < CHANGES_KEPT; i++) {
-                JSONArray one = array.getJSONArray(i);
-                changes.add(new Change(one.getLong(0), one.getInt(1), one.getInt(2), one.getString(3),
-                        one.optBoolean(4)));
-            }
-            return Collections.unmodifiableList(changes);
-        } catch (JSONException damaged) {
-            return Collections.emptyList();
         }
     }
 

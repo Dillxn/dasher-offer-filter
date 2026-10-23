@@ -554,8 +554,7 @@ final class AutopilotRuntime {
                 } else {
                     reason = Autopilot.commitReason(plan, current, step.next, jump);
                     boolean raised = step.next > current;
-                    AutopilotStore.recordChange(app, current, step.next, reason.name(), wall, raised,
-                            step.kind == Autopilot.StepKind.RELEASE);
+                    AutopilotStore.recordChange(app, current, step.next, reason.name(), wall, raised);
                     lastCommitElapsed = elapsed;
                     if (raised) lastRaiseElapsed = elapsed;
                     if (jump != null) AutopilotStore.clearJumpIf(app, jump.name());

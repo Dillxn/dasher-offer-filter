@@ -163,13 +163,20 @@ final class BundledNotes {
     /**
      * 0.6.40 (the owner, 23 October 2026, of a 32% offer accepted at a 25% bar: "the app should be declarative and
      * therefore naturally self healing: the 32% accepted offer within 11 orders from most recent should be setting the
-     * auto bar"): notice 37's box and 0.6.40's card.
+     * auto bar"): 0.6.40's card, and its notice 37's box.
      */
     private static final String[] BAR_FOLLOWS = {
             "When you accept an offer yourself, Autopilot's bar now moves to that offer's own score and holds there "
                     + "for your next 24 offers, so the offer keeps the score it showed.",
             "The chart's purple bar line now follows the bar offer by offer, with a word where it moved (accepted, "
                     + "hold over, 1 in 5 pass…)."};
+
+    /**
+     * 0.6.41: notice 37's box and 0.6.41's card, 0.6.40's first line alone. Google Play Protect blocked 0.6.40 as
+     * harmful, and 0.6.41 is its accept half without the chart's half, to narrow that down (the owner, 23 October
+     * 2026: "why don't we commit half the code difference, deploy and test and go from there").
+     */
+    private static final String[] BAR_SETS = {BAR_FOLLOWS[0]};
 
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
@@ -295,7 +302,7 @@ final class BundledNotes {
         // 0.6.37 (the owner, 23 October 2026: "if i decline an offer then autopilot should raise my mins to its").
         notice(36, DECLINE_RAISES);
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
-        notice(37, BAR_FOLLOWS);
+        notice(37, BAR_SETS);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -505,6 +512,8 @@ final class BundledNotes {
         // orders from most recent should be setting the auto bar", and "we should track it's level rather than it be
         // static across the bar").
         release("0.6.40", BAR_FOLLOWS);
+        // 0.6.41: 0.6.40's accept half alone, while Play Protect's verdict on 0.6.40 is narrowed down.
+        release("0.6.41", BAR_SETS);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

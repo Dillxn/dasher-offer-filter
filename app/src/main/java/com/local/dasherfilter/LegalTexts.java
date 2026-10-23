@@ -291,7 +291,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 23 October 2026 · for {app} 0.6.40
+            Beta privacy policy, effective 23 October 2026 · for {app} 0.6.41
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -660,16 +660,14 @@ final class LegalTexts {
             decision history is marked so, and Autopilot leaves that offer out of its acceptance-rate count (unless \
             Dasher says so of most of your recent declines, which Autopilot then takes as Dasher's general \
             wording).
-            - Autopilot also keeps a note of its last change (time, old and new bar, a fixed reason), from 0.6.40 \
-            its last 40 changes of the bar for the chart's bar line (each its time, old and new bar, a fixed reason \
-            and whether a hold ended), when the bar last rose, a pending reason for its next change (a fixed word, \
-            such as that you turned it on) when it last noted that Dasher's "does not lower" wording looked \
-            general, and when you last changed your goal or rules (an accepted offer holds its bar only after that; \
-            before 0.6.19, turning it on or off counted too), and, while it is on, its working figures: whether it \
-            is recovering toward your goal, a correction of at most 10 points and, for that correction, the \
-            acceptance rate it carried forward from Dasher's reading at its last checkpoint (replaced after 25 more \
-            counted offers, and dropped when you change the goal or turn Autopilot off or on). All of this is \
-            numbers and fixed words, never screen text.
+            - Autopilot also keeps a note of its last change (time, old and new bar, a fixed reason), when the bar \
+            last rose, a pending reason for its next change (a fixed word, such as that you turned it on) when it \
+            last noted that Dasher's "does not lower" wording looked general, and when you last changed your goal \
+            or rules (an accepted offer holds its bar only after that; before 0.6.19, turning it on or off counted \
+            too), and, while it is on, its working figures: whether it is recovering toward your goal, a correction \
+            of at most 10 points and, for that correction, the acceptance rate it carried forward from Dasher's \
+            reading at its last checkpoint (replaced after 25 more counted offers, and dropped when you change the \
+            goal or turn Autopilot off or on). All of this is numbers and fixed words, never screen text.
             - The offers you accept yourself while Autopilot is on (from 0.6.19): for each, its pay in cents, \
             miles, minutes, stops and item count, and when you accepted it, so an accept still counts after newer \
             offers have pushed it out of the decision history. These legacy records supply the accepted-score hold \
@@ -711,9 +709,8 @@ final class LegalTexts {
             history line and goes with it in Share report, the diagnostics sent with feedback and the summary after \
             each dash; Report this offer leaves it out.
             - Clear history removes the reading, Autopilot's working figures, the accepted offers it keeps, its \
-            independent working minimums and any pending adjustment, its last-change note and its kept changes, the \
-            note of its last growth (and with it the Undo) and its other notes above. Your rules and Autopilot's \
-            settings stay.
+            independent working minimums and any pending adjustment, its last-change note, the note of its last \
+            growth (and with it the Undo) and its other notes above. Your rules and Autopilot's settings stay.
 
             The acceptance learner and independent Autopilot minimums add no new recipient or automatic-sharing \
             choice. Existing diagnostics can include scoring mode, learning on/off and the recorded score kind, \

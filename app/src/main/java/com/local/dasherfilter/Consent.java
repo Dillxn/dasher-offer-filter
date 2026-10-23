@@ -74,7 +74,9 @@ final class Consent {
     // automatic accepts, which ask the saved minimums at the bar, follow it; an accept the history holds that set no
     // working minimums still holds the bar at its score; and the bar's last 40 changes are kept for the chart's bar
     // line (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing"). The
-    // notice's words are unchanged: the Terms and Privacy say it.
+    // notice's words are unchanged: the Terms and Privacy say it. 0.6.41 keeps 37 without the kept changes (Play
+    // Protect blocked 0.6.40, and 0.6.41 is its accept half alone): its Privacy no longer names them, a narrower text
+    // than the one a phone that ran 0.6.40 accepted.
     static final int VERSION = 37;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";

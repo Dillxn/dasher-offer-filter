@@ -391,8 +391,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // divider moved for a map; 29, area scoring by default; 30, independent working minimums following each accept; 31, total pay in each
         // Autopilot Area score; 32, Autopilot's bar down to 10%; 33, split screen retired with the divider's moves;
         // 34, one Share anonymous diagnostics switch; 35, paused offers read and scored, nothing tapped; 36, a decline
-        // by hand raises Autopilot's bar just above that offer; 37, an accept moves the bar to that offer's own score,
-        // and the bar's changes are kept for the chart. A phone that accepted 14 (0.5.0) sees it again too.
+        // by hand raises Autopilot's bar just above that offer; 37, an accept moves the bar to that offer's own score
+        // (0.6.40 also kept the bar's changes for the chart; 0.6.41 does not). A phone that accepted 14 (0.5.0) sees it
+        // again too.
         assertEquals(37, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
