@@ -6,8 +6,6 @@ import android.graphics.Canvas;
 import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Typeface;
-import android.text.Layout;
-import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
@@ -16,37 +14,43 @@ import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 /**
- * The latest offer at the top of the homepage as a label and a badge, not a sentence (0.6.3; the owner, 12 October
- * 2026: "that sentence needs to be removed at all sizes and replaced with more thoughtful, concise (either via label
- * and or graphic) expression"). Two lines in a box of one fixed size, beside the mascot:
+ * The site's address and the latest offer at the top of the homepage, beside the mascot (0.6.3, as a label and a
+ * badge, not a sentence; the owner, 12 October 2026: "that sentence needs to be removed at all sizes and replaced with
+ * more thoughtful, concise (either via label and or graphic) expression"). From 0.6.38 its first line is the address,
+ * {@value #BRAND}, in bold where the pay was (the owner, 23 October 2026: "right beside the mascot logo in the place
+ * the offer value is now we need OfferFilter.org printed"), so anyone who sees the screen, or a picture of it, learns
+ * where the app comes from. The latest offer moved to the line under it, nothing of it dropped. Two lines in a box of
+ * one fixed size:
  * <ul>
- * <li>the outcome's badge (the skyline's, {@link OutcomeBadge}, half as large again since 0.6.8), the pay in bold
- * (24 sp, the owner's mockup), and a short tag only where the badge alone would leave the outcome unsaid ("below min"
- * in Autopilot's purple; "auto"; "requested" in amber);</li>
- * <li>the trip under it, "2.1 mi · 13 min", then how long ago, "now", "12m", "3h", "4d" (0.6.8: the header's buttons
- * may stand at the tile's right), and its stops when the offer is the stored route's (whose road marks the badge's
- * lower right), each only where it fits.</li>
+ * <li>the address, at the size the pay had (24 sp, the owner's mockup), from the badge's left edge;</li>
+ * <li>the outcome's badge (the skyline's, {@link OutcomeBadge}), the pay in bold, a short tag only where the badge
+ * alone would leave the outcome unsaid ("below min" in Autopilot's purple; "auto"; "requested" in amber), then the
+ * trip, "2.1 mi · 13 min", how long ago, "now", "12m", "3h", "4d", and its stops when the offer is the stored route's
+ * (whose road marks the badge's lower right), each only where it fits.</li>
  * </ul>
  * An unread figure shows as unread ("$?", "? mi", "? min" in the muted ink), never left out or guessed. With no offer
- * yet: a dashed ring and "Waiting for offers" (everything ready) or "No offers yet".
+ * yet: a dashed ring and "Waiting for offers" (everything ready) or "No offers yet" under the address.
  *
- * <p>Its size is its own, never its content's or the clock's: as tall as the pay's line and the trip's at the size they
- * are drawn ({@link #heightFor}: 48 dp at the normal font), as wide as the page gives it. Where that is too narrow for
- * everything, the tag moves to the end of the trip's line if it fits there whole (else it goes), then the pay and the
- * trip condense to four fifths of their width, then the age goes, then the trip's end is cut; the pay is never cut. The
- * age keeps the room of its widest ("59m"), so the minutes passing move nothing before it. The words are drawn at the user's
- * size, at a large font a little smaller (never below three quarters of it nor below the default size, as a setup
- * step's words), so the tile keeps beside the mascot and the dash's counts in a short window.
+ * <p>Its size is its own, never its content's or the clock's: as tall as the address's line and the offer's at the
+ * size they are drawn ({@link #heightFor}: 48 dp at the normal font), as wide as the page gives it. Where the offer's
+ * line is too narrow for everything, the tag goes, then the pay and the trip condense to four fifths of their width,
+ * then the trip's end is cut; the age and the route's stops come only where they fit as the line is drawn, the age
+ * first. The pay is never cut, and nor is the address: past four fifths of its width, each is drawn smaller. The words
+ * are drawn at the user's size, at a large font a little smaller (never below three quarters of it nor below the
+ * default size, as a setup step's words), so the tile keeps beside the mascot in a short window.
  *
  * <p>Screen readers hear exactly what the sentence said ({@link MainActivity#verdict}, then its reason) and "Open offer
  * details", then the route's words when the offer is the stored route's: a button whose tap opens the offer's ticket
- * (the page that holds it says how, {@link #setOnClickListener}). With no offer it is only its words and takes no tap.
- * It is no live region: an offer coming in never announces itself here.
+ * (the page that holds it says how, {@link #setOnClickListener}). They hear the app's name already from the page's
+ * heading, so the address is not read out. With no offer it is only its words and takes no tap. It is no live region:
+ * an offer coming in never announces itself here.
  */
 @SuppressLint("ViewConstructor")
 final class VerdictTile extends View {
     /** What a tap does, as screen readers hear it (and the end of what they hear). */
     static final String ACTION = "Open offer details";
+    /** The address on the first line (0.6.38), as the owner wrote it. */
+    static final String BRAND = "OfferFilter.org";
     /** No offer yet, everything ready to filter. */
     static final String WAITING = "Waiting for offers";
     /** No offer yet, something not ready. */
@@ -58,28 +62,24 @@ final class VerdictTile extends View {
     /** The outcome's words (MainActivity.captionOutcome) for an offer the app accepted. */
     static final String AUTOMATICALLY_ACCEPTED = "Automatically accepted";
 
-    /** The words' sizes at the normal font. */
-    static final float PAY_SP = 24;
-    private static final float TAG_SP = 16;
-    private static final float AGE_SP = 14;
-    private static final float TRIP_SP = 14;
-    private static final float EMPTY_SP = 14;
+    /** The words' sizes at the normal font: the address as the pay was until 0.6.37, the offer's line all alike. */
+    static final float BRAND_SP = 24;
+    private static final float LINE_SP = 14;
     /** The tile is never shorter than a touch target. */
     private static final float LEAST_DP = 48;
-    /** The badge's middle from the start; the pay (and the words with no offer) from here. */
+    /** The address from here; the badge's middle; the offer's words (and the words with no offer) from here. */
+    private static final float BRAND_X_DP = 6;
     private static final float BADGE_X_DP = 14;
-    private static final float TEXT_X_DP = 32;
-    /** The badge drawn this much larger than the skyline's, beside the larger pay (the mockup). */
-    private static final float BADGE_SCALE = 1.5f;
-    /** Between the pay's line and the trip's; before a tag. */
+    private static final float TEXT_X_DP = 28;
+    /** Between the address's line and the offer's; before a tag. */
     private static final float LINE_GAP_DP = 2;
-    private static final float TAG_GAP_DP = 6;
+    private static final float TAG_GAP_DP = 5;
     /** A dot's or the road's middle this far right of the badge's, and up or down. */
-    private static final float PIP_OFFSET_DP = 6;
-    private static final float ROAD_PIP_DP = 9;
+    private static final float PIP_OFFSET_DP = 5;
+    private static final float ROAD_PIP_DP = 8;
     /** The no-offer ring's radius. */
-    private static final float RING_DP = 8;
-    /** The narrowest the pay and the trip condense to (of their width) before anything else gives way. */
+    private static final float RING_DP = 6;
+    /** The narrowest the words condense to (of their width) before anything else gives way. */
     private static final float LEAST_CONDENSED = 0.8f;
     private static final String SEPARATOR = " · ";
     /** What the tile's width is worked out for: the widest pay and age of an ordinary offer, and its longest trip. */
@@ -87,16 +87,22 @@ final class VerdictTile extends View {
     private static final String TEMPLATE_TRIP = "88.8 mi · 88 min";
     /** The widest an age is in its first two days; its room is kept the widest of them. */
     private static final String[] AGES = {"59m", "47h", "13d", "now"};
+    /** The parts of the offer's line, by their paint. */
+    private static final int PAY = 0;
+    private static final int TAG = 1;
+    private static final int TRIP = 2;
 
     private final Ui ui;
     /** The words at the size the tile draws them, never condensed: what the fitting measures with. */
+    private final TextPaint brandPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint payPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint tagPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-    private final TextPaint agePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint tripPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint emptyPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-    /** The pay and the trip as drawn now (condensed, or the pay smaller still, where the width asks). */
+    /** The words as drawn now (condensed, or the address and the pay smaller still, where the width asks). */
+    private final TextPaint brandDrawn = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint payDrawn = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint tagDrawn = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint tripDrawn = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final int tall;
@@ -124,51 +130,52 @@ final class VerdictTile extends View {
     private int tripLabels;
     /** The fitting, for the width it was worked out for. */
     private int arrangedWidth = -1;
-    private int tagLine;
+    private boolean tagShown;
     private boolean ageShown;
-    /** The trip's line as drawn: its labels (the last perhaps cut) and the dots between them, each at its place. */
-    private final String[] tripShown = new String[7];
-    private final float[] tripX = new float[7];
-    private final int[] tripShownColor = new int[7];
-    private int tripShownParts;
-    /** The trip's labels as drawn, for {@link #shownText}. */
-    private final String[] labelsShown = new String[4];
+    /** The offer's line as drawn: the pay, the tag, the trip's labels (the last perhaps cut), the dots, each placed. */
+    private final String[] lineShown = new String[12];
+    private final float[] lineX = new float[12];
+    private final int[] lineColor = new int[12];
+    private final int[] lineKind = new int[12];
+    private int lineParts;
+    /** The offer's labels as drawn, for {@link #shownText}. */
+    private final String[] labelsShown = new String[6];
     private int labelsShownCount;
-    private float tagX;
-    private float payX;
+    private float brandX;
     private float line1;
     private float line2;
     private float badgeY;
-    private StaticLayout emptyLayout;
+    private String emptyShown;
     private String shownText = "";
 
     VerdictTile(Context context, Ui ui) {
         super(context);
         this.ui = ui;
         DisplayMetrics metrics = context.getResources().getDisplayMetrics();
+        brandPaint.setTypeface(Typeface.DEFAULT_BOLD);
+        brandPaint.setTextSize(drawn(metrics, BRAND_SP));
+        brandPaint.setColor(ui.ink);
         payPaint.setTypeface(Typeface.DEFAULT_BOLD);
-        payPaint.setTextSize(drawn(metrics, PAY_SP));
+        payPaint.setTextSize(drawn(metrics, LINE_SP));
         tagPaint.setTypeface(Typeface.DEFAULT_BOLD);
-        tagPaint.setTextSize(drawn(metrics, TAG_SP));
-        agePaint.setTypeface(Ui.MEDIUM);
-        agePaint.setTextSize(drawn(metrics, AGE_SP));
-        agePaint.setColor(ui.inkSecondary);
-        agePaint.setTextAlign(Paint.Align.RIGHT);
+        tagPaint.setTextSize(drawn(metrics, LINE_SP));
         tripPaint.setTypeface(Typeface.DEFAULT);
-        tripPaint.setTextSize(drawn(metrics, TRIP_SP));
+        tripPaint.setTextSize(drawn(metrics, LINE_SP));
         emptyPaint.setTypeface(Ui.MEDIUM);
-        emptyPaint.setTextSize(drawn(metrics, EMPTY_SP));
+        emptyPaint.setTextSize(drawn(metrics, LINE_SP));
         emptyPaint.setColor(ui.inkSecondary);
         ring.setStyle(Paint.Style.STROKE);
         ring.setStrokeWidth(Math.max(1, ui.dp(1.5f)));
         ring.setColor(ui.inkSecondary);
         ring.setPathEffect(new DashPathEffect(new float[] {ui.dp(3), ui.dp(2.5f)}, 0));
         float room = 0;
-        for (String each : AGES) room = Math.max(room, agePaint.measureText(each));
+        for (String each : AGES) room = Math.max(room, tripPaint.measureText(each));
         ageRoom = room;
         tall = heightFor(context);
-        templateWide = (int) Math.ceil(Math.max(ui.dp(TEXT_X_DP) + payPaint.measureText(TEMPLATE_PAY),
-                ui.dp(TEXT_X_DP) + tripPaint.measureText(TEMPLATE_TRIP + SEPARATOR) + ageRoom));
+        float dot = tripPaint.measureText(SEPARATOR);
+        templateWide = (int) Math.ceil(Math.max(ui.dp(BRAND_X_DP) + brandPaint.measureText(BRAND),
+                ui.dp(TEXT_X_DP) + payPaint.measureText(TEMPLATE_PAY) + dot + tripPaint.measureText(TEMPLATE_TRIP)
+                        + dot + ageRoom));
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
         setAccessibilityLiveRegion(ACCESSIBILITY_LIVE_REGION_NONE);
         tappable(false);
@@ -186,27 +193,28 @@ final class VerdictTile extends View {
     }
 
     /**
-     * The tile's one height, in pixels, for {@code context}'s font and density: its pay's line and its trip's at the
-     * size they are drawn, 2 dp apart, and never less than 48 dp (48 at the normal font). What it shows never changes
-     * it, so the page lays out the band with it before anything is shown.
+     * The tile's one height, in pixels, for {@code context}'s font and density: its address's line and its offer's at
+     * the size they are drawn, 2 dp apart, and never less than 48 dp (48 at the normal font, as before 0.6.38 with the
+     * pay where the address is). What it shows never changes it, so the page lays out the band with it before anything
+     * is shown.
      */
     static int heightFor(Context context) {
         DisplayMetrics metrics = context.getResources().getDisplayMetrics();
         TextPaint measuring = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         measuring.setTypeface(Typeface.DEFAULT_BOLD);
-        measuring.setTextSize(drawn(metrics, PAY_SP));
-        float pay = Ui.lineHeight(measuring);
+        measuring.setTextSize(drawn(metrics, BRAND_SP));
+        float brand = Ui.lineHeight(measuring);
         measuring.setTypeface(Typeface.DEFAULT);
-        measuring.setTextSize(drawn(metrics, TRIP_SP));
-        float trip = Ui.lineHeight(measuring);
+        measuring.setTextSize(drawn(metrics, LINE_SP));
+        float line = Ui.lineHeight(measuring);
         int least = Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, LEAST_DP, metrics));
         float gap = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, LINE_GAP_DP, metrics);
-        return Math.max(least, (int) Math.ceil(pay + trip + gap));
+        return Math.max(least, (int) Math.ceil(brand + line + gap));
     }
 
     /**
-     * The width, in pixels, at which an ordinary offer shows whole with no tag: the widest pay ("$88.88") and age
-     * ("59m") on its first line, the longest trip ("88.8 mi · 88 min") under it.
+     * The width, in pixels, at which the address and an ordinary offer show whole with no tag: the address on its line,
+     * and the widest pay ("$88.88"), the longest trip ("88.8 mi · 88 min") and the widest age ("59m") under it.
      */
     int templateWidth() {
         return templateWide;
@@ -335,9 +343,10 @@ final class VerdictTile extends View {
     }
 
     /**
-     * Works out where everything goes for the width the tile has, in the fixed order of what gives way: the tag to the
-     * trip's line (or away), the pay and the trip condensed, the age, the trip's end. Run only when what is shown or
-     * the size changes, never while drawing.
+     * Works out where everything goes for the width the tile has: the address, condensed or smaller where it must be,
+     * never cut; then the offer's line, in the fixed order of what gives way: the tag, the pay and the trip condensed,
+     * the trip's end; the age and the route's stops only where they fit. Run only when what is shown or the size
+     * changes, never while drawing.
      */
     private void arrange() {
         int width = getWidth();
@@ -345,128 +354,127 @@ final class VerdictTile extends View {
         if (width == arrangedWidth && arrangedWidth >= 0) return;
         arrangedWidth = width;
         float lineGap = ui.dp(LINE_GAP_DP);
-        float payLine = Ui.lineHeight(payPaint);
-        float tripLine = Ui.lineHeight(tripPaint);
-        float top = (height - (payLine + lineGap + tripLine)) / 2f;
-        line1 = top - payPaint.getFontMetrics().ascent;
-        line2 = top + payLine + lineGap - tripPaint.getFontMetrics().ascent;
-        badgeY = top + payLine / 2f;
+        float brandLine = Ui.lineHeight(brandPaint);
+        float offerLine = Ui.lineHeight(tripPaint);
+        float top = (height - (brandLine + lineGap + offerLine)) / 2f;
+        line1 = top - brandPaint.getFontMetrics().ascent;
+        line2 = top + brandLine + lineGap - tripPaint.getFontMetrics().ascent;
+        badgeY = top + brandLine + lineGap + offerLine / 2f;
+        // The address, from the badge's left edge: condensed down to four fifths of its width, then drawn smaller.
+        brandX = ui.dp(BRAND_X_DP);
+        fit(brandDrawn, brandPaint, brandPaint.measureText(BRAND), width - brandX);
         float textX = ui.dp(TEXT_X_DP);
+        float room = width - textX;
         if (entry == null) {
-            int across = Math.max(1, Math.round(width - textX));
             String words = said == null ? NO_OFFERS : said;
-            emptyLayout = StaticLayout.Builder.obtain(words, 0, words.length(), emptyPaint, across)
-                    .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                    .setIncludePad(false)
-                    .setMaxLines(2)
-                    .setEllipsize(TextUtils.TruncateAt.END)
-                    .build();
-            StringBuilder shown = new StringBuilder();
-            for (int line = 0; line < emptyLayout.getLineCount(); line++) {
-                int start = emptyLayout.getLineStart(line);
-                boolean cut = emptyLayout.getEllipsisCount(line) > 0;
-                int end = cut ? start + emptyLayout.getEllipsisStart(line) : emptyLayout.getLineEnd(line);
-                String text = words.substring(start, Math.max(start, Math.min(words.length(), end))).trim();
-                if (shown.length() > 0 && !text.isEmpty()) shown.append(' ');
-                shown.append(text);
-                if (cut) shown.append('…');
-            }
-            shownText = width > textX ? shown.toString() : "";
+            emptyShown = room > 0
+                    ? TextUtils.ellipsize(words, emptyPaint, room, TextUtils.TruncateAt.END).toString() : "";
+            shownText = emptyShown;
+            lineParts = 0;
             return;
         }
-        emptyLayout = null;
+        emptyShown = null;
         float tagGap = ui.dp(TAG_GAP_DP);
-        float payWide = payPaint.measureText(pay);
-        float tagWide = tag == null ? 0 : tagPaint.measureText(tag);
-        // The trip itself (miles and minutes), without the route's stops, which come only where there is room left.
         float dot = tripPaint.measureText(SEPARATOR);
-        float tripWide = tripPaint.measureText(trip[0]) + dot + tripPaint.measureText(trip[1]);
-        // First the tag: beside the pay; else at the end of the trip's line, whole; else nowhere.
-        float tripX0 = textX;
-        tagLine = 0;
-        if (tag != null) {
-            if (textX + payWide + tagGap + tagWide <= width) tagLine = 1;
-            else if (tripX0 + tripWide + tagGap + tagWide <= width) tagLine = 2;
-        }
-        // Then the pay condensed, down to four fifths of its width. The pay is never cut: past four fifths, it is drawn
-        // smaller.
-        float payRoom = width - textX - (tagLine == 1 ? tagGap + tagWide : 0);
-        float payScale = share(payWide, payRoom);
+        float payWide = payPaint.measureText(pay);
+        float tagWide = tag == null ? 0 : tagGap + tagPaint.measureText(tag);
+        // The line's core: the pay, the tag and the trip itself (miles and minutes). The tag goes where the core with
+        // it would be condensed past four fifths of its width; then the core is condensed, down to four fifths.
+        float tripWide = dot + tripPaint.measureText(trip[0]) + dot + tripPaint.measureText(trip[1]);
+        tagShown = tag != null && share(payWide + tagWide + tripWide, room) >= LEAST_CONDENSED;
+        float core = payWide + (tagShown ? tagWide : 0) + tripWide;
+        float scale = share(core, room);
+        boolean cut = scale < LEAST_CONDENSED;
+        scale = Math.max(LEAST_CONDENSED, scale);
         payDrawn.set(payPaint);
         payDrawn.setColor(payColor);
-        if (payScale < LEAST_CONDENSED) {
-            payDrawn.setTextScaleX(LEAST_CONDENSED);
-            payDrawn.setTextSize(payPaint.getTextSize() * Math.max(0, payRoom) / (payWide * LEAST_CONDENSED));
-        } else {
-            payDrawn.setTextScaleX(payScale);
+        payDrawn.setTextScaleX(scale);
+        // The pay is never cut: past four fifths of its width, it is drawn smaller, alone.
+        float payDrawnWide = payDrawn.measureText(pay);
+        if (payDrawnWide > room) {
+            payDrawn.setTextSize(payPaint.getTextSize() * Math.max(0, room) / payDrawnWide);
+            payDrawnWide = payDrawn.measureText(pay);
         }
-        payX = textX;
-        tagX = textX + payDrawn.measureText(pay) + tagGap;
-        // The trip, under the pay: condensed down to four fifths of its width, then its end cut; the age (0.6.8, at the
-        // trip's end as in the mockup) and the route's stops only where they fit as it is drawn, the age first.
-        float tripRoom = width - tripX0 - (tagLine == 2 ? tagGap + tagWide : 0);
-        float tripScale = share(tripWide, tripRoom);
-        boolean cut = tripScale < LEAST_CONDENSED;
+        tagDrawn.set(tagPaint);
+        tagDrawn.setColor(tagColor);
+        tagDrawn.setTextScaleX(scale);
         tripDrawn.set(tripPaint);
-        tripDrawn.setTextScaleX(Math.max(LEAST_CONDENSED, tripScale));
+        tripDrawn.setTextScaleX(scale);
         dot = tripDrawn.measureText(SEPARATOR);
-        // The labels in their order: miles, minutes, the age, the route's stops.
+        lineParts = 0;
+        labelsShownCount = 0;
+        put(pay, 0, payColor, PAY);
+        labelsShown[labelsShownCount++] = pay;
+        float x = payDrawnWide;
+        if (tagShown) {
+            x += ui.dp(TAG_GAP_DP) * scale;
+            put(tag, x, tagColor, TAG);
+            labelsShown[labelsShownCount++] = tag;
+            x += tagDrawn.measureText(tag);
+        }
+        // The trip's labels in their order: miles, minutes, the age, the route's stops; the last two only whole.
         String[] words = {trip[0], trip[1], age, tripLabels > 2 ? trip[2] : null};
         int[] inks = {tripColor[0], tripColor[1], ui.inkSecondary, tripColor[2]};
         int count = tripLabels > 2 ? 4 : 3;
         int labels = 2;
         if (!cut) {
-            float all = tripDrawn.measureText(words[0]) + dot + tripDrawn.measureText(words[1]);
+            float all = x + dot + tripDrawn.measureText(words[0]) + dot + tripDrawn.measureText(words[1]);
             while (labels < count) {
                 float more = all + dot + tripDrawn.measureText(words[labels]);
-                if (more > tripRoom) break;
+                if (more > room) break;
                 all = more;
                 labels++;
             }
         }
         ageShown = labels >= 3;
         float ellipsis = tripDrawn.measureText("…");
-        float x = 0;
-        tripShownParts = 0;
-        labelsShownCount = 0;
-        for (int i = 0; i < labels; i++) {
-            float before = i == 0 ? 0 : dot;
+        for (int i = 0; i < labels && payDrawnWide < room; i++) {
             float wide = tripDrawn.measureText(words[i]);
             // Whole while the line fits; once it is cut, a label is whole only where the ellipsis still fits after it.
             boolean last = i == labels - 1;
-            if (!cut || x + before + wide + (last ? 0 : ellipsis) <= tripRoom) {
-                if (i > 0) put(SEPARATOR, x, ui.inkSecondary);
-                put(words[i], x + before, inks[i]);
+            if (!cut || x + dot + wide + (last ? 0 : ellipsis) <= room) {
+                put(SEPARATOR, x, ui.inkSecondary, TRIP);
+                put(words[i], x + dot, inks[i], TRIP);
                 labelsShown[labelsShownCount++] = words[i];
-                x += before + wide;
+                x += dot + wide;
                 continue;
             }
             // Cut: as much of this label as leaves room for the ellipsis, else the ellipsis alone after the last one.
-            int fits = tripDrawn.breakText(words[i], true, Math.max(0, tripRoom - x - before - ellipsis), null);
+            int fits = tripDrawn.breakText(words[i], true, Math.max(0, room - x - dot - ellipsis), null);
             String kept = words[i].substring(0, fits).trim();
             if (!kept.isEmpty()) {
-                if (i > 0) put(SEPARATOR, x, ui.inkSecondary);
-                put(kept + "…", x + before, inks[i]);
+                put(SEPARATOR, x, ui.inkSecondary, TRIP);
+                put(kept + "…", x + dot, inks[i], TRIP);
                 labelsShown[labelsShownCount++] = kept + "…";
-                x += before + tripDrawn.measureText(kept + "…");
-            } else if (x + ellipsis <= tripRoom) {
-                put("…", x, ui.inkSecondary);
-                if (labelsShownCount > 0) labelsShown[labelsShownCount - 1] += "…";
-                x += ellipsis;
+            } else if (x + ellipsis <= room) {
+                put("…", x, ui.inkSecondary, TRIP);
+                labelsShown[labelsShownCount - 1] += "…";
             }
             break;
         }
-        if (tagLine == 2) tagX = tripX0 + x + tagGap;
-        for (int i = 0; i < tripShownParts; i++) tripX[i] += tripX0;
+        for (int i = 0; i < lineParts; i++) lineX[i] += textX;
         shownText = describeShown();
     }
 
-    /** One part of the trip's line as drawn, at {@code x}, in {@code ink}. */
-    private void put(String words, float x, int ink) {
-        tripShown[tripShownParts] = words;
-        tripX[tripShownParts] = x;
-        tripShownColor[tripShownParts] = ink;
-        tripShownParts++;
+    /** {@code drawn} as {@code paint}, condensed to fit {@code wide} into {@code room}, smaller past four fifths. */
+    private static void fit(TextPaint drawn, TextPaint paint, float wide, float room) {
+        float scale = share(wide, room);
+        drawn.set(paint);
+        if (scale < LEAST_CONDENSED) {
+            drawn.setTextScaleX(LEAST_CONDENSED);
+            drawn.setTextSize(paint.getTextSize() * Math.max(0, room) / (wide * LEAST_CONDENSED));
+        } else {
+            drawn.setTextScaleX(scale);
+        }
+    }
+
+    /** One part of the offer's line as drawn, at {@code x}, in {@code ink}, with the paint of its {@code kind}. */
+    private void put(String words, float x, int ink, int kind) {
+        lineShown[lineParts] = words;
+        lineX[lineParts] = x;
+        lineColor[lineParts] = ink;
+        lineKind[lineParts] = kind;
+        lineParts++;
     }
 
     /** The share of its width {@code wide} is drawn at to fit {@code room}: 1 where it fits, less where it does not. */
@@ -475,12 +483,13 @@ final class VerdictTile extends View {
         return Math.max(0, Math.min(1f, room / wide));
     }
 
-    /** The labels shown, in reading order, " · " between them (for tests and {@link #shownText}). */
+    /** The offer's labels shown, in reading order, " · " between them (for tests and {@link #shownText}). */
     private String describeShown() {
-        StringBuilder shown = new StringBuilder(pay);
-        if (tagLine == 1) shown.append(SEPARATOR).append(tag);
-        for (int i = 0; i < labelsShownCount; i++) shown.append(SEPARATOR).append(labelsShown[i]);
-        if (tagLine == 2) shown.append(SEPARATOR).append(tag);
+        StringBuilder shown = new StringBuilder();
+        for (int i = 0; i < labelsShownCount; i++) {
+            if (i > 0) shown.append(SEPARATOR);
+            shown.append(labelsShown[i]);
+        }
         return shown.toString();
     }
 
@@ -488,32 +497,22 @@ final class VerdictTile extends View {
         super.onDraw(canvas);
         if (getWidth() <= 0 || getHeight() <= 0) return;
         if (arrangedWidth != getWidth()) arrange();
+        canvas.drawText(BRAND, brandX, line1, brandDrawn);
         float badgeX = ui.dp(BADGE_X_DP);
+        float textX = ui.dp(TEXT_X_DP);
         if (entry == null) {
-            canvas.drawCircle(badgeX, getHeight() / 2f, ui.dp(RING_DP), ring);
-            if (emptyLayout != null && getWidth() > ui.dp(TEXT_X_DP)) {
-                canvas.save();
-                canvas.translate(ui.dp(TEXT_X_DP), (getHeight() - emptyLayout.getHeight()) / 2f);
-                emptyLayout.draw(canvas);
-                canvas.restore();
-            }
+            canvas.drawCircle(badgeX, badgeY, ui.dp(RING_DP), ring);
+            if (emptyShown != null && !emptyShown.isEmpty()) canvas.drawText(emptyShown, textX, line2, emptyPaint);
             return;
         }
-        canvas.save();
-        canvas.scale(BADGE_SCALE, BADGE_SCALE, badgeX, badgeY);
         OutcomeBadge.draw(canvas, ui, badgeX, badgeY, badgeColor, symbol, 255);
-        canvas.restore();
         float pip = ui.dp(PIP_OFFSET_DP);
         if (pipColor != 0) OutcomeBadge.drawPip(canvas, ui, badgeX + pip, badgeY - pip, pipColor);
         if (onRoute) OutcomeBadge.drawRoadPip(canvas, ui, badgeX + pip, badgeY + pip, ui.dp(ROAD_PIP_DP), ui.ink);
-        canvas.drawText(pay, payX, line1, payDrawn);
-        if (tagLine != 0) {
-            tagPaint.setColor(tagColor);
-            canvas.drawText(tag, tagX, tagLine == 1 ? line1 : line2, tagPaint);
-        }
-        for (int i = 0; i < tripShownParts; i++) {
-            tripDrawn.setColor(tripShownColor[i]);
-            canvas.drawText(tripShown[i], tripX[i], line2, tripDrawn);
+        for (int i = 0; i < lineParts; i++) {
+            TextPaint paint = lineKind[i] == PAY ? payDrawn : lineKind[i] == TAG ? tagDrawn : tripDrawn;
+            paint.setColor(lineColor[i]);
+            canvas.drawText(lineShown[i], lineX[i], line2, paint);
         }
     }
 
@@ -528,7 +527,10 @@ final class VerdictTile extends View {
 
     // ---- For tests ----
 
-    /** The labels drawn, in reading order, " · " between them: the pay, its tag and age, then the trip (for tests). */
+    /**
+     * The offer's labels drawn, in reading order, " · " between them: the pay, its tag, then the trip and age; with no
+     * offer, its words (for tests). The address is always drawn, whole ({@link #brandTextSize}).
+     */
     String shownText() {
         if (arrangedWidth != getWidth()) arrange();
         return shownText;
@@ -563,10 +565,10 @@ final class VerdictTile extends View {
         return tag;
     }
 
-    /** Where the tag is drawn: 1 beside the pay, 2 at the end of the trip's line, 0 nowhere (for tests). */
-    int tagLine() {
+    /** The tag is drawn, after the pay (for tests). */
+    boolean tagShown() {
         if (arrangedWidth != getWidth()) arrange();
-        return tagLine;
+        return entry != null && tagShown;
     }
 
     /** The age is drawn (for tests). */
@@ -575,19 +577,20 @@ final class VerdictTile extends View {
         return entry != null && ageShown;
     }
 
+    /** The address's text size as drawn, in pixels (for tests: never cut, only condensed or, past that, smaller). */
+    float brandTextSize() {
+        if (arrangedWidth != getWidth()) arrange();
+        return brandDrawn.getTextSize();
+    }
+
     /** The pay's text size as drawn, in pixels (for tests: it is never cut, only condensed or, past that, smaller). */
     float payTextSize() {
         if (arrangedWidth != getWidth()) arrange();
         return payDrawn.getTextSize();
     }
 
-    /** The share of their width the pay and the trip are drawn at (1: not condensed; for tests). */
-    float payCondensed() {
-        if (arrangedWidth != getWidth()) arrange();
-        return payDrawn.getTextScaleX();
-    }
-
-    float tripCondensed() {
+    /** The share of their width the offer's line is drawn at (1: not condensed; for tests). */
+    float lineCondensed() {
         if (arrangedWidth != getWidth()) arrange();
         return tripDrawn.getTextScaleX();
     }

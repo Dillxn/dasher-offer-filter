@@ -480,6 +480,10 @@ final class BundledNotes {
                 "Reports now also mask a customer's name written in lower case after Deliver to.");
         // 0.6.37 (the owner, 23 October 2026: "if i decline an offer then autopilot should raise my mins to its").
         release("0.6.37", DECLINE_RAISES);
+        // 0.6.38 (the owner, 23 October 2026: "right beside the mascot logo in the place the offer value is now we need
+        // OfferFilter.org printed").
+        release("0.6.38", "OfferFilter.org now shows beside the mascot, where the latest offer's pay was.",
+                "The latest offer moved to the line under it: its badge, pay, trip and how long ago.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

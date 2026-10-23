@@ -1,3 +1,15 @@
+## 0.6.38 — OfferFilter.org beside the mascot
+
+Version 0.6.38 (code 130) answers the owner's message of 23 October 2026 (03:53 UTC): "right beside the mascot logo in the place the offer value is now we need OfferFilter.org printed".
+
+- **Now.** The tile beside the mascot at the top of the homepage starts with "OfferFilter.org", in bold at the size the latest offer's pay had, so anyone who sees the screen learns where the app comes from. It is never cut: where the tile is narrow it is condensed, then drawn smaller.
+- **The latest offer moved, not dropped.** It is on the line under the address: its badge, the pay in bold, a tag where the badge alone doesn't say it ("below min", "auto", "requested"), the miles and minutes, then how long ago and a route's stops where they fit. A tap still opens its ticket, and screen readers hear the same words as before.
+- **On a 411 dp phone** with the buttons beside the mascot, the tile is 182 dp wide: the address fits whole, and an ordinary offer's age ("5m") no longer fits and is left off (screen readers still hear "5 min ago"). In a narrower window, where the buttons sit on their own row, the age shows.
+- **Unchanged.** The tile's height (48 dp at the normal font), so nothing else on the page moves. No notice change; Terms and Privacy unchanged (still for 0.6.37). What's new says it in two lines.
+- **Kept suites.** No tests were added or changed.
+
+No phone has run this build.
+
 ## 0.6.37 — Your decline raises Autopilot's bar just above that offer
 
 Version 0.6.37 (code 129) answers the owner's message of 23 October 2026 (00:47 UTC): "if i decline an offer then autopilot should raise my mins to its".

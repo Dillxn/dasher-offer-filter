@@ -43,7 +43,7 @@ import java.util.regex.Pattern;
 /**
  * The app's two pages, kept quiet. The main page is one picture in one fluid layout ({@link ScenePage},
  * {@link FluidLayout}), the same at every window size: along the top the band, which never fades (the mascot in its
- * ring, the one button that pauses or resumes; the latest offer's tile, its outcome's badge, pay and age over its trip,
+ * ring, the one button that pauses or resumes; the tile, OfferFilter.org over the latest offer's badge, pay and trip,
  * as labels, never a sentence; the dash's three counts; under them Autopilot's chip, the scoring mode's and the status
  * words, with the header's buttons at their end where the window is wide enough, else on a row of their own); a line
  * only when something needs the user; then the stage: the minimums as a constellation with recent offers marked (tap
