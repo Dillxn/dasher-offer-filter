@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 23 October 2026 · for {app} 0.6.40
+            Beta terms, effective 23 October 2026 · for {app} 0.6.37
 
             ## What {app} is
 
@@ -117,45 +117,37 @@ final class LegalTexts {
             rejects the adjustment. Automatic acceptances, add-ons, skipped stores, ambiguous outcomes and \
             reconstructed history do not set these minimums. Acceptance learning may be off: Autopilot follows \
             these acceptances separately. The change takes effect between offers at the screen reader's next safe \
-            point. From 0.6.40 the shared bar moves at the same time to that offer's own Autopilot score as it \
-            showed (held between 10% and 150%), so that offer keeps its score and an offer exactly like it meets \
-            the bar exactly; when that score was not worked out (a figure it needs unread), and before 0.6.40, the \
-            bar stays where it was and that offer then scores the bar. A standalone offer needs the same either \
-            way; add-ons and automatic acceptance, which ask your saved and enabled learned minimums at the bar, \
-            follow the bar to its new level. Later bar movements scale the independent working references together. \
-            The newest acceptance replaces earlier accepted levels and holds the bar at least at that level for the \
-            next 24 counted offers, across dashes, even above what an acceptance goal allows. An acceptance of \
-            yours that the decision history holds after the one that set the working minimums, of an offer decided \
-            while Autopilot was on, that set none itself (its live evidence was missed) still holds the bar at \
-            least at its score, worked out again under the current minimums, for the 24 counted offers after it. A \
-            change of your goal (turning Autopilot on with another goal included), minimums, max stops, mode or \
-            learning ends that hold and clears the working adjustments; a pause, turning Autopilot off and on again \
-            with the same goal, and Adopt keep them, including an already confirmed pending update. After the 24 \
-            offers the hold ends and the usual bar adjustment continues; the independent references remain until \
-            replaced or cleared. From 0.6.37, a standalone offer you decline yourself while Autopilot is on and \
-            auto-decline is not paused (a Decline of yours, counted once Dasher goes back to waiting for offers or \
-            shows another offer; the app's own declines and an offer left to time out do not count) raises the bar \
-            to one point above that offer's Autopilot score, at most 150%, when that is higher, and holds it at \
-            least there for the next 24 counted offers, across dashes, even during an acceptance's hold and above \
-            what an acceptance goal allows, so offers that score no better are declined. It never lowers the bar \
-            and does not change the working minimums. Your next such acceptance replaces it, a decline from before \
-            your latest acceptance holds nothing, and the changes that end an acceptance's hold end it too. \
-            Add-ons, skipped stores' offers, offers with more stops than your maximum, and offers that look misread \
-            or whose pay or a needed figure was not read do not raise it. Autopilot can permit offers below your \
-            saved or learned minimums, or decline offers that meet them. Offers it permits only below your saved or \
-            learned minimums are left to you and never auto-accepted. Autopilot never changes your saved minimums \
-            or learned bests; it changes only its separate working requirements. Turning it off judges offers at \
-            exactly the saved and enabled learned minimums again. Acceptance learning keeps its separate best-ever \
-            rates. From 0.5.1 to 0.6.20 Autopilot also raised saved minimums, at most 10% at a time, with Let my \
-            minimums grow to turn that off; that growth and its switch were removed in 0.6.21. A growth made before \
-            0.6.21 keeps its note on the homepage, with Undo, until you tap it or your minimums change another way. \
-            Auto-accept starts off. If you separately enable it in Settings, it can tap Accept on a complete \
-            standalone offer that strictly meets every active saved and enabled learned minimum at 100% or any \
-            higher Autopilot bar, and also meets Autopilot's independent working minimums wherever they ask more, \
-            even in area mode, committing you to that delivery. Automatic acceptance leaves add-ons and unclear \
-            offers to you. Add-on filtering stays strict against saved minimums at the current bar; standalone \
-            learned floors do not apply to add-ons unless adopted as saved minimums, and independent Autopilot \
-            adjustments do not apply to add-ons.
+            point, with the shared bar unchanged. Later bar movements scale the independent working references \
+            together. The newest acceptance replaces earlier accepted levels and holds the bar at least at the \
+            value it had at that acceptance for the next 24 counted offers, across dashes, even above what an \
+            acceptance goal allows. A change of your goal (turning Autopilot on with another goal included), \
+            minimums, max stops, mode or learning ends that hold and clears the working adjustments; a pause, \
+            turning Autopilot off and on again with the same goal, and Adopt keep them, including an already \
+            confirmed pending update. After the 24 offers the hold ends and the usual bar adjustment continues; the \
+            independent references remain until replaced or cleared. From 0.6.37, a standalone offer you decline \
+            yourself while Autopilot is on and auto-decline is not paused (a Decline of yours, counted once Dasher \
+            goes back to waiting for offers or shows another offer; the app's own declines and an offer left to \
+            time out do not count) raises the bar to one point above that offer's Autopilot score, at most 150%, \
+            when that is higher, and holds it at least there for the next 24 counted offers, across dashes, even \
+            during an acceptance's hold and above what an acceptance goal allows, so offers that score no better \
+            are declined. It never lowers the bar and does not change the working minimums. Your next such \
+            acceptance replaces it, a decline from before your latest acceptance holds nothing, and the changes \
+            that end an acceptance's hold end it too. Add-ons, skipped stores' offers, offers with more stops than \
+            your maximum, and offers that look misread or whose pay or a needed figure was not read do not raise \
+            it. Autopilot can permit offers below your saved or learned minimums, or decline offers that meet them. \
+            Offers it permits only below your saved or learned minimums are left to you and never auto-accepted. \
+            Autopilot never changes your saved minimums or learned bests; it changes only its separate working \
+            requirements. Turning it off judges offers at exactly the saved and enabled learned minimums again. \
+            Acceptance learning keeps its separate best-ever rates. From 0.5.1 to 0.6.20 Autopilot also raised \
+            saved minimums, at most 10% at a time, with Let my minimums grow to turn that off; that growth and its \
+            switch were removed in 0.6.21. A growth made before 0.6.21 keeps its note on the homepage, with Undo, \
+            until you tap it or your minimums change another way. Auto-accept starts off. If you separately enable \
+            it in Settings, it can tap Accept on a complete standalone offer that strictly meets every active saved \
+            and enabled learned minimum at 100% or any higher Autopilot bar, and also meets Autopilot's independent \
+            working minimums wherever they ask more, even in area mode, committing you to that delivery. Automatic \
+            acceptance leaves add-ons and unclear offers to you. Add-on filtering stays strict against saved \
+            minimums at the current bar; standalone learned floors do not apply to add-ons unless adopted as saved \
+            minimums, and independent Autopilot adjustments do not apply to add-ons.
             - It also declines a standalone offer from a store you put on your skip list (from an offer's details; \
             Settings → Skipped stores removes one), whatever it pays, when it reads that store's name on Dasher's \
             screen. An offer from two stores is declined when either is on the list; an offer whose store it cannot \
@@ -291,7 +283,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 23 October 2026 · for {app} 0.6.41
+            Beta privacy policy, effective 23 October 2026 · for {app} 0.6.37
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -677,18 +669,17 @@ final class LegalTexts {
             changed your goal or rules; that change removes them. They never leave the phone, not even in a report. \
             Numbers only.
             - Independent working minimums (from 0.6.29): at most three exact numeric rate pairs, the latest \
-            acceptance's time and the bar it set (from 0.6.40 that offer's own Autopilot score as it showed, when \
-            known; otherwise, and before, the bar at that acceptance), and from 0.6.31 that acceptance's total pay \
-            as one more exact number (none for working minimums saved before 0.6.31). Unread or disabled measures \
-            keep their prior value, without becoming active. A confirmed update waiting for the safe point also \
-            keeps one pending copy with numeric consent and policy markers so a stale update cannot apply later; \
-            the live observation permit is memory only. These rates have no age expiry. A newer eligible acceptance \
-            replaces the observed active rates; changing your goal, minimums, max stops, mode or learning, Clear \
-            history or uninstall clears the working adjustments. Pausing or turning Autopilot off retains committed \
-            rates, the prior bar and an already confirmed pending update, without collecting new adjustments while \
-            off. The latest 200 decision snapshots retain the exact adjustments used for their original decision \
-            until normal eviction, Clear history or uninstall; older history is not reinterpreted to create them. \
-            The stored exact rates, the total pay and pending copies stay local and are not included in reports, \
+            acceptance's time and the bar at that acceptance, and from 0.6.31 that acceptance's total pay as one \
+            more exact number (none for working minimums saved before 0.6.31). Unread or disabled measures keep \
+            their prior value, without becoming active. A confirmed update waiting for the safe point also keeps \
+            one pending copy with numeric consent and policy markers so a stale update cannot apply later; the live \
+            observation permit is memory only. These rates have no age expiry. A newer eligible acceptance replaces \
+            the observed active rates; changing your goal, minimums, max stops, mode or learning, Clear history or \
+            uninstall clears the working adjustments. Pausing or turning Autopilot off retains committed rates, the \
+            prior bar and an already confirmed pending update, without collecting new adjustments while off. The \
+            latest 200 decision snapshots retain the exact adjustments used for their original decision until \
+            normal eviction, Clear history or uninstall; older history is not reinterpreted to create them. The \
+            stored exact rates, the total pay and pending copies stay local and are not included in reports, \
             automatic summaries or the timing study. Reports can identify a recorded score with the fixed category \
             Autopilot, without exporting the working rates.
             - If Autopilot raised your minimums before 0.6.21, the app keeps a note of that last growth: when, by \

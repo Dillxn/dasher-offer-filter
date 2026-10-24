@@ -69,15 +69,7 @@ final class Consent {
     // 36 (0.6.37): an offer you decline yourself raises Autopilot's bar to just above its score for the 24 offers after
     // it, even during an accept's hold (the owner, 23 October 2026: "if i decline an offer then autopilot should raise
     // my mins to its"); to keep the notice short, its Area sentence now says only that the scores weigh total pay too.
-    // 37 (0.6.40): an offer you accept yourself moves Autopilot's bar to that offer's own score as it showed, holding
-    // it there for the next 24 offers (it stayed where it was, and the offer then scored the bar), so add-ons and
-    // automatic accepts, which ask the saved minimums at the bar, follow it; an accept the history holds that set no
-    // working minimums still holds the bar at its score; and the bar's last 40 changes are kept for the chart's bar
-    // line (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing"). The
-    // notice's words are unchanged: the Terms and Privacy say it. 0.6.41 keeps 37 without the kept changes (Play
-    // Protect blocked 0.6.40, and 0.6.41 is its accept half alone): its Privacy no longer names them, a narrower text
-    // than the one a phone that ran 0.6.40 accepted.
-    static final int VERSION = 37;
+    static final int VERSION = 36;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

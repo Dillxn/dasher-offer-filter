@@ -1,3 +1,13 @@
+## 0.6.42 — 0.6.39 again, to test Play Protect
+
+Version 0.6.42 (code 134) is 0.6.39's code and texts under a new number. Google Play Protect blocked 0.6.40 as harmful on the owner's phone, and then 0.6.41, its accept half alone (the owner, 24 October 2026: "yep still flags"). 0.6.42 tells the two possible causes apart. If Play Protect lets it install, the block comes from the accept half's code, which the next builds split further. If it blocks 0.6.42 too, Google now blocks any new file of this app, whatever its code, and only Google's appeal clears that.
+
+- **What changes for you.** Autopilot works as in 0.6.39: an accept sets the working minimums at the bar of the moment and leaves the bar where it was. The chart's purple line is one level across. Terms and Privacy are 0.6.39's (for 0.6.37). A phone that accepted notice 37 isn't asked again, since notice 36 is the current one.
+- **Data.** Working minimums saved by 0.6.40 or 0.6.41 keep working: the reference they keep is the bar they set. On a phone that ran 0.6.40, the bar's kept changes stay on the phone unread until a later build reads or clears them.
+- **Kept suites.** 0.6.39's, unchanged.
+
+No phone has run this build.
+
 ## 0.6.41 — Your accept sets Autopilot's bar (the chart's bar line waits)
 
 Version 0.6.41 (code 133) is 0.6.40's accept half alone. On the owner's phone, Google Play Protect blocked 0.6.40 as a harmful app (23 October 2026, about 21:15 UTC: "this is the first release that did not pass the android safety scan"). 0.6.40's file is 0.6.39's in everything but its code, so the owner asked: "why don't we commit half the code difference, deploy and test and go from there".

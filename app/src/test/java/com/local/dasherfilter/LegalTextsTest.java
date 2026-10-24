@@ -43,7 +43,7 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "23 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.40";
+    static final String TERMS_VERSION = "0.6.37";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -54,13 +54,10 @@ public final class LegalTextsTest {
      * come down to 10%); 0.6.33 both (split screen retired: the divider is no longer moved for a map); 0.6.34 both
      * (one Share anonymous diagnostics switch for every diagnostic, off for everyone until turned on); 0.6.35 both
      * (paused, Dasher's screen is read to show each offer's score, nothing tapped; Decline after 10 seconds); 0.6.37
-     * both (an offer declined by hand holds Autopilot's bar just above its score for the 24 offers after it); 0.6.40
-     * both (an accept moves Autopilot's bar to that offer's own score; the bar's last 40 changes are kept for the
-     * chart); 0.6.41 the privacy text only (the bar's changes are no longer kept: 0.6.41 is 0.6.40's accept half alone,
-     * after Play Protect blocked 0.6.40).
+     * both (an offer declined by hand holds Autopilot's bar just above its score for the 24 offers after it).
      */
     static final String PRIVACY_EFFECTIVE = "23 October 2026";
-    static final String PRIVACY_VERSION = "0.6.41";
+    static final String PRIVACY_VERSION = "0.6.37";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -138,12 +135,8 @@ public final class LegalTextsTest {
                 // 0.6.29: a latest acceptance replaces the old score hold with its own working shape and bar.
                 "each readable active working minimum to that offer's own pay per stop, pay per mile or pay per "
                         + "hour, independently up or down",
-                // 0.6.40: the bar moves to the accepted offer's own score and holds there.
-                "From 0.6.40 the shared bar moves at the same time to that offer's own Autopilot score",
-                "The newest acceptance replaces earlier accepted levels and holds the bar at least at that level "
-                        + "for the next 24 counted offers, across dashes",
-                "add-ons and automatic acceptance, which ask your saved and enabled learned minimums at the bar, "
-                        + "follow the bar to its new level",
+                "The newest acceptance replaces earlier accepted levels and holds the bar at least at the value "
+                        + "it had at that acceptance for the next 24 counted offers, across dashes",
                 "A change of your goal (turning Autopilot on with another goal included), minimums, max stops, "
                         + "mode or learning ends that hold and clears the working adjustments",
                 "a pause, turning Autopilot off and on again with the same goal, and Adopt keep them, including "

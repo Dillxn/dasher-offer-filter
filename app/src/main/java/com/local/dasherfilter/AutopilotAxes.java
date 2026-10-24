@@ -8,17 +8,8 @@ import java.util.Objects;
 
 /**
  * Autopilot's independent working rates. A confirmed personal acceptance replaces each observed active rate,
- * in either direction. The exact rate is normalized to that offer's own Autopilot score, the one its ticket showed
- * (0.6.40; the bar at that acceptance from 0.6.29), and the bar moves to that score with it, so applying it once asks
- * exactly what that offer paid and the accepted offer keeps its score. Saved knobs and the best-ever learner remain
- * separate.
- *
- * <p>Why the score and not the bar (the owner, 23 October 2026, beside a 32% offer accepted at a 25% bar: "the app
- * should be declarative and therefore naturally self healing: the 32% accepted offer within 11 orders from most
- * recent should be setting the auto bar"): normalized to the bar, every acceptance above it shrank every later score
- * by the bar ÷ its score, so the scores and the bar sank together, acceptance after acceptance, toward the lowest bar.
- * What a standalone offer needs is the same either way: that offer's own rates at the bar it set. What asks the saved
- * minimums at the bar (add-ons, automatic accepts) follows the bar.
+ * in either direction. The exact rate is normalized to the bar at that acceptance, so applying the bar once asks
+ * exactly what that offer paid. Saved knobs and the best-ever learner remain separate.
  *
  * <p>From 0.6.31 the same acceptance also keeps its total pay, normalized the same way: Area mode weighs an offer's
  * total pay against it for a quarter of the score ({@link AreaScore}; the owner's "ticket value"). It is total against total:
@@ -32,11 +23,7 @@ final class AutopilotAxes {
 
     /** The latest prospective acceptance which set at least one active, observed rate. */
     final long acceptedAt;
-    /**
-     * The bar this acceptance set and its next-24-offers protection: that offer's own Autopilot score as seen, held to
-     * 10–150 (0.6.40); the shared bar at that acceptance when its score was not known, and for working minimums saved
-     * by 0.6.29 to 0.6.39.
-     */
+    /** The shared bar at that acceptance; its existing next-24-offers protection starts here. */
     final int referenceBar;
     private final Rate[] rates;
     /** The latest acceptance's whole pay in cents at a bar of 100, set with its rates; null before 0.6.31's first. */
@@ -64,11 +51,6 @@ final class AutopilotAxes {
 
         BigDecimal display() {
             return new BigDecimal(numerator).divide(new BigDecimal(denominator), MathContext.DECIMAL128);
-        }
-
-        /** This rate times {@code times} ÷ {@code over}, exactly. */
-        private Rate scaled(BigInteger times, BigInteger over) {
-            return new Rate(numerator.multiply(times), denominator.multiply(over));
         }
 
         private String encode() { return numerator + "/" + denominator; }
@@ -108,38 +90,24 @@ final class AutopilotAxes {
      * The confirmed offer's known active rates replace the old ones exactly; no averaging, cent rounding, or saved
      * minimum clamp. Unknown and disabled axes keep their stored values. Eligibility/provenance and the safe point
      * are the runtime's responsibility; a known implausible figure still rejects the entire offer here.
-     *
-     * @param seenScore the offer's Autopilot score as its ticket showed it, at its decision (0.6.40): the rates are
-     *     normalized to it, held to 10–150, and it becomes the reference bar, the bar the commit sets; -1 when it was
-     *     not worked out (a needed figure unread), for the bar of the moment, as from 0.6.29. Never scored again here:
-     *     by the acceptance, the learner may already have learned from this very offer.
      */
-    AutopilotAxes withOffer(FilterSettings rules, OfferSnapshot offer, long at, int seenScore) {
+    AutopilotAxes withOffer(FilterSettings rules, OfferSnapshot offer, long at) {
         if (rules == null || !rules.autopilot || at < 0 || offer == null || offer.payCents == null || offer.payCents <= 0
                 || offer.payAtMostCents != null || OfferSanity.looksMisread(offer)
                 || (rules.maxStops > 0 && offer.stops != null && offer.stops > rules.maxStops)) return this;
-        int reference = seenScore < 0 ? rules.minimumScalePercent
-                : Math.max(FilterStore.BAR_MIN, Math.min(FilterStore.BAR_MAX, seenScore));
-        BigInteger now = BigInteger.valueOf(rules.minimumScalePercent), to = BigInteger.valueOf(reference);
         Rate[] next = rates.clone();
         BigDecimal[] units = {offer.stops == null ? null : BigDecimal.valueOf(offer.stops),
                 offer.miles == null ? null : BigDecimal.valueOf(offer.miles),
                 offer.minutes == null ? null : BigDecimal.valueOf(offer.minutes)};
         boolean observed = false;
         for (int axis = 0; axis < next.length; axis++) {
-            if (!active(rules, axis) || units[axis] == null || units[axis].signum() <= 0) {
-                // A rate this offer did not read keeps asking, at the bar this sets, what it asks at today's.
-                if (next[axis] != null && reference != rules.minimumScalePercent) {
-                    next[axis] = next[axis].scaled(now, to);
-                }
-                continue;
-            }
-            next[axis] = Rate.observed(offer.payCents, units[axis], reference);
+            if (!active(rules, axis) || units[axis] == null || units[axis].signum() <= 0) continue;
+            next[axis] = Rate.observed(offer.payCents, units[axis], rules.minimumScalePercent);
             observed = true;
         }
         if (!observed) return this;
-        Rate whole = Rate.observed(offer.payCents, BigDecimal.ONE, reference);
-        AutopilotAxes result = new AutopilotAxes(next, whole, at, reference);
+        Rate whole = Rate.observed(offer.payCents, BigDecimal.ONE, rules.minimumScalePercent);
+        AutopilotAxes result = new AutopilotAxes(next, whole, at, rules.minimumScalePercent);
         return equals(result) ? this : result;
     }
 

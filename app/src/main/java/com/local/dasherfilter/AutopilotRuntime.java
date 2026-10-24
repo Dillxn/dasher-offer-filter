@@ -596,20 +596,14 @@ final class AutopilotRuntime {
                 // A preceding learned-best update may have requested a jump. The new shape now expresses this
                 // acceptance exactly; an old jump must not immediately replace it with a market target.
                 AutopilotStore.clearJump(app);
-                // The bar moved to the accepted offer's own score with it (0.6.40).
-                int set = FilterStore.load(app).minimumScalePercent;
-                int from = current.minimumScalePercent;
-                AutopilotStore.recordChange(app, from, set, Autopilot.Reason.ACCEPTED_AXES.name(),
-                        wallClock.getAsLong(), set > from);
+                AutopilotStore.recordChange(app, current.minimumScalePercent, current.minimumScalePercent,
+                        Autopilot.Reason.ACCEPTED_AXES.name(), wallClock.getAsLong(), false);
                 lastCommitElapsed = elapsedClock.getAsLong();
                 lastRaiseElapsed = lastCommitElapsed;
                 result = Commit.COMMITTED;
             }
         }
-        if (result == Commit.COMMITTED) {
-            log(app, "commit: Autopilot minimums followed your accepted offer, measure by measure; bar "
-                    + pendingAxes.bar + "% to " + pendingAxes.axes.referenceBar + "%");
-        }
+        if (result == Commit.COMMITTED) log(app, "commit: Autopilot minimums followed your accepted offer, measure by measure");
         else log(app, "accepted minimums discarded: a newer acceptance, your rules or consent changed");
         notifyListeners();
         requestPlan(app, Trigger.COMMIT);

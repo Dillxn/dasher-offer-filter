@@ -1001,13 +1001,6 @@ final class FilterStore {
         final int consentVersion;
         final OfferSnapshot observed;
         private boolean consumed;
-        /** The offer's Autopilot score as its latest decision showed it (0.6.40); -1 until one was worked out. */
-        private volatile int seenScore = -1;
-
-        /** This showing's latest decision scored it {@code score} (-1, not worked out, keeps the last known one). */
-        void noteScore(int score) {
-            if (score >= 0) seenScore = score;
-        }
 
         private AutopilotPermit(SharedPreferences prefs, SharedPreferences consent, OfferSnapshot observed) {
             epoch = prefs.getLong(AUTOPILOT_AXES_EPOCH, 0);
@@ -1112,12 +1105,9 @@ final class FilterStore {
                 return AutopilotAcceptance.UNKNOWN;
             }
             PendingAutopilotAxes pending = pendingAutopilotAxes(context);
-            boolean merge = pending != null && pending.compatibleForMerge(context, before);
-            AutopilotAxes previous = merge ? pending.axes : before.autopilotAxes;
-            // A shape still waiting for its safe point moves the bar to its reference there (0.6.40): this one is
-            // worked out from that bar, as if the first had landed.
-            AutopilotAxes next = previous.withOffer(merge ? before.withMinimumScalePercent(previous.referenceBar)
-                    : before, offer, acceptedAt, permit.seenScore);
+            AutopilotAxes previous = pending != null && pending.compatibleForMerge(context, before)
+                    ? pending.axes : before.autopilotAxes;
+            AutopilotAxes next = previous.withOffer(before, offer, acceptedAt);
             if (next == previous || next.isEmpty()) return AutopilotAcceptance.UNKNOWN;
             try {
                 PendingAutopilotAxes update = new PendingAutopilotAxes(next, before, consent);
@@ -1142,17 +1132,13 @@ final class FilterStore {
         }
     }
 
-    /**
-     * Compare-and-set of the entire working shape and the bar it sets, its reference (0.6.40: the accepted offer's own
-     * score; the bar was left as it was before), preserving saved minimums and learned bests.
-     */
+    /** Compare-and-set of the entire working shape, preserving the bar, saved minimums and learned bests. */
     static boolean commitAutopilotAxes(Context context, PendingAutopilotAxes pending) {
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
             if (pending == null || !pending.encoded.equals(prefs.getString(AUTOPILOT_AXES_PENDING, ""))
                     || !pending.matches(context, read(prefs))) return false;
-            prefs.edit().putString(AUTOPILOT_AXES, pending.axes.encode()).remove(AUTOPILOT_AXES_PENDING)
-                    .putInt(AUTOPILOT_BAR, clamp(pending.axes.referenceBar, BAR_MIN, BAR_MAX)).apply();
+            prefs.edit().putString(AUTOPILOT_AXES, pending.axes.encode()).remove(AUTOPILOT_AXES_PENDING).apply();
             return true;
         }
     }
