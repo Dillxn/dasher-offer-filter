@@ -1,3 +1,13 @@
+## 0.6.43 — Your accept sets Autopilot's bar; the chart tracks the bar (0.6.40 again)
+
+Version 0.6.43 (code 135) is 0.6.40's code and texts whole again under a new number. Google Play Protect blocked 0.6.40, then 0.6.41 (its accept half alone) and 0.6.42 (0.6.39's code under a new number) alike as harmful on the owner's phone (24 October 2026: "still flags"), while 0.6.39's own file, scanned earlier, had passed. So nothing in 0.6.40's code is the cause: Play Protect now blocks any new file of this app, and only Google's appeal clears that.
+
+- **For you.** Everything 0.6.40 brought: an accept moves Autopilot's bar to that offer's own score and holds it there for your next 24 offers, and the chart's purple line follows the bar offer by offer with a word where it moved. Notice 37 and 0.6.40's Terms and Privacy. A phone that accepted notice 37 on 0.6.40 or 0.6.41 isn't asked again.
+- **Play Protect.** Until Google clears the app, installing this update shows "Harmful app blocked"; Install anyway installs it. The file is the one built and signed here (its checksum and signing certificate are checked on every phone before install).
+- **Kept suites.** 0.6.40's, unchanged.
+
+No phone has run this build.
+
 ## 0.6.42 — 0.6.39 again, to test Play Protect
 
 Version 0.6.42 (code 134) is 0.6.39's code and texts under a new number. Google Play Protect blocked 0.6.40 as harmful on the owner's phone, and then 0.6.41, its accept half alone (the owner, 24 October 2026: "yep still flags"). 0.6.42 tells the two possible causes apart. If Play Protect lets it install, the block comes from the accept half's code, which the next builds split further. If it blocks 0.6.42 too, Google now blocks any new file of this app, whatever its code, and only Google's appeal clears that.

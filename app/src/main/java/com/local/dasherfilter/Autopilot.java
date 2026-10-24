@@ -715,6 +715,11 @@ final class Autopilot {
         final int floorOffersLeft;
         /** The floor is a decline's ({@link #declinedFloor}, 0.6.37), not an accept's. */
         final boolean floorDeclined;
+        /**
+         * The floor is a hand accept's that the history holds after the working shape's own, which set no shape (its
+         * live evidence missed): 0.6.40's healed hold, at its score now.
+         */
+        final boolean floorHealed;
         /** The committed bar the plan started from. */
         final int current;
         final int goal;
@@ -786,6 +791,7 @@ final class Autopilot {
             this.floor = mode == Mode.OFF || mode == Mode.NO_RULES ? -1 : d.floor;
             this.floorOffersLeft = floor < 0 ? 0 : d.floorOffersLeft;
             this.floorDeclined = floor >= 0 && d.floorDeclined;
+            this.floorHealed = floor >= 0 && d.floorHealed;
             this.target = Math.max(target, floor);
             this.current = d.state.current;
             this.goal = d.rules.autopilotGoalPercent;
@@ -889,6 +895,7 @@ final class Autopilot {
         int floor = -1;
         int floorOffersLeft;
         boolean floorDeclined;
+        boolean floorHealed;
 
         Draft(Inputs in, List<OfferRecord> window, int[] thetas, List<MixLine> mix, ArNow ar, Rate rate,
               boolean exemptionsIgnored) {
@@ -980,6 +987,19 @@ final class Autopilot {
             // Re-scoring history would also lose partial-axis accepts and reintroduce the learner's pay +1 cent.
             draft.floorOffersLeft = anchorOffersLeft(rules.autopilotAxes, counted);
             draft.floor = draft.floorOffersLeft > 0 ? rules.autopilotAxes.referenceBar : -1;
+            // Declarative, so it heals (0.6.40; the owner, 23 October 2026: "the app should be declarative and
+            // therefore naturally self healing"): a hand accept the history holds after the one that set the shape
+            // (its live evidence missed, so no shape followed it) still sets the floor at its score, the latest
+            // deciding, for the 24 offers after it.
+            // Only an offer judged with Autopilot on counts: one taken while it was off was never Autopilot's.
+            HandAccept newer = newestAccept(handAccepts(rules, judgedByAutopilot(in.newestFirst)), in.floorSince);
+            if (newer != null && newer.at > rules.autopilotAxes.acceptedAt + DEDUP_MS) {
+                int left = FLOOR_OFFERS - offersBetween(counted, newer.at, Long.MAX_VALUE);
+                boolean holds = left > 0 && newer.score >= BAR_MIN;
+                draft.floor = holds ? newer.score : -1;
+                draft.floorOffersLeft = holds ? left : 0;
+                draft.floorHealed = holds;
+            }
         } else {
             List<HandAccept> accepts = handAccepts(rules, in.newestFirst, in.keptAccepts);
             draft.floor = acceptedFloor(accepts, in.floorSince, counted);
@@ -995,6 +1015,7 @@ final class Autopilot {
             draft.floor = declined;
             draft.floorOffersLeft = declinedOffersLeft(declines, counted, declined);
             draft.floorDeclined = true;
+            draft.floorHealed = false;
         }
 
         if (!rules.autopilot) return draft.gated(Mode.OFF);
@@ -1122,6 +1143,22 @@ final class Autopilot {
             if (score < 0) continue;
             accepts.add(new HandAccept(record.acceptedByHandAt, Math.min(BAR_MAX, score)));
         }
+    }
+
+    /** The lines decided while Autopilot was on (0.6.40's healed hold counts only their accepts). */
+    private static List<OfferRecord> judgedByAutopilot(List<OfferRecord> lines) {
+        List<OfferRecord> on = new ArrayList<>();
+        if (lines != null) for (OfferRecord line : lines) if (line != null && line.autopilot) on.add(line);
+        return on;
+    }
+
+    /** The latest of {@code accepts} made at or after {@code since} (wall clock); null when none. */
+    static HandAccept newestAccept(List<HandAccept> accepts, long since) {
+        HandAccept newest = null;
+        if (accepts != null) for (HandAccept accept : accepts) {
+            if (accept.at >= since && (newest == null || accept.at > newest.at)) newest = accept;
+        }
+        return newest;
     }
 
     /** {@link #acceptedFloor(List, long, List)} with no offer after any accept yet. */

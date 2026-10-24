@@ -23,20 +23,23 @@ import java.util.Map;
  * Recent offers as a little skyline, oldest left (the owner, 14 October 2026: "i miss the building/tree skyline motif
  * for the chart"; on the card he chose B, "as before" 0.6.6): each offer is a building as tall as the pay read, in
  * dollars, with a slim tree beside it as tall as its recorded score (percent of the minimums, the number the filter
- * decides with). Dollars and percent have scales of their own and share the street as zero. A building's colour is
- * what actually happened ({@link DecisionLog#outcome}): green passed (or accepted), amber passed below the minimums or
- * left for review (or to you), red filtered; passed offers have their windows lit. The solid line is the pay a single
- * order (Dasher's "2 stops") must bring under the pay minimum at today's bar ("Pay $10.00 min"), only while one is
- * set; the dashed line in the trees' green is the minimums (100%); and a dashed purple line Autopilot's bar while it is
- * not 100%. An offer whose pay was not read is a hollow dashed building with "?"; a score not read (or from the retired
- * rules) has no tree, an open ring at its foot instead. One badge marks the selected offer (the newest, unless another
- * was chosen), on its roof, and the stored route's offer (0.6.3, {@link #setRoute}) has a small road beside that badge.
- * Under the street, the dash's counts are the chart's key ("DASH ✓ 1 ✕ 0 ? 1"), and a tap on one opens its latest
- * offer ({@link OnCount}). Tapping a building or its tree selects it and reports it to the listener; an offer picked
- * on the constellation is selected the same way ({@link #choose}). Buildings and trees rise together; with Android's
- * animations off they rest. From 0.6.16 the buildings and the trees' crowns are the website's in the round ({@link Art}:
- * a building's roof and a slice of its front stretched down to the street, a crown stretched to its tree), flat until
- * their pictures are ready; the windows stay drawn, all of a frame's together.
+ * decides with). Dollars and percent have scales of their own and share the street as zero. A building's colour is what
+ * actually happened ({@link DecisionLog#outcome}): green passed (or accepted), amber passed below the minimums or left
+ * for review (or to you), red filtered; passed offers have their windows lit. The solid line is the pay a single order
+ * (Dasher's "2 stops") must bring under the pay minimum at today's bar ("Pay $10.00 min"), only while one is set; the
+ * dashed line in the trees' green is the minimums (100%); and a dashed purple line Autopilot's bar: from 0.6.40 the bar
+ * each offer was judged at, stepping where it moved, then today's, with a word or two at its newest steps on why (the
+ * owner, 23 October 2026: "if auto bar was lowered I should see why on the orders graph (bldgs + trees).. we should
+ * track it's level rather than it be static across the bar"). An offer whose pay was not read is a hollow dashed
+ * building with "?"; a score not read (or from the retired rules) has no tree, an open ring at its foot instead. One
+ * badge marks the selected offer (the newest, unless another was chosen), on its roof, and the stored route's offer
+ * (0.6.3, {@link #setRoute}) has a small road beside that badge. Under the street, the dash's counts are the chart's
+ * key ("DASH ✓ 1 ✕ 0 ? 1"), and a tap on one opens its latest offer ({@link OnCount}). Tapping a building or its tree
+ * selects it and reports it to the listener; an offer picked on the constellation is selected the same way
+ * ({@link #choose}). Buildings and trees rise together; with Android's animations off they rest. From 0.6.16 the
+ * buildings and the trees' crowns are the website's in the round ({@link Art}: a building's roof and a slice of its
+ * front stretched down to the street, a crown stretched to its tree), flat until their pictures are ready; the windows
+ * stay drawn, all of a frame's together.
  */
 @SuppressLint("ViewConstructor")
 final class DecisionChartView extends View {
@@ -89,6 +92,14 @@ final class DecisionChartView extends View {
     private final DashPathEffect barDash;
     private boolean areaMode;
     private int minimumScalePercent = 100;
+    /** Autopilot is on now: after the newest offer, the bar line runs on at today's bar (0.6.40). */
+    private boolean autopilotNow;
+    /** The bar's kept changes, oldest first ({@link AutopilotStore#changes}): the words where the bar line steps. */
+    private List<AutopilotStore.Change> barChanges = Collections.emptyList();
+    /** The bar line's words as last drawn, for the description and tests: "accepted", "hold over", … */
+    private final List<String> barWords = new ArrayList<>();
+    /** Where those words were drawn, backdrops and all (for {@link #highestWithin}). */
+    private final List<RectF> barWordBoxes = new ArrayList<>();
     /** What the pay minimum asks of a single order at today's bar, in cents; 0 with no pay minimum. */
     private long payoutMinimumCents;
     /** What screen readers hear with no offer yet (nothing is drawn but the street). */
@@ -224,16 +235,38 @@ final class DecisionChartView extends View {
                 .axisRequiredCents(AreaScore.PAY, rules.minimumScalePercent));
         if (minimumScalePercent == rules.minimumScalePercent && areaMode == rules.scoreByArea
                 && payoutMinimumCents == payout && independentAutopilot == rules.hasAutopilotAxes()
-                && totalPayLine == total >= 0) {
+                && totalPayLine == total >= 0 && autopilotNow == rules.autopilot) {
             return;
         }
         payoutMinimumCents = payout;
         totalPayLine = total >= 0;
         areaMode = rules.scoreByArea;
         independentAutopilot = rules.hasAutopilotAxes();
+        autopilotNow = rules.autopilot;
         minimumScalePercent = rules.minimumScalePercent;
         setContentDescription(describe(entries));
         invalidate();
+    }
+
+    /** The bar's kept changes, oldest first ({@link AutopilotStore#changes}), for the words on the bar line. */
+    void setBarChanges(List<AutopilotStore.Change> oldestFirst) {
+        List<AutopilotStore.Change> next = oldestFirst == null ? Collections.<AutopilotStore.Change>emptyList()
+                : oldestFirst;
+        if (sameChanges(next, barChanges)) return;
+        barChanges = new ArrayList<>(next);
+        setContentDescription(describe(entries));
+        invalidate();
+    }
+
+    private static boolean sameChanges(List<AutopilotStore.Change> a, List<AutopilotStore.Change> b) {
+        if (a.size() != b.size()) return false;
+        for (int i = 0; i < a.size(); i++) {
+            AutopilotStore.Change x = a.get(i), y = b.get(i);
+            if (x.at != y.at || x.from != y.from || x.to != y.to || !x.why.equals(y.why) || x.released != y.released) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** A single order as Dasher counts it, for the pay line: nothing else read. */
@@ -380,10 +413,14 @@ final class DecisionChartView extends View {
             if (i == marked) markedRoof = roof;
         }
         drawWindows(canvas);
+        // Autopilot's bar over the street (0.6.40): its level is what each tree is weighed against.
+        List<BarRun> runs = barRuns();
+        drawBarLine(canvas, runs);
         // The lines' words, then the badge over everything, so no label's backdrop covers it.
         float badgeX = Float.isNaN(markedRoof) ? Float.NaN : buildingCenter(marked, slot);
         float badgeY = Float.isNaN(markedRoof) ? Float.NaN : Math.max(markedRoof - ui.dp(12), ui.dp(10));
         drawThresholdLabels(canvas, left, right, badgeX, badgeY);
+        drawBarWords(canvas, runs);
         if (!Float.isNaN(markedRoof)) {
             float center = buildingCenter(marked, slot);
             drawBadge(canvas, center, markedRoof - ui.dp(12), DecisionLog.outcome(entries.get(marked)),
@@ -589,12 +626,185 @@ final class DecisionChartView extends View {
         float hundred = hundredY();
         canvas.drawLine(left, hundred, right, hundred, line);
         line.setPathEffect(null);
-        if (minimumScalePercent != 100) {
-            line.setColor(barLineColor());
-            line.setPathEffect(scoreDash);
-            canvas.drawLine(left, scoreThresholdY(), right, scoreThresholdY(), line);
-            line.setPathEffect(null);
+    }
+
+    /**
+     * One level of the bar line: from {@code from} to {@code to} across, at {@code bar}; {@code at} the offer's time
+     * whose recorded bar it is, or {@link Long#MAX_VALUE} for today's bar after the newest offer.
+     */
+    private static final class BarRun {
+        final float from, to;
+        final int bar;
+        final long at;
+
+        BarRun(float from, float to, int bar, long at) {
+            this.from = from;
+            this.to = to;
+            this.bar = bar;
+            this.at = at;
         }
+    }
+
+    /**
+     * The bar line's levels, left to right (0.6.40; the owner, 23 October 2026: "we should track it's level rather than
+     * it be static across the bar"): each offer Autopilot judged, at the bar it was judged at, across its slot; then,
+     * while Autopilot is on, today's bar from just past the newest offer's tree to the end where it differs. An offer
+     * judged with Autopilot off has none: the line has a gap there.
+     */
+    private List<BarRun> barRuns() {
+        List<BarRun> runs = new ArrayList<>();
+        int n = entries.size();
+        if (n == 0) return runs;
+        float slot = slotWidth();
+        float start = ui.dp(SIDE_DP);
+        float end = getWidth() - ui.dp(SIDE_DP);
+        for (int i = 0; i < n; i++) {
+            DecisionLog.Entry entry = entries.get(i);
+            if (!entry.autopilot) continue;
+            float from = start + slot * (SLOTS - n + i);
+            runs.add(new BarRun(from, Math.min(end, from + slot), entry.barPercent, entry.at));
+        }
+        if (!autopilotNow) return runs;
+        BarRun last = runs.isEmpty() ? null : runs.get(runs.size() - 1);
+        boolean newestJudged = last != null && last.at == entries.get(n - 1).at;
+        if (newestJudged && last.bar == minimumScalePercent) return runs;
+        // Today's level runs on into the chart's margin, so it shows beside the newest offer.
+        float split = Math.min(end - ui.dp(2), treeCenter(n - 1, slot) + treeWidth(slot) / 2f + ui.dp(2));
+        if (newestJudged) runs.set(runs.size() - 1, new BarRun(last.from, split, last.bar, last.at));
+        runs.add(new BarRun(split, getWidth(), minimumScalePercent, Long.MAX_VALUE));
+        return runs;
+    }
+
+    /**
+     * Autopilot's bar, dashed purple over the buildings and trees: each level of {@link #barRuns} (none drawn at
+     * exactly 100%, where the minimums' line stands) and a step between touching levels that differ.
+     */
+    private void drawBarLine(Canvas canvas, List<BarRun> runs) {
+        if (runs.isEmpty()) return;
+        float top = plotTop(), bottom = plotBottom();
+        long maxScore = scoreScaleMax();
+        line.setColor(barLineColor());
+        line.setStrokeWidth(Math.max(1, ui.dp(2)));
+        line.setStrokeCap(Paint.Cap.BUTT);
+        line.setPathEffect(scoreDash);
+        for (int i = 0; i < runs.size(); i++) {
+            BarRun run = runs.get(i);
+            float y = y(run.bar, maxScore, top, bottom);
+            if (run.bar != 100) canvas.drawLine(run.from, y, run.to, y, line);
+            BarRun next = i + 1 < runs.size() ? runs.get(i + 1) : null;
+            if (next != null && next.bar != run.bar && Math.abs(next.from - run.to) < 1f) {
+                canvas.drawLine(run.to, y, run.to, y(next.bar, maxScore, top, bottom), line);
+            }
+        }
+        line.setPathEffect(null);
+    }
+
+    /**
+     * Where the bar line steps, a word or two on why, from the bar's kept changes between the two offers (or since
+     * the newest): "accepted", "hold over", "1 in 5" … (the owner: "if auto bar was lowered I should see why on the
+     * orders graph"). Under a step down and over a step up, beside it; the newest {@value #BAR_WORDS_MOST} steps that
+     * have words, none over another.
+     */
+    private void drawBarWords(Canvas canvas, List<BarRun> runs) {
+        barWords.clear();
+        barWordBoxes.clear();
+        if (runs.size() < 2 || barChanges.isEmpty()) return;
+        float top = plotTop(), bottom = plotBottom();
+        long maxScore = scoreScaleMax();
+        float end = getWidth() - ui.dp(SIDE_DP);
+        label.setTypeface(Ui.MEDIUM);
+        label.setTextSize(Math.min(ui.sp(10), ui.dp(13)));
+        // The lines' own words keep their places: "100%" at the right end, the pay line's at the left.
+        List<RectF> taken = new ArrayList<>();
+        taken.add(lineLabelBox("100%", end - ui.dp(2), hundredY(), true));
+        if (payoutMinimumCents > 0) {
+            taken.add(lineLabelBox(payLabel(), ui.dp(SIDE_DP) + ui.dp(2), payoutThresholdY(), false));
+        }
+        for (int i = runs.size() - 1; i > 0 && barWords.size() < BAR_WORDS_MOST; i--) {
+            BarRun before = runs.get(i - 1), after = runs.get(i);
+            if (before.bar == after.bar || Math.abs(after.from - before.to) >= 1f) continue;
+            AutopilotStore.Change change = changeBetween(before.at, after.at, after.bar);
+            String word = change == null ? null : AutopilotText.barStepWord(change);
+            if (word == null) continue;
+            float wide = label.measureText(word);
+            boolean down = after.bar < before.bar;
+            float levelY = y(after.bar, maxScore, top, bottom);
+            float baseline = down ? levelY + ui.dp(3) - label.ascent() : levelY - ui.dp(3) - label.descent();
+            float x = after.from + ui.dp(3);
+            if (x + wide > end - ui.dp(2)) x = after.from - ui.dp(3) - wide;
+            RectF box = new RectF(x - ui.dp(3), baseline + label.ascent() - ui.dp(1), x + wide + ui.dp(3),
+                    baseline + label.descent() + ui.dp(1));
+            boolean clear = true;
+            for (RectF other : taken) if (RectF.intersects(other, box)) clear = false;
+            if (!clear) continue;
+            taken.add(box);
+            barWordBoxes.add(box);
+            barWords.add(0, word);
+            fill.setColor((ui.page & 0x00FFFFFF) | 0xE0000000);
+            canvas.drawRoundRect(box, ui.dp(3), ui.dp(3), fill);
+            label.setTextAlign(Paint.Align.LEFT);
+            label.setColor(barLineColor());
+            canvas.drawText(word, x, baseline, label);
+        }
+        label.setTextAlign(Paint.Align.CENTER);
+        label.setTypeface(null);
+        label.setTextSize(ui.sp(11));
+        label.setColor(ui.inkMuted);
+    }
+
+    /** Where a line's words stand (as {@link #drawLineLabel} draws them), with their backdrop's margin. */
+    private RectF lineLabelBox(String text, float x, float lineY, boolean end) {
+        float wide = label.measureText(text);
+        float baseline = lineY - ui.dp(3) - label.descent();
+        float textLeft = end ? x - wide : x;
+        return new RectF(textLeft - ui.dp(3), baseline + label.ascent() - ui.dp(1), textLeft + wide + ui.dp(3),
+                baseline + label.descent() + ui.dp(1));
+    }
+
+    /** The bar line's words at most: the newest steps only, so the street stays readable. */
+    static final int BAR_WORDS_MOST = 3;
+
+    /**
+     * The kept change that moved the bar between the offer decided at {@code after} and the next one, decided at
+     * {@code before} ({@link Long#MAX_VALUE}: now): the latest there that landed on {@code to}, else the latest there.
+     */
+    private AutopilotStore.Change changeBetween(long after, long before, int to) {
+        AutopilotStore.Change landed = null, latest = null;
+        for (AutopilotStore.Change change : barChanges) {
+            if (change.at <= after || change.at > before) continue;
+            latest = change;
+            if (change.to == to) landed = change;
+        }
+        return landed != null ? landed : latest;
+    }
+
+    /**
+     * The bar line said: "Autopilot's bar, offer by offer: 25%, 32% (accepted), now 25% (hold over)"; null with no
+     * level to draw.
+     */
+    private String barSaid() {
+        List<BarRun> runs = barRuns();
+        boolean drawn = false;
+        for (BarRun run : runs) drawn |= run.bar != 100;
+        if (!drawn) return null;
+        StringBuilder said = new StringBuilder("Autopilot's bar, offer by offer: ");
+        int shown = -1;
+        for (int i = 0; i < runs.size(); i++) {
+            BarRun run = runs.get(i);
+            if (run.bar == shown) continue;
+            if (shown >= 0) said.append(", ");
+            said.append(run.at == Long.MAX_VALUE ? "now " : "").append(run.bar).append('%');
+            AutopilotStore.Change change = i == 0 ? null : changeBetween(runs.get(i - 1).at, run.at, run.bar);
+            String word = change == null ? null : AutopilotText.barStepWord(change);
+            if (word != null) said.append(" (").append(word).append(')');
+            shown = run.bar;
+        }
+        return said.toString();
+    }
+
+    /** The bar line's words as last drawn, oldest first (for tests and the description). */
+    List<String> barWords() {
+        return Collections.unmodifiableList(barWords);
     }
 
     /**
@@ -817,6 +1027,14 @@ final class DecisionChartView extends View {
         float reach = Math.max(barWidth / 2f, ui.dp(9));
         float labelHigh = ui.dp(3) + Math.min(ui.sp(10), ui.dp(13)) * 1.2f;
         highest = Math.min(highest, Math.min(scoreThresholdY(), hundredY()) - ui.dp(1));
+        // The bar line's levels where they cross the span (0.6.40), and its words.
+        long maxScore = scoreScaleMax();
+        for (BarRun run : barRuns()) {
+            if (run.to >= from && run.from <= to) {
+                highest = Math.min(highest, y(run.bar, maxScore, plotTop(), plotBottom()) - ui.dp(1));
+            }
+        }
+        for (RectF box : barWordBoxes) if (box.right >= from && box.left <= to) highest = Math.min(highest, box.top);
         // "100%" sits over its line at the right end, the pay line's words at the left.
         if (to >= right - ui.dp(30)) highest = Math.min(highest, hundredY() - labelHigh);
         if (payoutMinimumCents > 0) {
@@ -857,6 +1075,7 @@ final class DecisionChartView extends View {
         int max = Math.max(100, minimumScalePercent);
         for (DecisionLog.Entry entry : entries) {
             if (tree(entry)) max = Math.max(max, Math.min(SCORE_DISPLAY_CAP, entry.scorePercent));
+            if (entry.autopilot) max = Math.max(max, entry.barPercent);
         }
         for (int ceiling : new int[] {150, 200, 250, 300, SCORE_DISPLAY_CAP}) {
             if (ceiling >= max) return ceiling;
@@ -1028,9 +1247,9 @@ final class DecisionChartView extends View {
             else if (!tree(entry)) retired++;
             else if (entry.scorePercent > SCORE_DISPLAY_CAP) clipped++;
         }
+        String bar = barSaid();
         return summary + selectedDescription() + " " + AutopilotText.skylineDescription(independentScores)
-                + (minimumScalePercent != 100 ? " Dashed line: " + AutopilotText.skylineBarRail(minimumScalePercent)
-                + "." : "")
+                + (bar != null ? " Dashed line: " + bar + "." : "")
                 + (payoutMinimumCents > 0 ? totalPayLine ? " Solid line: your latest acceptance's total pay at the bar, "
                 + DecisionLog.money(payoutMinimumCents) + "; a quarter of each Autopilot score is an offer's total "
                 + "pay against it." : " Solid line: a single order's " + (areaMode

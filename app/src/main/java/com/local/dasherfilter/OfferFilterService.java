@@ -9069,6 +9069,9 @@ public final class OfferFilterService extends AccessibilityService {
         // A later read can reveal the store name that was missing from the first one. That same showing must not
         // retain calibration authority after it is known to be excluded by the user's skip list.
         if (OfferRule.SKIP_LIST.equals(decision.reason)) autopilotAcceptancePermit = null;
+        // The score this showing's ticket shows: an accept of it moves Autopilot's bar there (0.6.40), never a score
+        // worked out again once the learner may have learned from it.
+        if (autopilotAcceptancePermit != null) autopilotAcceptancePermit.noteScore(decision.scorePercent);
         acceptedTracker.observeOffer(learn, routeAfter, isAddOn, decision.basis, secondsLeft, routeStored, now);
         offerAcceptTarget = scan.accept;
         offerDeclineTarget = scan.decline;

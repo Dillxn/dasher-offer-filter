@@ -160,6 +160,17 @@ final class BundledNotes {
                     + "better are declined, and holds it there for your next 24 offers.",
             "It never lowers the bar. Your next accept replaces it and sets Autopilot's minimums, as before."};
 
+    /**
+     * 0.6.40 (the owner, 23 October 2026, of a 32% offer accepted at a 25% bar: "the app should be declarative and
+     * therefore naturally self healing: the 32% accepted offer within 11 orders from most recent should be setting the
+     * auto bar"): notice 37's box and 0.6.40's card.
+     */
+    private static final String[] BAR_FOLLOWS = {
+            "When you accept an offer yourself, Autopilot's bar now moves to that offer's own score and holds there "
+                    + "for your next 24 offers, so the offer keeps the score it showed.",
+            "The chart's purple bar line now follows the bar offer by offer, with a word where it moved (accepted, "
+                    + "hold over, 1 in 5 pass…)."};
+
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
                     + "pay line and the 100% line.";
@@ -283,6 +294,8 @@ final class BundledNotes {
         notice(35, PAUSED_SCORES);
         // 0.6.37 (the owner, 23 October 2026: "if i decline an offer then autopilot should raise my mins to its").
         notice(36, DECLINE_RAISES);
+        // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
+        notice(37, BAR_FOLLOWS);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -488,6 +501,13 @@ final class BundledNotes {
         // screen in front showed "Pay unknown", Offer Filter in front again 3.5 s later).
         release("0.6.39", "An offer that came while the notification shade or another system screen was open showed "
                 + "\"Pay unknown\". Peek now reads it once you're back in an app, within 10 seconds of the offer.");
+        // 0.6.40 (the owner, 23 October 2026, of a 32% offer accepted at a 25% bar: "the 32% accepted offer within 11
+        // orders from most recent should be setting the auto bar", and "we should track it's level rather than it be
+        // static across the bar").
+        release("0.6.40", BAR_FOLLOWS);
+        // 0.6.43: 0.6.40's change whole again. Play Protect blocked 0.6.40, 0.6.41 (its accept half) and 0.6.42 (0.6.39's
+        // code under a new number) alike, so no code of 0.6.40's was the cause.
+        release("0.6.43", BAR_FOLLOWS);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

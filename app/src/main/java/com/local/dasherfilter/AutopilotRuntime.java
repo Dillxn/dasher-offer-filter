@@ -554,7 +554,8 @@ final class AutopilotRuntime {
                 } else {
                     reason = Autopilot.commitReason(plan, current, step.next, jump);
                     boolean raised = step.next > current;
-                    AutopilotStore.recordChange(app, current, step.next, reason.name(), wall, raised);
+                    AutopilotStore.recordChange(app, current, step.next, reason.name(), wall, raised,
+                            step.kind == Autopilot.StepKind.RELEASE);
                     lastCommitElapsed = elapsed;
                     if (raised) lastRaiseElapsed = elapsed;
                     if (jump != null) AutopilotStore.clearJumpIf(app, jump.name());
@@ -596,14 +597,20 @@ final class AutopilotRuntime {
                 // A preceding learned-best update may have requested a jump. The new shape now expresses this
                 // acceptance exactly; an old jump must not immediately replace it with a market target.
                 AutopilotStore.clearJump(app);
-                AutopilotStore.recordChange(app, current.minimumScalePercent, current.minimumScalePercent,
-                        Autopilot.Reason.ACCEPTED_AXES.name(), wallClock.getAsLong(), false);
+                // The bar moved to the accepted offer's own score with it (0.6.40).
+                int set = FilterStore.load(app).minimumScalePercent;
+                int from = current.minimumScalePercent;
+                AutopilotStore.recordChange(app, from, set, Autopilot.Reason.ACCEPTED_AXES.name(),
+                        wallClock.getAsLong(), set > from);
                 lastCommitElapsed = elapsedClock.getAsLong();
                 lastRaiseElapsed = lastCommitElapsed;
                 result = Commit.COMMITTED;
             }
         }
-        if (result == Commit.COMMITTED) log(app, "commit: Autopilot minimums followed your accepted offer, measure by measure");
+        if (result == Commit.COMMITTED) {
+            log(app, "commit: Autopilot minimums followed your accepted offer, measure by measure; bar "
+                    + pendingAxes.bar + "% to " + pendingAxes.axes.referenceBar + "%");
+        }
         else log(app, "accepted minimums discarded: a newer acceptance, your rules or consent changed");
         notifyListeners();
         requestPlan(app, Trigger.COMMIT);
