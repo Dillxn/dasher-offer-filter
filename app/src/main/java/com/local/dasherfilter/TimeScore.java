@@ -61,8 +61,9 @@ final class TimeScore {
         }
         String describe() {
             String history = String.format(Locale.US,
-                    "%d eligible offers within 90 minutes of %02d:%02d local, across %d days; %d overall.",
-                    near, minute / 60, minute % 60, days, all);
+                    "%d eligible %s within 90 minutes of %02d:%02d local, across %d %s; %d overall.",
+                    near, near == 1 ? "offer" : "offers", minute / 60, minute % 60,
+                    days, days == 1 ? "day" : "days", all);
             if (!ready()) return "Time-aware: normal score. " + history + " Requires " + MIN_NEAR
                     + " nearby across " + MIN_DAYS + " days and " + MIN_ALL + " overall.";
             return String.format(Locale.US, "Time-aware: score ×%.3f. ", factor / (double) ONE) + history;
