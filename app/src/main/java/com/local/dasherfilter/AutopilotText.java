@@ -356,9 +356,9 @@ final class AutopilotText {
             case PAUSED:
                 return "Auto-decline paused";
             case CHECKING:
-                return "Checking offers";
+                return ""; // The chip already shows the actual bar; no missing plan is presented as empty history.
             case LEARNING:
-                return s.plan.counted + " of " + Autopilot.MIN_WINDOW + " offers";
+                return "History: " + s.plan.counted + " of " + Autopilot.MIN_WINDOW + " eligible offers";
             case PINNED:
                 if (s.bar == Autopilot.BAR_MIN) {
                     return "Lowest bar · " + (s.belowGoal() ? progress(s) : "lower a minimum to pass more");
@@ -485,9 +485,9 @@ final class AutopilotText {
             case PAUSED:
                 return barSaid(s) + " Auto-decline paused.";
             case CHECKING:
-                return barSaid(s) + " Checking your offers.";
+                return barSaid(s);
             case LEARNING:
-                return barSaid(s) + " Learning, " + s.plan.counted + " of " + Autopilot.MIN_WINDOW + " offers.";
+                return barSaid(s) + " History: " + s.plan.counted + " of " + Autopilot.MIN_WINDOW + " eligible offers.";
             case PINNED:
                 return "Autopilot bar " + s.bar + " percent" + (s.bar == Autopilot.BAR_MIN ? ", the lowest." : ".")
                         + " " + (s.belowGoal() ? progressSaid(s) : "Lower a minimum to pass more.");
@@ -529,11 +529,11 @@ final class AutopilotText {
      * beside the status line ({@link AutopilotChip.Row#widestChips}). A longer word added to the chip must be added
      * here (AutopilotTextTest holds it).
      */
-    static final String[] CHIP_WIDEST = {"Auto off", "Auto waits", "Auto learning", "Auto 150% ▲", "Auto"};
+    static final String[] CHIP_WIDEST = {"Auto off", "Auto waits", "Auto 150% ▲", "Auto"};
 
     /**
-     * The one-line chip at the status line's start: "Auto off", "Auto learning" (at 100%; its bar while learning
-     * with any other), "Auto 82%", "Auto 82% ▲" (below the goal), "Auto waits"; "Auto" with no money minimum and "Auto 10%" pinned at the lowest bar, the status line beside
+     * The one-line chip at the status line's start: "Auto off", the actual bar even with sparse history,
+     * "Auto 82%", "Auto 82% ▲" (below the goal), "Auto waits"; "Auto" with no money minimum and "Auto 10%" pinned at the lowest bar, the status line beside
      * it saying the rest ({@link #statusLine}). Every word it shows is one of {@link #CHIP_WIDEST} or its bar, no wider
      * than theirs.
      */
@@ -546,9 +546,7 @@ final class AutopilotText {
             case NEEDS_MINIMUM:
                 return "Auto";
             case LEARNING:
-                // Learning keeps the bar at exactly 100%; a bar it has not moved back yet (as just after Clear history)
-                // is still shown, since it still judges offers.
-                return s.bar == FilterSettings.BAR_AT_MINIMUMS ? "Auto learning" : chipBar(s);
+                return chipBar(s);
             case PINNED:
                 if (s.bar == Autopilot.BAR_MIN) return "Auto " + s.bar + "%";
                 return chipBar(s);
@@ -1033,7 +1031,7 @@ final class AutopilotText {
             case "VALUE_UP": return "offers busier";
             case "VALUE_DOWN": return "offers slower";
             case "AT_MINIMUMS": return "at minimums";
-            case "LEARNING": return "learning";
+            case "LEARNING": return "sparse history";
             case "LEARNED": return "learned mins";
             case "TURNED_ON": return "turned on";
             case "GOAL_CHANGED": return "new goal";

@@ -1,6 +1,6 @@
 # Offer Filter privacy
 
-Beta privacy policy, effective 29 October 2026 · for Offer Filter 0.6.46
+Beta privacy policy, effective 29 October 2026 · for Offer Filter 0.6.47
 
 Offer Filter does not require an Offer Filter account and has no ads or mandatory analytics. It does not sell or rent your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the optional anonymous diagnostics, the anonymous daily count (on unless you turn it off), place-name lookups and links you choose to open can send information to the services described under What leaves the phone. The developer's public project identity is Dillxn. Offer Filter is beta software, and this text changes with it (see Changes).
 

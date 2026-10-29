@@ -191,7 +191,7 @@ final class Autopilot {
         GOAL_CHANGED(true, "you changed your goal"),
         RULES_CHANGED(true, "you changed your minimums"),
         CLEARED(true, "history cleared"),
-        LEARNING(false, "learning from your offers"),
+        LEARNING(false, "fewer than 20 eligible offers in history"),
         PINNED(false, "your minimums are high for these offers"),
         RECOVERY(false, "acceptance rate below your goal"),
         GOAL(false, "keeping enough offers for your goal"),

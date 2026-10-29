@@ -382,7 +382,9 @@ final class AutopilotRuntime {
             long planned = generation.get();
             // Before the state is read: a user's change from here on drops this plan instead of meeting its state.
             long epoch = goalEpoch.get();
-            TimeScoreRuntime.prepare(app, wallClock.getAsLong());
+            // A history-derived view is available even while the scanner is absent or busy. Applying its factor
+            // still belongs exclusively to the scanner's safe point.
+            if (TimeScoreRuntime.prepare(app, wallClock.getAsLong())) notifyListeners();
             if (TimeScoreRuntime.wanted()) {
                 Runnable timeRequester = commitRequester;
                 if (timeRequester != null) timeRequester.run();

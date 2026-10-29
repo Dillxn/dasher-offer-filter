@@ -29,8 +29,8 @@ android {
         applicationId 'com.local.dasherfilter'
         minSdk 35
         targetSdk 35
-        versionCode 138
-        versionName '0.6.46'
+        versionCode 139
+        versionName '0.6.47'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
