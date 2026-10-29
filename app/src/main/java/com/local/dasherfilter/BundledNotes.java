@@ -523,8 +523,16 @@ final class BundledNotes {
         release("0.6.43", BAR_FOLLOWS);
         release("0.6.46", "Time-aware scoring is in How offers are judged. It starts off.",
                 "When on, the same offer scores higher during typically weaker hours and lower during stronger "
-                        + "hours. It needs offers across several days; the score stays normal while gathering history.",
+                        + "hours. It uses the history already on this phone; normal scoring applies when that "
+                        + "history has fewer than the required offers or days.",
                 "Open an offer's details to see its time adjustment and score before that adjustment.");
+        release("0.6.47",
+                "Time-aware scoring shows the comparison from your saved offers and the current local time, "
+                        + "without waiting for another offer or for screen reading to connect.",
+                "Its history counts explain when normal scoring applies. The same history, rules and time "
+                        + "interval give the same comparison after reopening or restarting.",
+                "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
+                        + "still changes only between offers.");
         release("0.6.44", HISTORY_REPAIRS);
         release("0.6.45",
                 "Feedback is one screen now. Open Feedback in Settings, choose a recent offer when relevant, "

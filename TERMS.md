@@ -1,6 +1,6 @@
 # Offer Filter terms of use
 
-Beta terms, effective 29 October 2026 · for Offer Filter 0.6.46
+Beta terms, effective 29 October 2026 · for Offer Filter 0.6.47
 
 ## What Offer Filter is
 

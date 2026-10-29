@@ -19,9 +19,22 @@ final class TimeScore {
     static final String EXPLANATION = "Compare offers with what you usually see near this time of day. "
             + "Scores rise during typically weaker hours and fall during stronger hours, by at most 25%. "
             + "Uses recent offers on this phone, including declined offers; needs at least 30 readable offers "
-            + "overall and 12 within 90 minutes of this local time across 3 days. Until then, the normal score applies. "
+            + "overall and 12 within 90 minutes of this local time across 3 days. The existing history counts "
+            + "immediately; normal scoring applies when that history is below these counts. "
             + "Changes apply between offers. Saved minimums stay as set; add-ons and automatic acceptance keep "
             + "their existing requirements.";
+
+    /** Declarative view: a missing computation is distinct from an evaluated empty history. */
+    static String describeCurrent(FilterSettings rules, Weight comparison) {
+        if (!rules.timeAware) return "Off · normal scoring";
+        if (!rules.hasMonetaryRule()) return "Set a pay, per-mile or hourly minimum to compare the saved offers.";
+        if (comparison == null) return "Uses the offer history saved on this phone.";
+        String words = "From saved history:\n" + comparison.describe();
+        if (comparison.factor != rules.timeWeight.factor) words += String.format(Locale.US,
+                "\nCurrently in use: ×%.3f. The history comparison applies between offers.",
+                rules.timeWeight.factor / (double) ONE);
+        return words;
+    }
 
     /** Numeric decision provenance. A factor of ONE leaves every exact cutoff unchanged. */
     static final class Weight {
@@ -47,10 +60,13 @@ final class TimeScore {
             } catch (NumberFormatException invalid) { return null; }
         }
         String describe() {
-            if (!ready()) return "Time-aware: gathering history (" + near + " nearby offers across " + days
-                    + " days; " + all + " overall). Normal score applies.";
-            return String.format(Locale.US, "Time-aware: score ×%.3f near %02d:%02d local, from %d offers across %d days (%d overall).",
-                    factor / (double) ONE, minute / 60, minute % 60, near, days, all);
+            String history = String.format(Locale.US,
+                    "%d eligible %s within 90 minutes of %02d:%02d local, across %d %s; %d overall.",
+                    near, near == 1 ? "offer" : "offers", minute / 60, minute % 60,
+                    days, days == 1 ? "day" : "days", all);
+            if (!ready()) return "Time-aware: normal score. " + history + " Requires " + MIN_NEAR
+                    + " nearby across " + MIN_DAYS + " days and " + MIN_ALL + " overall.";
+            return String.format(Locale.US, "Time-aware: score ×%.3f. ", factor / (double) ONE) + history;
         }
     }
 
@@ -75,7 +91,7 @@ final class TimeScore {
         Set<LocalDate> days = new HashSet<>();
         List<DecisionLog.Entry> seen = new ArrayList<>();
         for (DecisionLog.Entry entry : history) {
-            if (entry == null || entry.at >= bucket || entry.at < now - LOOKBACK_MS || entry.addOn || entry.replay
+            if (entry == null || entry.at >= bucket || entry.at < bucket - LOOKBACK_MS || entry.addOn || entry.replay
                     || !entry.autoDecline || OfferRule.SKIP_LIST.equals(entry.reason)
                     || entry.facts.payCents == null || entry.facts.payCents <= 0
                     || entry.facts.payAtMostCents != null || OfferSanity.looksMisread(entry.facts)) continue;
@@ -88,7 +104,9 @@ final class TimeScore {
             seen.add(entry);
             int score = AreaScore.scorePercent(baseline, entry.facts);
             if (score <= 0) continue;
-            double recency = StrictMath.pow(2, -(now - entry.at) / (7.0 * 24 * 60 * 60_000));
+            // The whole comparison belongs to this time bucket, including its age cutoff and recency weights.
+            // Warming a cache earlier or later within the bucket must not change the result.
+            double recency = StrictMath.pow(2, -(bucket - entry.at) / (7.0 * 24 * 60 * 60_000));
             Sample sample = new Sample(score, recency);
             all.add(sample);
             java.time.ZonedDateTime time = Instant.ofEpochMilli(entry.at).atZone(zone);

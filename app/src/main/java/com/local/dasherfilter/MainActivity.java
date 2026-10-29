@@ -1346,14 +1346,13 @@ public final class MainActivity extends Activity implements Updater.Busy {
         });
         body.addView(modes, Ui.matchWidth());
         Switch time = ui.toggle(body, "Time-aware scoring", rules.timeAware);
-        TextView state = ui.text(rules.timeAware ? rules.timeWeight.describe() : "Off · normal scoring", 15,
-                ui.inkSecondary, false);
+        TextView state = ui.text("", 15, ui.inkSecondary, false);
         timeScoreState = state;
+        refreshTimeScoreState(rules);
         time.setOnCheckedChangeListener((view, on) -> {
             FilterStore.setTimeAware(this, on);
             rulesChanged();
             refresh();
-            state.setText(on ? FilterStore.load(this).timeWeight.describe() : "Off · normal scoring");
         });
         body.addView(state, Ui.matchWidth());
         body.addView(ui.text(TimeScore.EXPLANATION + "\n\nAutopilot applies its bar once. Max stops stays a hard "
@@ -1366,6 +1365,17 @@ public final class MainActivity extends Activity implements Updater.Busy {
         AlertDialog dialog = OwnWindowTouches.show(new AlertDialog.Builder(this).setTitle("How offers are judged")
                 .setView(scroll).setPositiveButton("Close", null));
         dialog.setOnDismissListener(ignored -> { if (timeScoreState == state) timeScoreState = null; });
+    }
+
+    private void refreshTimeScoreState(FilterSettings rules) {
+        if (timeScoreState == null) return;
+        TimeScore.Weight comparison = TimeScoreRuntime.current(rules, System.currentTimeMillis());
+        timeScoreState.setText(TimeScore.describeCurrent(rules, comparison));
+        if (rules.timeAware && rules.hasMonetaryRule() && comparison == null) {
+            // Reconcile from saved inputs even without a scanner, an active dash or another offer.
+            // The result notifies this Activity while started; no computation or history I/O on the UI thread.
+            AutopilotRuntime.requestPlan(this, AutopilotRuntime.Trigger.RESUME);
+        }
     }
 
     private void showLearningDetails() {
@@ -2041,8 +2051,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             return;
         }
         FilterSettings saved = FilterStore.load(this);
-        if (timeScoreState != null) timeScoreState.setText(saved.timeAware
-                ? saved.timeWeight.describe() : "Off · normal scoring");
+        refreshTimeScoreState(saved);
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
         shownState = state;
         hero.setAction(saved.enabled ? SetupPage.PAUSE : saved.hasAnyRule() ? SetupPage.RESUME : "Set up rules");

@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 29 October 2026 · for {app} 0.6.46
+            Beta terms, effective 29 October 2026 · for {app} 0.6.47
 
             ## What {app} is
 
@@ -316,7 +316,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 29 October 2026 · for {app} 0.6.46
+            Beta privacy policy, effective 29 October 2026 · for {app} 0.6.47
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
