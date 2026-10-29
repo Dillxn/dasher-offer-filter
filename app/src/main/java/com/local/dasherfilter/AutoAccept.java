@@ -36,7 +36,7 @@ final class AutoAccept {
      * bar to protect the acceptance rate, but never what an automatic Accept asks.
      */
     static FilterSettings acceptRules(FilterSettings settings) {
-        return settings.withoutAutopilotAxes().withScoreByArea(false)
+        return settings.withoutAutopilotAxes().withoutTimeAdjustment().withScoreByArea(false)
                 .withMinimumScalePercent(Math.max(FilterSettings.BAR_AT_MINIMUMS, settings.minimumScalePercent));
     }
 
@@ -51,7 +51,7 @@ final class AutoAccept {
         }
         FilterSettings baseline = acceptRules(settings);
         return OfferRule.evaluate(offer, baseline).result == OfferRule.Result.KEEP
-                && OfferRule.evaluate(offer, settings.withScoreByArea(false)).result == OfferRule.Result.KEEP;
+                && OfferRule.evaluate(offer, settings.withoutTimeAdjustment().withScoreByArea(false)).result == OfferRule.Result.KEEP;
     }
 
     State observe(OfferSnapshot offer, String offerKey, FilterSettings settings, int countdown,

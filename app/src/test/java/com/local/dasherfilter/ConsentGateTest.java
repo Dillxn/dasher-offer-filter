@@ -166,7 +166,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         int words = 0;
         for (String[] point : Consent.POINTS) words += (point[0] + " " + point[1]).split("\\s+").length;
         assertTrue(words + " words", words <= 420);
-        assertEquals("38 (0.6.44): retained confirmations repair Autopilot's working minimums and bar", 38,
+        assertEquals("39 (0.6.46): optional time-aware scoring uses retained offers", 39,
                 Consent.VERSION);
         // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
         String account = point("Your Dasher account.");
@@ -396,7 +396,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // by hand raises Autopilot's bar just above that offer; 37, an accept moves the bar to that offer's own score,
         // and the bar's changes are kept for the chart; 38, retained confirmations repair current working minimums
         // and bar. A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(38, Consent.VERSION);
+        assertEquals(39, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

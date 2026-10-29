@@ -449,6 +449,7 @@ final class DecisionLog {
                             .put("payUnits", proof.payUnits).put("milePay", proof.milePay).put("miles", proof.miles)
                             .put("minutePay", proof.minutePay).put("minutes", proof.minutes));
             if (rules.hasAutopilotAxes()) json.put("autopilotAxes", rules.autopilotAxes.encode());
+            if (rules.timeAware) json.put("timeWeight", rules.timeWeight.encode());
             return json;
         }
 
@@ -465,12 +466,16 @@ final class DecisionLog {
             AutopilotAxes axes = AutopilotAxes.decode(json.optString("autopilotAxes", ""));
             // A damaged adjusted reference cannot be replayed as though the original baseline produced its score.
             if (json.has("autopilotAxes") && (axes.isEmpty() || !autopilot)) return null;
+            TimeScore.Weight weight = json.has("timeWeight")
+                    ? TimeScore.Weight.decode(json.optString("timeWeight", "")) : TimeScore.Weight.NONE;
+            if (weight == null) return null;
             return new FilterSettings(true, json.optInt("flat"), json.optInt("mile"), json.optInt("minute"),
                     json.optInt("maxStops"), autopilot, FilterSettings.GOAL_TOP_TIER, bar,
                     json.optBoolean("area"), json.optBoolean("learning"),
                     new AcceptedFloors(proof.optInt("pay"), proof.optInt("payUnits", 1), proof.optInt("milePay"),
                             proof.optDouble("miles", 0),
-                            proof.optInt("minutePay"), proof.optInt("minutes")), axes);
+                            proof.optInt("minutePay"), proof.optInt("minutes")), axes)
+                    .withTimeAware(json.has("timeWeight")).withTimeWeight(weight);
         }
 
         /** An observed count is a positive integer, never a coerced string, fractional value or inferred zero. */
@@ -922,6 +927,7 @@ final class DecisionLog {
             writeTotals(context, new int[Tally.values().length]);
             context.getSharedPreferences(TOTALS, Context.MODE_PRIVATE).edit().putBoolean(OUTCOME_TALLIES_V1, true).apply();
             version++;
+            TimeScoreRuntime.clear();
             File file = file(context);
             WRITER.execute(() -> {
                 synchronized (FILE_LOCK) {

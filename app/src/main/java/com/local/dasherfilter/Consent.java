@@ -80,7 +80,8 @@ final class Consent {
     // The acceptance's 24-offer hold fixes the bar at that score unless a newer personal decline holds it higher.
     // No new collection; the current notice and normal safe point are still required. The Terms and Privacy and
     // notice's What changed box disclose this use of already retained history; the short points stay unchanged.
-    static final int VERSION = 38;
+    // 39 (0.6.46): optional local time-of-day scoring from retained offers and its numeric decision provenance.
+    static final int VERSION = 39;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

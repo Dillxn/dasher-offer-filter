@@ -22,6 +22,8 @@ final class FilterSettings {
     /** The bar that means "exactly your minimums". */
     static final int BAR_AT_MINIMUMS = 100;
 
+    final boolean timeAware;
+    final TimeScore.Weight timeWeight;
     final boolean scoreByArea;
     final boolean acceptanceLearning;
     final AcceptedFloors accepted;
@@ -67,6 +69,16 @@ final class FilterSettings {
     FilterSettings(boolean enabled, int flatCents, int perMileCents, int perMinuteCents, int maxStops,
                    boolean autopilot, int autopilotGoalPercent, int minimumScalePercent,
                    boolean scoreByArea, boolean acceptanceLearning, AcceptedFloors accepted, AutopilotAxes axes) {
+        this(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot, autopilotGoalPercent,
+                minimumScalePercent, scoreByArea, acceptanceLearning, accepted, axes, false, TimeScore.Weight.NONE);
+    }
+
+    private FilterSettings(boolean enabled, int flatCents, int perMileCents, int perMinuteCents, int maxStops,
+                   boolean autopilot, int autopilotGoalPercent, int minimumScalePercent,
+                   boolean scoreByArea, boolean acceptanceLearning, AcceptedFloors accepted, AutopilotAxes axes,
+                   boolean timeAware, TimeScore.Weight timeWeight) {
+        this.timeAware = timeAware;
+        this.timeWeight = timeAware && timeWeight != null ? timeWeight : TimeScore.Weight.NONE;
         this.autopilotAxes = axes == null ? AutopilotAxes.NONE : axes;
         this.scoreByArea = scoreByArea;
         this.acceptanceLearning = acceptanceLearning;
@@ -130,6 +142,7 @@ final class FilterSettings {
         if (acceptanceLearning && !accepted.isEmpty()) rules.add("learned minimums");
         if (rules.isEmpty()) return "No rules set";
         if (scoreByArea) rules.add("area mode");
+        if (timeAware) rules.add("time-aware");
         if (autopilot) {
             rules.add("Autopilot bar " + minimumScalePercent + "% ("
                     + (autopilotGoalPercent == GOAL_PAY_FIRST ? "pay first" : "goal " + autopilotGoalPercent + "%")
@@ -150,6 +163,7 @@ final class FilterSettings {
         if (acceptanceLearning && !accepted.isEmpty()) rules.add("learned minimums");
         if (rules.isEmpty()) return "No rules set";
         if (scoreByArea) rules.add("area mode");
+        if (timeAware) rules.add("time-aware");
         if (autopilot) rules.add("Auto " + minimumScalePercent + "%");
         else if (minimumScalePercent != BAR_AT_MINIMUMS) rules.add("bar " + minimumScalePercent + "%");
         return String.join(" · ", rules);
@@ -172,7 +186,8 @@ final class FilterSettings {
     String scoringKey() {
         return flatCents + ":" + perMileCents + ":" + perMinuteCents + ":" + maxStops + ":"
                 + scoreByArea + ":" + acceptanceLearning + ":" + (acceptanceLearning ? accepted.stableKey() : "off")
-                + ":pst" + (hasAutopilotAxes() ? ":autoaxes:" + autopilotAxes.stableKey() : "");
+                + ":pst" + (hasAutopilotAxes() ? ":autoaxes:" + autopilotAxes.stableKey() : "")
+                + (timeAware ? ":time:" + timeWeight.factor : "");
     }
 
     /** Whether an independent Autopilot rate currently applies to at least one active money axis. */
@@ -184,9 +199,23 @@ final class FilterSettings {
         return false;
     }
 
+    FilterSettings withTimeAware(boolean on) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
+                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, accepted, autopilotAxes,
+                on, on ? timeWeight : TimeScore.Weight.NONE);
+    }
+
+    FilterSettings withTimeWeight(TimeScore.Weight weight) {
+        return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
+                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, accepted, autopilotAxes,
+                timeAware, weight);
+    }
+
+    FilterSettings withoutTimeAdjustment() { return withTimeAware(false); }
+
     FilterSettings withAutopilotAxes(AutopilotAxes axes) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
-                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, accepted, axes);
+                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, accepted, axes, timeAware, timeWeight);
     }
 
     /** The original saved/learned scoring policy, without Autopilot's independent working rates. */
@@ -194,34 +223,34 @@ final class FilterSettings {
 
     FilterSettings withScoreByArea(boolean on) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
-                autopilotGoalPercent, minimumScalePercent, on, acceptanceLearning, accepted, autopilotAxes);
+                autopilotGoalPercent, minimumScalePercent, on, acceptanceLearning, accepted, autopilotAxes, timeAware, timeWeight);
     }
 
     FilterSettings withAcceptanceLearning(boolean on) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
-                autopilotGoalPercent, minimumScalePercent, scoreByArea, on, accepted, autopilotAxes);
+                autopilotGoalPercent, minimumScalePercent, scoreByArea, on, accepted, autopilotAxes, timeAware, timeWeight);
     }
 
     FilterSettings withAccepted(AcceptedFloors proof) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
-                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, proof, autopilotAxes);
+                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, proof, autopilotAxes, timeAware, timeWeight);
     }
 
     FilterSettings withEnabled(boolean value) {
         return new FilterSettings(value, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
-                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, accepted, autopilotAxes);
+                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, accepted, autopilotAxes, timeAware, timeWeight);
     }
 
     /** These rules with at most {@code stops} stops (0: no limit); nothing else changes. */
     FilterSettings withMaxStops(int stops) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, stops, autopilot,
-                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, accepted, autopilotAxes);
+                autopilotGoalPercent, minimumScalePercent, scoreByArea, acceptanceLearning, accepted, autopilotAxes, timeAware, timeWeight);
     }
 
     /** These rules at another bar (clamped 1–200); the minimums themselves never change. */
     FilterSettings withMinimumScalePercent(int percent) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, autopilot,
-                autopilotGoalPercent, percent, scoreByArea, acceptanceLearning, accepted, autopilotAxes);
+                autopilotGoalPercent, percent, scoreByArea, acceptanceLearning, accepted, autopilotAxes, timeAware, timeWeight);
     }
 
     /**
@@ -230,13 +259,13 @@ final class FilterSettings {
      */
     FilterSettings withAutopilot(boolean on, int goal) {
         return new FilterSettings(enabled, flatCents, perMileCents, perMinuteCents, maxStops, on, goal,
-                on ? minimumScalePercent : BAR_AT_MINIMUMS, scoreByArea, acceptanceLearning, accepted, autopilotAxes);
+                on ? minimumScalePercent : BAR_AT_MINIMUMS, scoreByArea, acceptanceLearning, accepted, autopilotAxes, timeAware, timeWeight);
     }
 
     /** The three money minimums replaced; max stops, the switch, Autopilot and the bar stay. */
     FilterSettings withMinimums(int flat, int mile, int minute) {
         return new FilterSettings(enabled, flat, mile, minute, maxStops, autopilot, autopilotGoalPercent,
-                minimumScalePercent, scoreByArea, acceptanceLearning, accepted, autopilotAxes);
+                minimumScalePercent, scoreByArea, acceptanceLearning, accepted, autopilotAxes, timeAware, timeWeight);
     }
 
     /** The set minimums by stable axis index: pay, per mile, per minute, then 0 for the retired stop, hotspot, item. */

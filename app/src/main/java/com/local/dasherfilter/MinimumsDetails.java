@@ -42,7 +42,7 @@ final class MinimumsDetails {
     static String describe(FilterSettings rules, DecisionLog.Entry entry) {
         OfferSnapshot facts = entry == null ? OfferSnapshot.UNKNOWN : entry.facts;
         FilterSettings recorded = entry == null ? null : entry.scoringRules;
-        if (rules.scoreByArea || rules.acceptanceLearning || !rules.accepted.isEmpty() || rules.hasAutopilotAxes()
+        if (rules.timeAware || rules.scoreByArea || rules.acceptanceLearning || !rules.accepted.isEmpty() || rules.hasAutopilotAxes()
                 || recorded != null) {
             return resolvedDescription(recorded == null ? rules : recorded, entry, facts, recorded != null);
         }
@@ -152,6 +152,11 @@ final class MinimumsDetails {
                 + "for filtering, each adjusted independently from a confirmed personal acceptance. The used "
                 + "amounts include the bar and are rounded to cents for display; saved minimums and learned bests "
                 + "are unchanged by this adjustment.");
+        if (rules.timeAware) {
+            int ordinary = AreaScore.scorePercent(rules.withoutTimeAdjustment(), facts);
+            lines.add(rules.timeWeight.describe());
+            if (ordinary >= 0) lines.add("Before time adjustment: " + ordinary + "%.");
+        }
         long total = AreaScore.totalPayCents(rules, judgedBar);
         if (total >= 0) lines.add(AutopilotText.totalPaySaid(total));
         if (rules.scoreByArea) lines.add("Stronger measures can compensate for weaker ones; no individual money "

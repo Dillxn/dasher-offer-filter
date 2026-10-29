@@ -305,6 +305,10 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        notice(39, "Time-aware scoring is an optional switch in How offers are judged; it starts off.",
+                "It uses recent offers on this phone to adjust scores for the local time of day, with normal "
+                        + "scoring until enough history exists. The adjustment is kept with each decision.",
+                "Changes apply between offers. Add-ons and automatic acceptance keep their existing checks.");
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -517,6 +521,10 @@ final class BundledNotes {
         // 0.6.43: 0.6.40's change whole again. Play Protect blocked 0.6.40, 0.6.41 (its accept half) and 0.6.42 (0.6.39's
         // code under a new number) alike, so no code of 0.6.40's was the cause.
         release("0.6.43", BAR_FOLLOWS);
+        release("0.6.46", "Time-aware scoring is in How offers are judged. It starts off.",
+                "When on, the same offer scores higher during typically weaker hours and lower during stronger "
+                        + "hours. It needs offers across several days; the score stays normal while gathering history.",
+                "Open an offer's details to see its time adjustment and score before that adjustment.");
         release("0.6.44", HISTORY_REPAIRS);
         release("0.6.45",
                 "Feedback is one screen now. Open Feedback in Settings, choose a recent offer when relevant, "

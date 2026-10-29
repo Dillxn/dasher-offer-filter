@@ -8,7 +8,9 @@ import java.math.RoundingMode;
 /** Shared exact three-axis floors, strict/area requirements and stable drawing geometry.
  * Decimal route facts and learned rate pairs remain rational through aggregation and the bar. Only the final
  * required pay rounds up to a cent. Display projections never decide a result. The pay axis is pay per stop (0.6.12):
- * it asks its rate for each stop, the pickup included ({@link #payUnits}).
+ * it asks its rate for each stop, the pickup included ({@link #payUnits}). Optional time awareness divides working
+ * requirements by its exact score factor, including the total-pay reference, before any final cent rounding.
+ * Saved/learned baseline projections remain unadjusted.
  *
  * <p>Total pay (0.6.31, the owner: "we must factor in overall pay"): while Autopilot's working minimums apply in Area
  * mode, a quarter of the score is the offer's total pay against the latest acceptance's ({@link AutopilotAxes#totalPay}),
@@ -63,6 +65,8 @@ final class AreaScore {
         /** The saved, accepted and effective projections once read (from any thread: a race makes the same twice). */
         private volatile BigDecimal[][] projections;
         private Floors(FilterSettings rules, OfferSnapshot offer) {
+            Fraction time = rules.timeWeight.factor == TimeScore.ONE ? null
+                    : Fraction.of(TimeScore.ONE).dividedBy(Fraction.of(rules.timeWeight.factor));
             int[] saved = rules.minimums();
             boolean unread = false;
             int axes = 0;
@@ -81,19 +85,21 @@ final class AreaScore {
                 if (rules.autopilot && rules.autopilotAxes.hasAxis(axis)) {
                     used = autopilotFloor(axis, rules.autopilotAxes, offer);
                 }
-                effective[axis] = used;
+                effective[axis] = used == null || time == null ? used : used.times(time);
                 if (used == null) {
                     unread = true;
                     if (axis == PAY) lower[axis] = rules.autopilot && rules.autopilotAxes.hasAxis(PAY)
                             ? autopilotRate(rules.autopilotAxes, PAY)
                             : maximum(fraction(fixedFloor(PAY, saved[PAY], 1)),
                                     rules.acceptanceLearning ? acceptedFloor(PAY, rules.accepted, 1) : null);
+                    if (lower[axis] != null && time != null) lower[axis] = lower[axis].times(time);
                 }
             }
             missing = unread;
             count = axes;
             AutopilotAxes.Rate whole = rules.hasAutopilotAxes() ? rules.autopilotAxes.totalPay() : null;
-            totalPay = whole == null ? null : new Fraction(whole.numerator, whole.denominator);
+            Fraction wholeAsk = whole == null ? null : new Fraction(whole.numerator, whole.denominator);
+            totalPay = wholeAsk == null || time == null ? wholeAsk : wholeAsk.times(time);
         }
         /** The saved asks in cents, a display projection. */
         BigDecimal[] fixedCents() { return projections()[0]; }
@@ -180,7 +186,8 @@ final class AreaScore {
     static long totalPayCents(FilterSettings rules, int bar) {
         if (!totalPayCounts(rules)) return -1;
         AutopilotAxes.Rate whole = rules.autopilotAxes.totalPay();
-        return cents(new Fraction(whole.numerator, whole.denominator).square(), bar);
+        return cents(new Fraction(whole.numerator, whole.denominator).times(Fraction.of(TimeScore.ONE))
+                .dividedBy(Fraction.of(rules.timeWeight.factor)).square(), bar);
     }
 
     /** Exact, unscaled per-axis raise at the supplied observed route (not rounded display values). */
@@ -249,8 +256,8 @@ final class AreaScore {
 
     /** Largest integer bar that is not a known decline, including REVIEW and the conservative +$ ceiling policy. */
     static int passThreshold(FilterSettings rules, OfferSnapshot offer) {
-        if (offer.payCents == null && offer.payAtMostCents != null && rules.hasAutopilotAxes()) {
-            return passThreshold(rules.withoutAutopilotAxes(), offer);
+        if (offer.payCents == null && offer.payAtMostCents != null && (rules.hasAutopilotAxes() || rules.timeAware)) {
+            return passThreshold(rules.withoutAutopilotAxes().withoutTimeAdjustment(), offer);
         }
         if (rules.maxStops > 0 && offer.stops != null && offer.stops > rules.maxStops) return 0;
         Need need = floors(rules, offer).required(rules.scoreByArea, true);
@@ -267,7 +274,7 @@ final class AreaScore {
     }
     /** Original saved/enabled-learned score; a lowered working rate never relabels a below-minimum offer. */
     static int baselineScorePercent(FilterSettings rules, OfferSnapshot offer) {
-        return scorePercent(rules.withoutAutopilotAxes(), offer);
+        return scorePercent(rules.withoutAutopilotAxes().withoutTimeAdjustment(), offer);
     }
     private static int percent(long pay, Fraction square) { return percent(pay, new Need(square, 2)); }
     /** ⌊100 × pay ÷ R⌋ exactly: the root of 100^root × pay^root ÷ R^root, floored. */

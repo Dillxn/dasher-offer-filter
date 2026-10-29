@@ -134,11 +134,15 @@ final class AutopilotAxes {
                 }
                 continue;
             }
-            next[axis] = Rate.observed(offer.payCents, units[axis], reference);
+            // The score already includes this time factor. Undo it in the reference so applying it once again
+            // preserves the accepted offer's displayed score; recorded snapshots make replay deterministic.
+            next[axis] = Rate.observed(offer.payCents, units[axis], reference)
+                    .scaled(BigInteger.valueOf(rules.timeWeight.factor), BigInteger.valueOf(TimeScore.ONE));
             observed = true;
         }
         if (!observed) return this;
-        Rate whole = Rate.observed(offer.payCents, BigDecimal.ONE, reference);
+        Rate whole = Rate.observed(offer.payCents, BigDecimal.ONE, reference)
+                .scaled(BigInteger.valueOf(rules.timeWeight.factor), BigInteger.valueOf(TimeScore.ONE));
         AutopilotAxes result = new AutopilotAxes(next, whole, at, reference);
         return equals(result) ? this : result;
     }

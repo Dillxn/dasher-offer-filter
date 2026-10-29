@@ -123,6 +123,7 @@ final class FilterStore {
      * back on to test the default itself.
      */
     static volatile boolean autopilotOnByDefault = true;
+    static final String TIME_AWARE = "time_aware_v1";
     static final String AREA_MODE = "area_mode_v3";
     /**
      * Area is the default mode (0.6.27; the owner, 17 October 2026: "it should be on area score mode by default"): 1
@@ -354,11 +355,13 @@ final class FilterStore {
     private static FilterSettings read(SharedPreferences prefs) {
         boolean autopilot = prefs.getBoolean(AUTOPILOT_ON, false);
         int bar = autopilot ? bar(prefs) : FilterSettings.BAR_AT_MINIMUMS;
-        return new FilterSettings(prefs.getBoolean(ENABLED, false), prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
+        FilterSettings rules = new FilterSettings(prefs.getBoolean(ENABLED, false), prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
                 prefs.getInt(PER_MINUTE, 0), prefs.getInt(MAX_STOPS, 0), autopilot,
                 FilterSettings.sanitizedGoal(prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_DEFAULT)), bar,
                 prefs.getBoolean(AREA_MODE, false), prefs.getBoolean(ACCEPTANCE_LEARNING, true), accepted(prefs),
-                AutopilotAxes.decode(prefs.getString(AUTOPILOT_AXES, "")));
+                AutopilotAxes.decode(prefs.getString(AUTOPILOT_AXES, "")))
+                .withTimeAware(prefs.getBoolean(TIME_AWARE, false));
+        return rules.withTimeWeight(TimeScoreRuntime.weight(rules));
     }
 
     /**
@@ -891,12 +894,14 @@ final class FilterStore {
             boolean learning = base == null || next.acceptanceLearning != base.acceptanceLearning
                     ? next.acceptanceLearning : stored.acceptanceLearning;
             boolean area = base == null || next.scoreByArea != base.scoreByArea ? next.scoreByArea : stored.scoreByArea;
+            boolean time = base == null || next.timeAware != base.timeAware ? next.timeAware : stored.timeAware;
+            edit.putBoolean(TIME_AWARE, time);
             edit.putBoolean(ACCEPTANCE_LEARNING, learning).putBoolean(AREA_MODE, area);
             boolean enabled = base == null || next.enabled != base.enabled ? next.enabled : stored.enabled;
-            if (enabled != stored.enabled || learning != stored.acceptanceLearning || area != stored.scoreByArea) {
+            if (enabled != stored.enabled || learning != stored.acceptanceLearning || area != stored.scoreByArea || time != stored.timeAware) {
                 advanceEpoch(prefs, edit);
             }
-            if (learning != stored.acceptanceLearning || area != stored.scoreByArea) {
+            if (learning != stored.acceptanceLearning || area != stored.scoreByArea || time != stored.timeAware) {
                 policyChangedSince(prefs, edit);
             }
             int flat = base == null || next.flatCents != base.flatCents ? next.flatCents : stored.flatCents;
@@ -912,7 +917,7 @@ final class FilterStore {
             }
             int maxStops = base == null || next.maxStops != base.maxStops ? next.maxStops : stored.maxStops;
             if (flat != stored.flatCents || mile != stored.perMileCents || minute != stored.perMinuteCents
-                    || maxStops != stored.maxStops || learning != stored.acceptanceLearning || area != stored.scoreByArea) {
+                    || maxStops != stored.maxStops || learning != stored.acceptanceLearning || area != stored.scoreByArea || time != stored.timeAware) {
                 // The user's new requirements must be visible immediately, not hidden behind an old working shape.
                 // An offer already on screen may still teach when the user subsequently accepts it.
                 edit.remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR);
@@ -1056,10 +1061,14 @@ final class FilterStore {
         private boolean consumed;
         /** The offer's Autopilot score as its latest decision showed it (0.6.40); -1 until one was worked out. */
         private volatile int seenScore = -1;
+        private volatile TimeScore.Weight seenTimeWeight = TimeScore.Weight.NONE;
 
         /** This showing's latest decision scored it {@code score} (-1, not worked out, keeps the last known one). */
-        void noteScore(int score) {
-            if (score >= 0) seenScore = score;
+        void noteScore(int score, FilterSettings rules) {
+            if (score >= 0) {
+                seenTimeWeight = rules.timeWeight;
+                seenScore = score;
+            } else if (seenScore < 0) seenTimeWeight = rules.timeWeight;
         }
 
         private AutopilotPermit(SharedPreferences prefs, SharedPreferences consent, OfferSnapshot observed) {
@@ -1136,11 +1145,13 @@ final class FilterStore {
 
         private static String pricingKey(FilterSettings rules) {
             // Pausing auto-decline changes no minimum and cannot cancel a choice already confirmed.
-            return rules.withEnabled(true).rulesKey();
+            // A later time window likewise cannot discard the already normalized, confirmed reference.
+            return rules.withEnabled(true).withTimeWeight(TimeScore.Weight.NONE).rulesKey();
         }
 
         private static String selectionKey(FilterSettings rules) {
-            return rules.withEnabled(true).withoutAutopilotAxes().withAccepted(AcceptedFloors.NONE).rulesKey();
+            return rules.withEnabled(true).withoutAutopilotAxes().withAccepted(AcceptedFloors.NONE)
+                    .withTimeWeight(TimeScore.Weight.NONE).rulesKey();
         }
     }
 
@@ -1167,10 +1178,11 @@ final class FilterStore {
             PendingAutopilotAxes pending = pendingAutopilotAxes(context);
             boolean merge = pending != null && pending.compatibleForMerge(context, before);
             AutopilotAxes previous = merge ? pending.axes : before.autopilotAxes;
+            FilterSettings observed = before.withTimeWeight(permit.seenTimeWeight);
             // A shape still waiting for its safe point moves the bar to its reference there (0.6.40): this one is
             // worked out from that bar, as if the first had landed.
-            AutopilotAxes next = previous.withOffer(merge ? before.withMinimumScalePercent(previous.referenceBar)
-                    : before, offer, acceptedAt, permit.seenScore);
+            AutopilotAxes next = previous.withOffer(merge ? observed.withMinimumScalePercent(previous.referenceBar)
+                    : observed, offer, acceptedAt, permit.seenScore);
             if (next == previous || next.isEmpty()) return AutopilotAcceptance.UNKNOWN;
             try {
                 PendingAutopilotAxes update = new PendingAutopilotAxes(next, before, consent);
@@ -1283,6 +1295,13 @@ final class FilterStore {
         }
         save(context, before, before.withScoreByArea(on));
         if (before.scoreByArea != on) AutopilotRuntime.rulesChanged(context);
+    }
+
+    static void setTimeAware(Context context, boolean on) {
+        FilterSettings before = load(context);
+        if (before.timeAware != on) TimeScoreRuntime.clear();
+        save(context, before, before.withTimeAware(on));
+        if (before.timeAware != on) AutopilotRuntime.rulesChanged(context);
     }
 
     static void setAcceptanceLearning(Context context, boolean on) {
