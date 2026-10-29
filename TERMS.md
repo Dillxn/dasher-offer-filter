@@ -1,6 +1,6 @@
 # Offer Filter terms of use
 
-Beta terms, effective 29 October 2026 · for Offer Filter 0.6.44
+Beta terms, effective 29 October 2026 · for Offer Filter 0.6.45
 
 ## What Offer Filter is
 
@@ -27,7 +27,7 @@ Automatic declines may dramatically lower your DoorDash acceptance rate. This ca
 - While it declines an offer on screen, it can turn media and alarm sound down for a moment and then put them back. During Peek, a delivery or turn-by-turn navigation it touches only the alarm stream, leaving media and navigation audio alone. You can turn this off in Settings.
 - A tap is a request to the Dasher app, not a confirmation from DoorDash. Hiding a notification does not decline an order.
 - It updates itself from its public signed update feed without requiring an account. An update it finds by itself during a dash waits until the dash ends; if nothing of a dash is seen for 8 hours while Dasher is not in front and the screen is off, it installs then, after checking the update again.
-- Feedback and offer reports are accountless and are sent only when you tap Send. Masked diagnostics go only with Share anonymous diagnostics (off by default) turned on: after each dash and with the feedback you send. From 0.6.34 that one switch covers every diagnostic, the offer timing study included, and the update turns it off for everyone until they turn it on. A report the app offers after a stop sends them once, when you tap Send. The privacy text says what each sends, where it goes and how long it is kept: unsent submissions wait on the phone for at most 7 days, and the feedback service keeps them for 90 days. Sending feedback does not guarantee a reply, review or fix.
+- Use Feedback in Settings to send general feedback or choose a recent offer; Send feedback on an offer's ticket opens the same screen with that offer selected. Feedback and offer reports are accountless and are sent only when you tap Send. Masked diagnostics go only with Share anonymous diagnostics (off by default) turned on: after each dash and with the feedback you send. From 0.6.34 that one switch covers every diagnostic, the offer timing study included, and the update turns it off for everyone until they turn it on. A report the app offers after a stop sends them once, when you tap Send. The privacy text says what each sends, where it goes and how long it is kept: unsent submissions wait on the phone for at most 7 days, and the feedback service keeps them for 90 days. Sending feedback does not guarantee a reply, review or fix.
 - Once a day it sends the feedback service one anonymous count, so the developer can see how many people use the app: its version, whether this install was counted before and a random code made new each day. It is on by default; turn it off with Send an anonymous daily count in Settings. The privacy text says what it sends and how the service keeps it (as daily totals for 400 days, and briefly what lets each count once).
 
 ## Your responsibilities
@@ -59,7 +59,7 @@ These terms may change. When they change in substance, the app shows its notice 
 
 ## Contact
 
-For privacy, data-deletion and security requests only, email privacy@offerfilter.org. Send everything else as anonymous feedback from the app's Settings.
+For privacy, data-deletion and security requests only, email privacy@offerfilter.org. Send everything else through Feedback in the app's Settings.
 
 ## Stopping
 

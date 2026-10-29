@@ -518,6 +518,12 @@ final class BundledNotes {
         // code under a new number) alike, so no code of 0.6.40's was the cause.
         release("0.6.43", BAR_FOLLOWS);
         release("0.6.44", HISTORY_REPAIRS);
+        release("0.6.45",
+                "Feedback is one screen now. Open Feedback in Settings, choose a recent offer when relevant, "
+                        + "preview what goes and send it there. An offer's Send feedback opens the same screen.",
+                "Your recent references and optional Export diagnostics are in Feedback too.",
+                "Add-ons now explain which added or whole-route figures need review. They use strict checks, "
+                        + "not a standalone score.");
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

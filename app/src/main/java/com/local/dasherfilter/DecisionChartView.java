@@ -1238,12 +1238,14 @@ final class DecisionChartView extends View {
                         + (requested > 0 ? requested + " accept requested but unconfirmed, " : ""),
                 counts[DecisionLog.Outcome.REVIEW.ordinal()]);
         int unknown = 0;
+        int addOns = 0;
         int retired = 0;
         int clipped = 0;
         boolean independentScores = independentAutopilot;
         for (DecisionLog.Entry entry : entries) {
             independentScores |= AutopilotText.usesAutopilotScore(entry);
-            if (entry.scorePercent < 0) unknown++;
+            if (entry.addOn && entry.scorePercent < 0) addOns++;
+            else if (entry.scorePercent < 0) unknown++;
             else if (!tree(entry)) retired++;
             else if (entry.scorePercent > SCORE_DISPLAY_CAP) clipped++;
         }
@@ -1256,6 +1258,8 @@ final class DecisionChartView extends View {
                 ? "pay reference at the bar (area can compensate), " : "minimum pay at the bar, ")
                 + DecisionLog.money(payoutMinimumCents) + "." : " No minimum pay is set.")
                 + (unknown > 0 ? " " + unknown + " recorded scores unavailable: no tree." : "")
+                + (addOns > 0 ? " " + addOns + " add-ons are checked against added travel and the whole route, "
+                + "without a standalone score or tree." : "")
                 + (retired > 0 ? " " + retired + " scores from earlier rules: no tree." : "")
                 + (clipped > 0 ? " " + clipped + " trees exceed " + SCORE_DISPLAY_CAP
                 + "% and end in an overflow chevron; tap for the recorded score." : "")
@@ -1279,6 +1283,7 @@ final class DecisionChartView extends View {
                         : entry.model >= 3 && "area".equals(entry.scoreKind)
                         ? ", recorded area score " + entry.scorePercent + "%."
                         : ", score " + entry.scorePercent + "% of your minimums."
+                : entry.addOn && entry.scorePercent < 0 ? ", add-on: no standalone score."
                 : entry.scorePercent >= 0 ? ", score from earlier area rules." : ", score unknown.")
                 + (selected == routed ? " On a route." : "");
     }

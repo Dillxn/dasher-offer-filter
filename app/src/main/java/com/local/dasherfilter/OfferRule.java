@@ -1,6 +1,8 @@
 package com.local.dasherfilter;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Applies the selected standalone model at the bar with hard max stops and conservative unread facts.
  * Strict can decline from a known monetary failure; area needs every active quantity because compensation can
@@ -213,11 +215,32 @@ final class OfferRule {
                     false, autopilot);
         }
         if (combined.result == Result.REVIEW || missing) {
-            return new Decision(Result.REVIEW, marginalCost, ADD_ON_UNCLEAR, added, -1, bar, false, autopilot);
+            return new Decision(Result.REVIEW, marginalCost, addOnUnknowns(addOn, settings), added, -1, bar, false,
+                    autopilot);
         }
         return new Decision(Result.KEEP, marginalCost, bar > FilterSettings.BAR_AT_MINIMUMS
                 ? "combined route and add-on meet the " + bar + "% bar"
                 : "combined route and add-on meet your minimums", added, -1, bar, false, autopilot);
+    }
+
+    /**
+     * The exact required figures missing at this decision, in fixed words only. Keep them in its existing reason
+     * so a later ticket need not reconstruct the old route from today's context. This explains REVIEW; it never
+     * changes a figure, requirement or result, and a separate known failure still returns before this branch.
+     */
+    private static String addOnUnknowns(AddOnOffer addOn, FilterSettings settings) {
+        List<String> unread = new ArrayList<>();
+        OfferSnapshot added = addOn.incremental;
+        OfferSnapshot whole = addOn.combined;
+        if (settings.hasMarginalRule() && added.payCents == null) unread.add("added pay");
+        if (settings.perMileCents > 0 && added.miles == null) unread.add("added miles");
+        if (settings.perMinuteCents > 0 && added.minutes == null) unread.add("added time");
+        if (settings.hasMonetaryRule() && whole.payCents == null) unread.add("whole-route pay");
+        if (settings.perMileCents > 0 && whole.miles == null) unread.add("whole-route miles");
+        if (settings.perMinuteCents > 0 && whole.minutes == null) unread.add("whole-route time");
+        if ((settings.flatCents > 0 && AreaScore.payUnits(whole.stops) == null)
+                || (settings.maxStops > 0 && whole.stops == null)) unread.add("whole-route stops");
+        return unread.isEmpty() ? ADD_ON_UNCLEAR : ADD_ON_UNCLEAR + ": " + String.join(", ", unread);
     }
 
     /** "dollars per mile", prefixed "82% bar: " when the bar is not 100. */

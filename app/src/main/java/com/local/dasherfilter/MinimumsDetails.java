@@ -107,13 +107,17 @@ final class MinimumsDetails {
                                                boolean recorded) {
         List<String> lines = new ArrayList<>();
         if (entry != null) {
-            String kind = entry.model < 2 ? "earlier area rules" : entry.model == 2 ? "strict rules"
+            String kind = entry.addOn ? "strict add-on checks"
+                    : entry.model < 2 ? "earlier area rules" : entry.model == 2 ? "strict rules"
                     : "area".equals(entry.scoreKind) ? "area rules" : "strict rules";
-            lines.add("Recorded decision: " + kind + (entry.scorePercent >= 0
+            lines.add("Recorded decision: " + kind + (entry.addOn && entry.scorePercent < 0
+                    ? ", no standalone score"
+                    : entry.scorePercent >= 0
                     ? (AutopilotText.usesAutopilotScore(entry) ? ", Autopilot score " : ", score ")
                             + entry.scorePercent + "%" : ", score unread") + ", bar " + entry.barPercent + "%.");
         }
-        lines.add((recorded ? "Recorded" : "Current") + " requirements · " + (rules.scoreByArea ? "Area" : "Strict")
+        lines.add((recorded ? "Recorded" : "Current") + " requirements · "
+                + (entry != null && entry.addOn ? "Strict add-on" : rules.scoreByArea ? "Area" : "Strict")
                 + " · bar " + rules.minimumScalePercent + "%" + (rules.autopilot ? " (Autopilot)" : ""));
         if (entry != null && entry.addOn) {
             lines.add(rates(rules));

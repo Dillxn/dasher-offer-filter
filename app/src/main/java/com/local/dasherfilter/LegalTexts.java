@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 29 October 2026 · for {app} 0.6.44
+            Beta terms, effective 29 October 2026 · for {app} 0.6.45
 
             ## What {app} is
 
@@ -229,13 +229,15 @@ final class LegalTexts {
             - It updates itself from its public signed update feed without requiring an account. An update it finds \
             by itself during a dash waits until the dash ends; if nothing of a dash is seen for 8 hours while \
             Dasher is not in front and the screen is off, it installs then, after checking the update again.
-            - Feedback and offer reports are accountless and are sent only when you tap Send. Masked diagnostics go \
-            only with Share anonymous diagnostics (off by default) turned on: after each dash and with the feedback \
-            you send. From 0.6.34 that one switch covers every diagnostic, the offer timing study included, and the \
-            update turns it off for everyone until they turn it on. A report the app offers after a stop sends them \
-            once, when you tap Send. The privacy text says what each sends, where it goes and how long it is kept: \
-            unsent submissions wait on the phone for at most 7 days, and the feedback service keeps them for 90 \
-            days. Sending feedback does not guarantee a reply, review or fix.
+            - Use Feedback in Settings to send general feedback or choose a recent offer; Send feedback on an \
+            offer's ticket opens the same screen with that offer selected. Feedback and offer reports are \
+            accountless and are sent only when you tap Send. Masked diagnostics go only with Share anonymous \
+            diagnostics (off by default) turned on: after each dash and with the feedback you send. From 0.6.34 \
+            that one switch covers every diagnostic, the offer timing study included, and the update turns it off \
+            for everyone until they turn it on. A report the app offers after a stop sends them once, when you tap \
+            Send. The privacy text says what each sends, where it goes and how long it is kept: unsent submissions \
+            wait on the phone for at most 7 days, and the feedback service keeps them for 90 days. Sending feedback \
+            does not guarantee a reply, review or fix.
             - Once a day it sends the feedback service one anonymous count, so the developer can see how many \
             people use the app: its version, whether this install was counted before and a random code made new \
             each day. It is on by default; turn it off with Send an anonymous daily count in Settings. The privacy \
@@ -287,7 +289,7 @@ final class LegalTexts {
             ## Contact
 
             For privacy, data-deletion and security requests only, email privacy@offerfilter.org. Send everything \
-            else as anonymous feedback from the app's Settings.
+            else through Feedback in the app's Settings.
 
             ## Stopping
 
@@ -298,7 +300,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 29 October 2026 · for {app} 0.6.44
+            Beta privacy policy, effective 29 October 2026 · for {app} 0.6.45
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -621,8 +623,8 @@ final class LegalTexts {
             the control shape and action category, never its text labels.
 
             Masking is pattern-based and can miss unfamiliar wording. It is not a guarantee of anonymity or removal \
-            of every personal detail. Review what you send with Preview first. What you type in feedback, and notes \
-            you type with Report this offer, are not masked; do not include customer, payment or account details. \
+            of every personal detail. Review what you send with Preview first. What you type in feedback, including \
+            notes about a selected offer, is not masked; do not include customer, payment or account details. \
             Diagnostics and offer reports waiting to send are masked again with the current rules immediately \
             before sending.
 
@@ -720,15 +722,16 @@ final class LegalTexts {
             rate (offers an hour) they count with, as numbers, and the Undo of such a growth (your minimums before \
             and after); as for other recognized screens, they can also hold the decline question's masked words \
             with its percentage.
-            - Where it goes. Your acceptance rate leaves the phone only in a report you share (**Share report**), \
-            in masked diagnostics sent with feedback (with **Share anonymous diagnostics** on, or in the report \
-            offered after a stop), and in **Report this offer**, which sends Autopilot's state and the acceptance \
-            rate it counts with. It is never in the summary after each dash: that summary carries Autopilot's bar \
-            and why it changed (never your acceptance rate), so a reason such as "acceptance rate below your goal" \
-            can show it was below your goal, never what it was. The fingerprint kept with a reading never leaves \
-            the phone. The mark that declining an offer does not lower your acceptance rate is part of that offer's \
-            history line and goes with it in Share report, the diagnostics sent with feedback and the summary after \
-            each dash; Report this offer leaves it out.
+            - Where it goes. Your acceptance rate leaves the phone only in a report you share (**Export \
+            diagnostics**), in masked diagnostics sent with feedback (with **Share anonymous diagnostics** on, or \
+            in the report offered after a stop), and in **Feedback about a selected offer**, which sends \
+            Autopilot's state and the acceptance rate it counts with. It is never in the summary after each dash: \
+            that summary carries Autopilot's bar and why it changed (never your acceptance rate), so a reason such \
+            as "acceptance rate below your goal" can show it was below your goal, never what it was. The \
+            fingerprint kept with a reading never leaves the phone. The mark that declining an offer does not lower \
+            your acceptance rate is part of that offer's history line and goes with it in Export diagnostics, the \
+            diagnostics sent with feedback and the summary after each dash; feedback about a selected offer leaves \
+            it out.
             - Clear history removes the reading, Autopilot's working figures, the accepted offers it keeps, its \
             independent working minimums and any pending adjustment, its last-change note and its kept changes, the \
             note of its last growth (and with it the Undo) and its other notes above. Your rules and Autopilot's \
@@ -743,27 +746,34 @@ final class LegalTexts {
 
             ## What leaves the phone, and when
 
+            **Feedback** in Settings is the single reporting screen. Under **About**, choose General feedback or a \
+            recent offer. **Send feedback** on an offer's ticket opens the same screen with that offer selected; \
+            setup and stop notices also open it. The preview, Send action, submission status and last ten \
+            references are shared. Each selection keeps the scope below. **Export diagnostics** is an optional \
+            diagnostic export inside this screen and does not submit the feedback draft.
+
             - Update checks. The app asks its public update server (dash-offer-filter-build.onrender.com, hosted by \
             Render) for the latest version and downloads it. No account is required. These requests carry ordinary \
             internet connection metadata such as your IP address and the app's own request information, but no \
             offer history.
-            - **Send anonymous feedback**, only when you tap Send: the category you pick, what you type (at most \
-            4,000 characters), and the app's version. With **Share anonymous diagnostics** on (from 0.6.34; before, \
-            each submission chose with Attach masked diagnostics), it also sends the masked diagnostic report Share \
-            report builds, with the offer timing study's section: the Android version and phone maker, the app's \
-            readiness, settings and last status line, the offer map's counts (never a position), your current rules \
-            and Autopilot's state, including the latest acceptance-rate reading, the decision history, the state of \
+            - **General feedback in Feedback**, only when you tap Send: the category you pick, what you type (at \
+            most 4,000 characters), and the app's version. With **Share anonymous diagnostics** on (from 0.6.34; \
+            before, each submission chose with Attach masked diagnostics), it also sends the masked diagnostic \
+            report with the offer timing study's section: the Android version and phone maker, the app's readiness, \
+            settings and last status line, the offer map's counts (never a position), your current rules and \
+            Autopilot's state, including the latest acceptance-rate reading, the decision history, the state of \
             updates, the latest states, the bounded masked logs described above and any recent stop summary. Long \
             diagnostics go in at most 4 parts; Preview shows exactly what will be sent. With the switch off, it \
             sends only your words, the category and the app's version, and the dialog says which.
-            - **Report this offer**, only when you tap Send: what went wrong (Misread, Wrong decline, Wrong accept \
-            or Other), your optional note, and that offer's report: its figures, decision and outcome, the bar it \
-            was judged at, its masked read lines (with every word that is not offer vocabulary reduced to its \
-            shape), your current rules and Autopilot's state (on or off, goal, bar, mode and last change, and the \
-            acceptance rate it counts with: Dasher's latest, carried forward, or its own estimate), the app's and \
-            Android's versions (not the phone's maker) and the minute it was decided. With Autopilot's state go \
-            whether it is recovering toward your goal, its correction and, for Dasher's own reading, how many \
-            minutes ago Dasher showed it. The dialog says what is sent; tapping Send is your choice to send it.
+            - **Feedback about a selected offer**, only when you tap Send: what went wrong (Misread, Wrong decline, \
+            Wrong accept or Other), your optional note, and that offer's report: its figures, decision and outcome, \
+            the bar it was judged at, its masked read lines (with every word that is not offer vocabulary reduced \
+            to its shape), your current rules and Autopilot's state (on or off, goal, bar, mode and last change, \
+            and the acceptance rate it counts with: Dasher's latest, carried forward, or its own estimate), the \
+            app's and Android's versions (not the phone's maker) and the minute it was decided. With Autopilot's \
+            state go whether it is recovering toward your goal, its correction and, for Dasher's own reading, how \
+            many minutes ago Dasher showed it. The dialog says what is sent; tapping Send is your choice to send \
+            it.
             - **Share anonymous diagnostics**, only if you turn it on in Settings or with the switch at the end of \
             the notice, "Share anonymous diagnostics (helps fix it for your phone)" (from 0.6.18; from 0.6.20 it \
             shows your current choice, and accepting the notice leaves the option as that switch is left). From \
@@ -784,9 +794,9 @@ final class LegalTexts {
             Turning it off discards summaries not yet sent and the timing study's data.
             - After a crash or a stop for not responding: with **Share anonymous diagnostics** on, the stop's \
             summary goes with the next summary after a dash. Otherwise the homepage shows "{app} stopped \
-            unexpectedly last time" with Send report, which opens the feedback dialog with Bug chosen; that report \
-            sends the masked diagnostics, the stop's summary among them, for it only, and nothing is sent unless \
-            you tap Send.
+            unexpectedly last time" with Send feedback, which opens the same Feedback screen with the stop selected \
+            and Bug chosen; that report sends the masked diagnostics, the stop's summary among them, for it only, \
+            and nothing is sent unless you tap Send.
             - Where feedback goes. All of the above go only to the project's own feedback service, a Supabase Edge \
             Function reached through Cloudflare. Every submission carries a fresh random token, used only to tie \
             its parts together and store each once; it is new for each submission and not tied to your phone. The \
@@ -843,9 +853,10 @@ final class LegalTexts {
             and how many daily counts came from it today, and deletes this once the day is over; no table records \
             which network sent which code. It counts at most 20,000 a day in all. Cloudflare and Supabase receive \
             each count's ordinary connection metadata, as described under Where feedback goes.
-            - **Share report**, only when you tap it, hands a masked report to the app you choose: the same report \
-            the diagnostics sent with feedback carry, with the latest acceptance-rate reading. From there, that app \
-            handles the copy under its own privacy practices.
+            - **Export diagnostics** inside Feedback, only when you tap it, hands a masked report to the app you \
+            choose: readiness, settings, recent decisions and masked logs, with the latest acceptance-rate reading. \
+            Older decisions can be omitted to fit Android's sharing limit. From there, that app handles the copy \
+            under its own privacy practices.
             - Place names. To name the squares on the map and the place you are in, the app asks Android's own \
             place lookup (Google's servers on most phones) about positions rounded to about half a kilometre, the \
             phone's own approximate position among them, once while a position remains cached. An evicted or \
@@ -906,7 +917,8 @@ final class LegalTexts {
             days pass. Your rules, Autopilot's settings and the app's last status line (which can show the last \
             offer's figures until the next status replaces it) remain.
             - Feedback and offer reports leave only after you tap Send. With **Share anonymous diagnostics** off, \
-            feedback sends only your words, the category and the app's version.
+            general feedback sends only your words, the category and the app's version; a selected offer or the \
+            report offered after a stop keeps its disclosed scope above.
             - **Share anonymous diagnostics** is off unless you turn it on, and you can turn it off at any time: \
             summaries not yet sent and the timing study's data go with it.
             - **Send an anonymous daily count** is on unless you turn it off in Settings; off, the app sends no \
@@ -918,10 +930,10 @@ final class LegalTexts {
 
             ## Help and privacy contact
 
-            Use **Send anonymous feedback** in Settings, or the feedback form on offerfilter.org, for non-sensitive \
-            feedback without creating an account. Do not type customer, payment, account or other sensitive \
-            details. If you need to refer to an earlier submission, keep the short reference shown after it is \
-            accepted; Settings' feedback dialog lists the last ten.
+            Use **Feedback** in Settings, or the feedback form on offerfilter.org, for non-sensitive feedback \
+            without creating an account. Do not type customer, payment, account or other sensitive details. If you \
+            need to refer to an earlier submission, keep the short reference shown after it is accepted; Settings' \
+            feedback dialog lists the last ten.
 
             For privacy, data-deletion and security requests only, email privacy@offerfilter.org. Unlike feedback, \
             email is not anonymous: the developer sees your address and uses it only to answer you. Your message \

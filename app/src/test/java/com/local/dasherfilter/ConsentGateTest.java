@@ -254,7 +254,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "It is never in the summary after each dash",
                 "Auto theme can use the same existing, fresh approximate location",
                 "recognized payment, account and earnings screens are discarded",
-                "What you type in feedback, and notes you type with Report this offer, are not masked",
+                "What you type in feedback, including notes about a selected offer, is not masked",
                 "Nothing is sent unless the current notice is accepted", "each at most 7 days",
                 "Submissions are kept on the feedback service for 90 days",
                 "Anthropic's Claude or OpenAI's ChatGPT/Codex", "necessarily receive ordinary connection metadata",

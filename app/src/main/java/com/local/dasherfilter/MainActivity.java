@@ -149,7 +149,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private static final int SLOT_ON = 5;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final ReportShare reportShare = new ReportShare();
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
             if (!started) return;
@@ -316,8 +315,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private Readiness locationAllTheTime;
     private Switch areasToggle;
     private Button updatesRow;
-    private Button shareReportRow;
-    /** Send anonymous feedback, its line saying what waits or what was last sent. */
+    /** Feedback, its line saying what waits or what was last sent. */
     private Button feedbackRow;
     private Switch diagnosticsToggle;
     /** The feedback and offer-report dialogs, and what this screen shows of a submission's fate. */
@@ -592,7 +590,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     @Override protected void onPause() {
         resumed = false;
-        cancelReportShare();
+        feedbackDialogs.cancelExport();
         refreshScreenAwake();
         Tilt.stop();
         Updater.background(this);
@@ -608,7 +606,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     }
 
     @Override protected void onDestroy() {
-        cancelReportShare();
         feedbackDialogs.destroy();
         // The notice is kept until a button is tapped: a recreated screen shows it again.
         if (modelNotice != null && modelNotice.isShowing()) modelNotice.dismiss();
@@ -653,7 +650,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         showingSettings = settings;
         mainPage.setVisibility(settings ? View.GONE : View.VISIBLE);
         settingsPage.setVisibility(settings ? View.VISIBLE : View.GONE);
-        if (!settings) cancelReportShare();
+        if (!settings) feedbackDialogs.cancelExport();
         else if (!noticeShown()) refreshSettings();
         // Behind the status bar: the top of the main page's sky, or the Settings page.
         root.setBackgroundColor(settings ? ui.page : ScenePage.skyTop(ui));
@@ -1079,7 +1076,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         launchScreen.spokenAsButton(DasherLaunch.LAUNCH_SCREEN_SPOKEN);
         // After a stop, with Share anonymous diagnostics off: one line offering a report the user still sends.
         // Offered once: the line goes as its dialog opens; the stop stays in diagnostics for a day.
-        stopNotice = new Readiness(problems, AppName.NAME + " stopped unexpectedly last time", "Send report", () -> {
+        stopNotice = new Readiness(problems, AppName.NAME + " stopped unexpectedly last time", FeedbackDialogs.TITLE, () -> {
             StopReports.acknowledge(this);
             feedbackDialogs.feedback(Feedback.Category.BUG, true);
             refresh();
@@ -1896,7 +1893,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 BetaProgram.HELP_DETAIL);
 
         LinearLayout reports = group(body);
-        feedbackRow = ui.listRow(reports, "Send anonymous feedback", () -> feedbackDialogs.feedback(null, null));
+        feedbackRow = ui.listRow(reports, FeedbackDialogs.SETTINGS, () -> feedbackDialogs.feedback(null, null));
         // The one diagnostics switch (0.6.34): off unless the user turns it on (no update does), and only after its own
         // confirmation (FeedbackDialogs.diagnostics, which refreshes Settings as it turns on).
         diagnosticsToggle = ui.toggle(reports, Feedback.DIAGNOSTICS_SWITCH, Feedback.diagnosticsOn(this));
@@ -1917,7 +1914,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         Switch dailyCount = ui.toggle(reports, DailyCount.SWITCH, DailyCount.on(this));
         dailyCount.setText(ui.twoLines(DailyCount.SWITCH, DailyCount.SWITCH_LINE));
         dailyCount.setOnCheckedChangeListener((view, on) -> DailyCount.setOn(this, on));
-        shareReportRow = ui.listRow(reports, "Share report", this::shareReport);
         ui.listRow(reports, "Clear history", this::confirmClearHistory);
 
         if (!Support.methods().isEmpty()) ui.listRow(group(body), "Tip", this::chooseTip);
@@ -2248,7 +2244,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         battery.update(!batteryRestricted.get());
         ui.setRow(updatesRow, "Updates", Updater.status(this));
         // What waits to send is read only while Settings shows, and as it opens.
-        if (showingSettings) ui.setRow(feedbackRow, "Send anonymous feedback", Feedback.status(this));
+        if (showingSettings) ui.setRow(feedbackRow, FeedbackDialogs.SETTINGS, Feedback.status(this));
         boolean diagnostics = Feedback.diagnosticsOn(this);
         if (diagnosticsToggle.isChecked() != diagnostics) diagnosticsToggle.setChecked(diagnostics);
     }
@@ -2759,7 +2755,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 });
             }
         }
-        ui.addButton(ticket, "Report this offer", false, () -> reportOffer(entry));
+        ui.addButton(ticket, FeedbackDialogs.TITLE, false, () -> reportOffer(entry));
     }
 
     /** A "Same store" mark ({@link CameBack}), shown on its own line rather than among what followed. */
@@ -2853,6 +2849,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** Rule reasons in everyday words; the report keeps the exact wording. Older lines keep their own words. */
     static String plainReason(String reason) {
         if (reason == null || reason.isEmpty()) return "";
+        if (reason.startsWith(OfferRule.ADD_ON_UNCLEAR + ": ")) {
+            return "Add-on needs review: unread " + reason.substring((OfferRule.ADD_ON_UNCLEAR + ": ").length());
+        }
         if (reason.startsWith("combined route fails: ")) {
             return "Whole route: " + plainReason(reason.substring("combined route fails: ".length()));
         }
@@ -3234,7 +3233,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
                 .setTitle("Clear history?")
                 .setMessage(CLEAR_HISTORY)
                 .setPositiveButton("Clear", (dialog, which) -> {
-                    cancelReportShare();
+                    feedbackDialogs.cancelExport();
+                    FeedbackDialogs.forgetContext();
                     DecisionLog.clear(this);
                     QualifyingWaitStore.clear(this);
                     // After the history and the watched waiting it plans from: its reading and change note go too.
@@ -3256,28 +3256,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     refresh();
                 })
                 .setNegativeButton("Cancel", null));
-    }
-
-    /** Offers any app for the diagnostic report; mail keeps its "Offer Filter diagnostics" subject. */
-    private void shareReport() {
-        if (!resumed || noticeShown() || isFinishing() || isDestroyed()) return;
-        if (reportShare.start(this, report -> {
-            shareReportRow.setEnabled(true);
-            if (!resumed || noticeShown() || isFinishing() || isDestroyed()) return;
-            if (report == null) {
-                toast("Could not prepare the report. Try again.");
-                return;
-            }
-            open(Intent.createChooser(new Intent(Intent.ACTION_SEND)
-                    .setType("text/plain")
-                    .putExtra(Intent.EXTRA_SUBJECT, report.subject)
-                    .putExtra(Intent.EXTRA_TEXT, report.body), "Share " + AppName.NAME + " report"));
-        })) shareReportRow.setEnabled(false);
-    }
-
-    private void cancelReportShare() {
-        reportShare.cancel();
-        if (shareReportRow != null) shareReportRow.setEnabled(true);
     }
 
     private void openDoorDashChannel() {

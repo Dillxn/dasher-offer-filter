@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.graphics.drawable.StateListDrawable;
@@ -15,6 +16,7 @@ import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.HorizontalScrollView;
@@ -23,11 +25,14 @@ import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import java.text.DateFormat;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * The feedback and offer-report dialogs, and what a screen shows of a submission's fate. Owned by one screen: it
+ * One feedback composer, with an optional selected offer, and what a screen shows of a submission's fate. Owned by one screen: it
  * listens only while that screen is started, and its dialogs go with it, so no result reaches a screen that is gone.
  * Every submission is built and sent off the main thread ({@link Feedback}); the dialog stays open while it is sent,
  * keeps what was typed when it is refused, and shows the reference, copyable, once it is accepted.
@@ -40,8 +45,14 @@ final class FeedbackDialogs implements Feedback.Listener {
     /** What the user was writing: kept across a recreated screen and a refused send, until it is accepted. */
     private static final class Draft {
         Feedback.Category category = Feedback.Category.GENERAL;
+        OfferReport.Problem problem = OfferReport.Problem.MISREAD;
         String message = "";
+        DecisionLog.Entry offer;
+        boolean afterStop;
     }
+
+    static final String TITLE = "Send feedback";
+    static final String SETTINGS = "Feedback";
 
     /**
      * What Report this offer says it sends, and Send is the consent to it: all of what OfferReport carries
@@ -74,6 +85,12 @@ final class FeedbackDialogs implements Feedback.Listener {
     private Feedback.Prepared[] preparedNow;
     /** The preview over the open dialog, so it goes with the screen. */
     private AlertDialog previewDialog;
+    private AlertDialog contextDialog;
+    private final ReportShare reportShare = new ReportShare();
+    private Button exportButton;
+    private boolean exporting;
+    /** A preview prepared for a dismissed or changed composer must never open over its replacement. */
+    private long formGeneration;
     private boolean started;
 
     /** @param changed run on the main thread after any submission changed (Settings' line refreshes) */
@@ -94,11 +111,16 @@ final class FeedbackDialogs implements Feedback.Listener {
 
     void stop() {
         started = false;
+        cancelExport();
+        if (statusLine != null && "Preparing…".contentEquals(statusLine.getText())) status("");
         Feedback.unlisten(this);
     }
 
     void destroy() {
+        cancelExport();
         Feedback.unlisten(this);
+        if (contextDialog != null && contextDialog.isShowing()) contextDialog.dismiss();
+        contextDialog = null;
         if (previewDialog != null && previewDialog.isShowing()) previewDialog.dismiss();
         previewDialog = null;
         if (dialog != null && dialog.isShowing()) dialog.dismiss();
@@ -128,7 +150,7 @@ final class FeedbackDialogs implements Feedback.Listener {
             + "dash, one summary: the app and Android versions and phone maker, your switches, counts of offers and "
             + "problems, that dash's decisions timed from its start, masked log lines around problems, and how long "
             + "you waited for offers against the app's estimate, with their figures. With feedback you send, the "
-            + "masked report Share report builds. No location, place names or device ID. At most 3 summaries a day; "
+            + "masked diagnostic report. No location, place names or device ID. At most 3 summaries a day; "
             + "kept 90 days. Turn it off any time: what is not sent yet is discarded.";
 
     /**
@@ -145,10 +167,10 @@ final class FeedbackDialogs implements Feedback.Listener {
                     Feedback.setDiagnostics(activity, true);
                     changed.run();
                 })
-                .setOnDismissListener(d -> closed()));
+                .setOnDismissListener(d -> { if (dialog == d) closed(); }));
     }
 
-    // ---- Send anonymous feedback ----
+    // ---- One feedback composer ----
 
     /** With Share anonymous diagnostics on: what goes with feedback. */
     static final String WITH_DIAGNOSTICS = "Masked diagnostics go with it, since Share anonymous diagnostics is on.";
@@ -164,144 +186,214 @@ final class FeedbackDialogs implements Feedback.Listener {
      * payment and account details, a line saying whether masked diagnostics go with it, a Preview of exactly what goes,
      * and the references of the last submissions.
      *
-     * @param category chosen in advance (Bug, for a report after a stop), or null for the draft's
+     * @param category chosen in advance (Bug after a stop, Usability from setup), or null to keep the draft
      * @param attach   true for the report offered after a stop, which sends diagnostics for this dialog only; null or
      *                 false: they go only while Share anonymous diagnostics is on
      */
     void feedback(Feedback.Category category, Boolean attach) {
         if (showing()) return;
-        if (category != null) draft.category = category;
+        if (category != null) {
+            draft.category = category;
+            draft.offer = null;
+            draft.afterStop = attach != null && attach;
+        } else if (attach != null) {
+            draft.afterStop = attach;
+        }
+        // A cancelled offer draft follows the retained history; Clear history must not resurrect its old evidence.
+        if (draft.offer != null) {
+            DecisionLog.Entry found = null;
+            for (DecisionLog.Entry entry : DecisionLog.recent(activity, DecisionLog.MAX_ENTRIES)) {
+                if (sameOffer(entry, draft.offer)) { found = entry; break; }
+            }
+            draft.offer = found;
+        }
+        compose();
+    }
+
+    /** The ticket is a shortcut into the same composer, with that offer already chosen. */
+    void reportOffer(DecisionLog.Entry entry) {
+        if (showing()) return;
+        draft.offer = entry;
+        draft.afterStop = false;
+        draft.problem = OfferReport.Problem.MISREAD;
+        compose();
+    }
+
+    private void compose() {
+        cancelExport();
+        final long generation = ++formGeneration;
+        waitingFor = "";
+        final DecisionLog.Entry offer = draft.offer;
+        final boolean report = offer == null && draft.afterStop;
+        openReport = report;
         LinearLayout frame = frame();
+        frame.addView(small("No account, name or email. Tap Send to submit feedback to the developer."), Ui.matchWidth());
+        frame.addView(small("About"), Ui.matchWidth());
+        Button about = ui.link(offer != null ? offerLabel(offer)
+                : report ? "The app stopped unexpectedly" : "General feedback · choose an offer if relevant",
+                this::chooseContext);
+        about.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        frame.addView(about, Ui.matchWidth());
         RadioGroup chips = chips(frame);
-        for (Feedback.Category one : Feedback.Category.values()) {
-            RadioButton chip = chip(chips, one.label);
-            chip.setTag(one);
-            if (one == draft.category) chip.setChecked(true);
+        if (offer == null) {
+            for (Feedback.Category one : Feedback.Category.values()) {
+                RadioButton chip = chip(chips, one.label);
+                chip.setTag(one);
+                if (one == draft.category) chip.setChecked(true);
+            }
+        } else {
+            for (OfferReport.Problem problem : OfferReport.Problem.values()) {
+                RadioButton chip = chip(chips, problem.label);
+                chip.setTag(problem);
+                if (problem == draft.problem) chip.setChecked(true);
+            }
         }
         chips.setOnCheckedChangeListener((group, id) -> {
             View checked = group.findViewById(id);
             if (checked != null && checked.getTag() instanceof Feedback.Category) {
                 draft.category = (Feedback.Category) checked.getTag();
+            } else if (checked != null && checked.getTag() instanceof OfferReport.Problem) {
+                draft.problem = (OfferReport.Problem) checked.getTag();
             }
         });
-        EditText message = editor(frame, "What should we know?", draft.message, typed -> draft.message = typed);
+        EditText message = editor(frame, offer == null ? "What should we know?" : "What went wrong? (optional)",
+                draft.message, typed -> draft.message = typed);
         frame.addView(small("Don't include customer, payment or account details."), Ui.matchWidth());
-        // The one switch decides, read again at Preview and Send; the report after a stop sends them for itself only.
-        boolean report = attach != null && attach;
-        openReport = report;
-        frame.addView(small(report ? REPORT_SENDS : Feedback.diagnosticsOn(activity) ? WITH_DIAGNOSTICS : WORDS_ONLY),
-                Ui.matchWidth());
+        // Selecting an offer consents to that narrow report on Send, as its ticket always did. It does not add the
+        // whole diagnostic history. General feedback still follows the one switch, read again at Preview and Send.
+        frame.addView(small(offer != null ? OFFER_REPORT_SAYS : report ? REPORT_SENDS
+                : Feedback.diagnosticsOn(activity) ? WITH_DIAGNOSTICS : WORDS_ONLY), Ui.matchWidth());
         Feedback.Prepared[] prepared = new Feedback.Prepared[1];
         preparedNow = prepared;
         boolean[] preparedWith = new boolean[1];
+        OfferReport.Problem[] preparedFor = new OfferReport.Problem[1];
         Button preview = ui.link("Preview what is sent", () -> {
+            cancelExport();
             status("Preparing…");
             boolean with = report || Feedback.diagnosticsOn(activity);
-            Feedback.prepareFeedback(activity, with, ready -> {
-                if (!showing()) return;
+            OfferReport.Problem problem = draft.problem;
+            java.util.function.Consumer<Feedback.Prepared> done = ready -> {
+                if (!started || !currentForm(generation) || !waitingFor.isEmpty()) return;
                 status("");
                 if (ready == null) {
-                    status("Couldn't prepare the diagnostics; try again.");
+                    status("Couldn't prepare the feedback; try again.");
                     return;
                 }
                 prepared[0] = ready;
                 preparedWith[0] = with;
-                preview(ready.preview(draft.category.wire, message.getText().toString(), Updater.version(activity),
+                preparedFor[0] = problem;
+                preview(ready.preview(offer == null ? draft.category.wire : problem.category(),
+                        message.getText().toString(), Updater.version(activity),
                         Feedback.versionCode(activity)));
-            });
+            };
+            if (offer == null) Feedback.prepareFeedback(activity, with, done);
+            else Feedback.prepareOfferReport(activity, offer, problem, done);
         });
         preview.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         frame.addView(preview, Ui.matchWidth());
         statusLine = status(frame);
         references(frame);
+        exportButton = ui.link("Export diagnostics…", this::exportDiagnostics);
+        exportButton.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        frame.addView(exportButton, Ui.matchWidth());
+        frame.addView(small("Opens a masked diagnostic report of recent history and logs in an app you choose. It does not submit "
+                + "the feedback draft above."), Ui.matchWidth());
         feedbackOpen = true;
         dialog = OwnWindowTouches.show(new AlertDialog.Builder(activity)
-                .setTitle("Send anonymous feedback")
-                .setMessage("No account, name or email. It is sent only when you tap Send.")
+                .setTitle(TITLE)
                 .setView(scroll(frame))
                 .setPositiveButton("Send", null)
                 .setNegativeButton("Cancel", null)
-                .setOnDismissListener(closedDialog -> closed()));
+                .setOnDismissListener(closedDialog -> { if (dialog == closedDialog) closed(); }));
+        dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(tapped -> {
             String typed = message.getText().toString();
-            if (Feedback.typed(typed).isEmpty()) {
+            if (offer == null && Feedback.typed(typed).isEmpty()) {
                 status("Write something first.");
                 return;
             }
             boolean with = report || Feedback.diagnosticsOn(activity);
-            Feedback.Prepared reuse = prepared[0] != null && preparedWith[0] == with ? prepared[0] : null;
-            busy(true, message, preview);
-            status(with && reuse == null ? "Preparing and sending…" : "Sending…");
-            waitingFor = Feedback.sendFeedback(activity, draft.category, typed, with, reuse);
+            Feedback.Prepared reuse = prepared[0] != null && (offer == null ? preparedWith[0] == with
+                    : preparedFor[0] == draft.problem) ? prepared[0] : null;
+            cancelExport();
+            busy(true, message, preview, about, chips, exportButton);
+            status((offer != null || with) && reuse == null ? "Preparing and sending…" : "Sending…");
+            waitingFor = offer == null ? Feedback.sendFeedback(activity, draft.category, typed, with, reuse)
+                    : Feedback.sendOfferReport(activity, offer, draft.problem, typed, reuse);
         });
     }
 
-    // ---- Report this offer ----
+    /** All retained recent offers, newest first, reachable from Settings without another reporting route. */
+    private void chooseContext() {
+        if (!feedbackOpen || !showing() || !waitingFor.isEmpty()) return;
+        List<DecisionLog.Entry> recent = DecisionLog.recent(activity, DecisionLog.MAX_ENTRIES);
+        List<String> labels = new ArrayList<>();
+        labels.add("General feedback");
+        for (DecisionLog.Entry entry : recent) labels.add(offerLabel(entry));
+        contextDialog = OwnWindowTouches.show(new AlertDialog.Builder(activity).setTitle("What is this about?")
+                .setItems(labels.toArray(new String[0]), (shown, index) -> {
+                    draft.offer = index == 0 ? null : recent.get(index - 1);
+                    draft.afterStop = false;
+                    dialog.dismiss();
+                    compose();
+                })
+                .setNegativeButton("Cancel", null));
+    }
 
-    /**
-     * One offer's report: what went wrong, an optional note, and a Preview; the dialog says what it sends, and tapping
-     * Send is the user's consent to it.
-     */
-    void reportOffer(DecisionLog.Entry entry) {
-        if (showing()) return;
-        LinearLayout frame = frame();
-        // One scrollable body: a separate native message panel can consume a short split pane and push Send
-        // below its visible bounds. Keep the disclosure intact, with the native action row outside this body.
-        TextView disclosure = small(OFFER_REPORT_SAYS);
-        frame.addView(disclosure, Ui.matchWidth());
-        RadioGroup chips = chips(frame);
-        OfferReport.Problem[] chosen = {OfferReport.Problem.MISREAD};
-        for (OfferReport.Problem problem : OfferReport.Problem.values()) {
-            RadioButton chip = chip(chips, problem.label);
-            chip.setTag(problem);
-            if (problem == chosen[0]) chip.setChecked(true);
-        }
-        chips.setOnCheckedChangeListener((group, id) -> {
-            View checked = group.findViewById(id);
-            if (checked != null && checked.getTag() instanceof OfferReport.Problem) {
-                chosen[0] = (OfferReport.Problem) checked.getTag();
+    private String offerLabel(DecisionLog.Entry entry) {
+        return DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(entry.at))
+                + " · " + (entry.addOn ? "Add-on · " : "") + OfferReport.read(entry);
+    }
+
+    private static boolean sameOffer(DecisionLog.Entry a, DecisionLog.Entry b) {
+        return a.at == b.at && a.source == b.source && a.addOn == b.addOn
+                && a.facts.fingerprint().equals(b.facts.fingerprint());
+    }
+
+    private boolean currentForm(long generation) {
+        return formGeneration == generation && feedbackOpen && showing();
+    }
+
+    /** The optional full diagnostic export lives here, never alongside Feedback as another support route. */
+    private void exportDiagnostics() {
+        if (!feedbackOpen || !showing() || !started || !Consent.accepted(activity)) return;
+        final long generation = formGeneration;
+        if (reportShare.start(activity, report -> {
+            exporting = false;
+            if (!currentForm(generation) || !started || activity.isFinishing() || activity.isDestroyed()) return;
+            exportButton.setEnabled(true);
+            if (report == null) {
+                status("Could not prepare the diagnostics. Try again.");
+                return;
             }
-        });
-        EditText note = editor(frame, "What went wrong? (optional)", "", typed -> { });
-        frame.addView(small("Don't include customer, payment or account details."), Ui.matchWidth());
-        Feedback.Prepared[] prepared = new Feedback.Prepared[1];
-        preparedNow = prepared;
-        openReport = false;
-        OfferReport.Problem[] preparedFor = new OfferReport.Problem[1];
-        Button preview = ui.link("Preview what is sent", () -> {
-            status("Preparing…");
-            OfferReport.Problem problem = chosen[0];
-            Feedback.prepareOfferReport(activity, entry, problem, ready -> {
-                if (!showing()) return;
-                status("");
-                if (ready == null) {
-                    status("Couldn't prepare the report; try again.");
-                    return;
-                }
-                prepared[0] = ready;
-                preparedFor[0] = problem;
-                preview(ready.preview(problem.category(), note.getText().toString(), Updater.version(activity),
-                        Feedback.versionCode(activity)));
-            });
-        });
-        preview.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        frame.addView(preview, Ui.matchWidth());
-        statusLine = status(frame);
-        feedbackOpen = false;
-        dialog = OwnWindowTouches.show(new AlertDialog.Builder(activity)
-                .setTitle("Report this offer")
-                .setView(scroll(frame))
-                .setPositiveButton("Send", null)
-                .setNegativeButton("Cancel", null)
-                .setOnDismissListener(closedDialog -> closed()));
-        dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(tapped -> {
-            OfferReport.Problem problem = chosen[0];
-            Feedback.Prepared reuse = prepared[0] != null && preparedFor[0] == problem ? prepared[0] : null;
-            busy(true, note, preview);
-            status("Sending…");
-            waitingFor = Feedback.sendOfferReport(activity, entry, problem, note.getText().toString(), reuse);
-        });
+            status("");
+            try {
+                activity.startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND)
+                        .setType("text/plain")
+                        .putExtra(Intent.EXTRA_SUBJECT, report.subject)
+                        .putExtra(Intent.EXTRA_TEXT, report.body), "Export " + AppName.NAME + " diagnostics"));
+            } catch (RuntimeException error) {
+                status("Android couldn't open an app to share the diagnostics.");
+            }
+        })) {
+            exporting = true;
+            exportButton.setEnabled(false);
+            status("Preparing diagnostics…");
+        }
+    }
+
+    /** Leaving the app or its feedback composer cannot open an export chooser later. */
+    void cancelExport() {
+        reportShare.cancel();
+        if (exporting && statusLine != null && "Preparing diagnostics…".contentEquals(statusLine.getText())) status("");
+        exporting = false;
+        if (exportButton != null) exportButton.setEnabled(waitingFor.isEmpty());
+    }
+
+    /** Clear history removes a cancelled draft's retained offer and stop context too; typed words remain a draft. */
+    static void forgetContext() {
+        draft.offer = null;
+        draft.afterStop = false;
     }
 
     // ---- Results ----
@@ -314,7 +406,7 @@ final class FeedbackDialogs implements Feedback.Listener {
         if (mine) {
             if (event.state == Feedback.State.SENT || event.state.waiting()) {
                 waitingFor = "";
-                if (event.kind == Feedback.Kind.FEEDBACK) draft = new Draft();
+                draft = new Draft();
                 AlertDialog done = dialog;
                 done.dismiss();
                 if (event.state == Feedback.State.SENT) sent(event);
@@ -336,13 +428,13 @@ final class FeedbackDialogs implements Feedback.Listener {
             // Refused after it left the dialog: what was typed comes back as the draft.
             if (event.kind == Feedback.Kind.FEEDBACK && !event.typed.isEmpty()) draft.message = event.typed;
             said(event.said + (event.kind == Feedback.Kind.FEEDBACK && !event.typed.isEmpty()
-                    ? " Your words are kept: tap Send anonymous feedback to edit them." : ""));
+                    ? " Your words are kept: open Feedback to edit them." : ""));
         }
     }
 
     /** The reference, selectable and copyable, once a submission is accepted. */
     private void sent(Feedback.Event event) {
-        String what = event.kind == Feedback.Kind.PROBLEM ? "Report sent" : "Feedback sent";
+        String what = "Feedback sent";
         LinearLayout frame = frame();
         TextView reference = ui.text(event.reference.isEmpty() ? "No reference was given."
                 : "Reference: " + event.reference, 18, ui.ink, true);
@@ -370,7 +462,10 @@ final class FeedbackDialogs implements Feedback.Listener {
     }
 
     private void closed() {
+        formGeneration++;
         feedbackOpen = false;
+        cancelExport();
+        if (previewDialog != null && previewDialog.isShowing()) previewDialog.dismiss();
     }
 
     // ---- Pieces ----
@@ -488,7 +583,7 @@ final class FeedbackDialogs implements Feedback.Listener {
     private void references(LinearLayout frame) {
         List<Feedback.Sent> sent = Feedback.references(activity);
         if (sent.isEmpty()) return;
-        TextView heading = ui.text("Sent before", 13, ui.inkSecondary, true);
+        TextView heading = ui.text("Recent submissions", 13, ui.inkSecondary, true);
         heading.setPadding(0, ui.dp(10), 0, ui.dp(2));
         frame.addView(heading, Ui.matchWidth());
         StringBuilder lines = new StringBuilder();
@@ -554,15 +649,23 @@ final class FeedbackDialogs implements Feedback.Listener {
             Button send = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
             if (send != null) send.setEnabled(!on);
         }
-        for (View input : inputs) input.setEnabled(!on);
+        for (View input : inputs) enabled(input, !on);
         busyInputs = on ? inputs : busyInputs;
         if (!on) {
-            for (View input : busyInputs) input.setEnabled(true);
+            for (View input : busyInputs) enabled(input, true);
             busyInputs = new View[0];
         }
     }
 
     private View[] busyInputs = new View[0];
+
+    private void enabled(View view, boolean enabled) {
+        view.setEnabled(enabled);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) enabled(group.getChildAt(i), enabled);
+        }
+    }
 
     /** For tests: as a new process would, forget the draft. */
     static void forgetDraft() {

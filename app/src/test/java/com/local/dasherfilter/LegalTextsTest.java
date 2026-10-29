@@ -43,7 +43,7 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "29 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.44";
+    static final String TERMS_VERSION = "0.6.45";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -57,10 +57,11 @@ public final class LegalTextsTest {
      * both (an offer declined by hand holds Autopilot's bar just above its score for the 24 offers after it); 0.6.40
      * both (an accept moves Autopilot's bar to that offer's own score; the bar's last 40 changes are kept for the
      * chart); 0.6.44 both (retained confirmed personal history repairs current working minimums and the bar;
-     * its original 24-offer hold fixes the bar unless a newer personal decline holds it higher).
+     * its original 24-offer hold fixes the bar unless a newer personal decline holds it higher);
+     * 0.6.45 updates the Feedback/Export diagnostics navigation, with the same collection and consent scopes.
      */
     static final String PRIVACY_EFFECTIVE = "29 October 2026";
-    static final String PRIVACY_VERSION = "0.6.44";
+    static final String PRIVACY_VERSION = "0.6.45";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -189,16 +190,16 @@ public final class LegalTextsTest {
             assertFalse(retired, terms.contains(retired));
         }
         String privacy = LegalTexts.Doc.PRIVACY.text();
-        for (String flow : new String[] {"Update checks.", "**Send anonymous feedback**, only when you tap Send",
+        for (String flow : new String[] {"Update checks.", "**General feedback in Feedback**, only when you tap Send",
                 "With **Share anonymous diagnostics** on (from 0.6.34; before, each submission chose with Attach "
                         + "masked diagnostics)",
                 "With the switch off, it sends only your words, the category and the app's version",
-                "**Report this offer**, only when you tap Send",
+                "**Feedback about a selected offer**, only when you tap Send",
                 "**Share anonymous diagnostics**, only if you turn it on in Settings",
                 "turns it off for everyone, whatever was chosen before, and no update turns it on",
                 "**Share anonymous diagnostics** is off unless you turn it on",
                 "Offer Filter stopped unexpectedly last time",
-                "Where feedback goes.", "Share report", "Place names.", "Navigation, only when you tap it.",
+                "Where feedback goes.", "Export diagnostics", "Place names.", "Navigation, only when you tap it.",
                 "Help, only when you tap it in Settings", "Tips.", "24-hour retention window",
                 "rounded to about half a kilometre", "masked"}) {
             assertTrue(flow, privacy.contains(flow));
@@ -240,7 +241,7 @@ public final class LegalTextsTest {
         for (String fact : new String[] {"historical area's center coordinates", "Maps or Waze", "Gas and gas-price choices",
                 "Render, Cloudflare, Supabase, Google, Anthropic and OpenAI", "no ads or mandatory analytics",
                 "Masking is pattern-based and can miss unfamiliar wording",
-                "notes you type with Report this offer, are not masked", "A submission does not guarantee review or a fix",
+                "including notes about a selected offer, is not masked", "A submission does not guarantee review or a fix",
                 "masked again with the current rules immediately before sending",
                 "Anthropic's Claude or OpenAI's ChatGPT/Codex", "Cloudflare and Supabase necessarily receive ordinary "
                 + "connection metadata", "this is not a guarantee of anonymity",
@@ -286,13 +287,13 @@ public final class LegalTextsTest {
                 // The offer rate Autopilot works out from the wait records rides in its plan lines.
                 "Autopilot's plans with the acceptance rate and the offer rate (offers an hour) they count with",
                 "Autopilot's log lines carry only the offer rate (offers an hour) it works out from them",
-                "Your acceptance rate leaves the phone only in a report you share (**Share report**), in masked "
+                "Your acceptance rate leaves the phone only in a report you share (**Export diagnostics**), in masked "
                         + "diagnostics sent with feedback (with **Share anonymous diagnostics** on, or in the report "
-                        + "offered after a stop), and in **Report this offer**",
+                        + "offered after a stop), and in **Feedback about a selected offer**",
                 "It is never in the summary after each dash",
                 "Autopilot's bar and why it changed (never your acceptance rate)",
                 "The fingerprint kept with a reading never leaves the phone.",
-                "Report this offer leaves it out.",
+                "feedback about a selected offer leaves it out.",
                 "Clear history removes the reading, Autopilot's working figures, the accepted offers it keeps, its "
                         + "independent working minimums and any pending adjustment, its last-change note and its kept "
                         + "changes, the note of its last growth (and with it the Undo) and its other notes above.",
@@ -464,7 +465,7 @@ public final class LegalTextsTest {
         assertTrue(terms.contains(contact));
         assertTrue(privacy.contains("Unlike feedback, email is not anonymous"));
         assertTrue(privacy.contains("Send everything else as anonymous feedback."));
-        assertTrue(privacy.contains("Use **Send anonymous feedback** in Settings"));
+        assertTrue(privacy.contains("Use **Feedback** in Settings"));
         // Ohio law, and every limit the law allows kept.
         assertTrue(terms.contains("## Governing law\n\nThese terms are governed by the laws of the State of Ohio, "
                 + "United States."));
