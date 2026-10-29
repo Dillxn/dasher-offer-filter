@@ -97,7 +97,7 @@ final class OfferRule {
     /** The rules applied to a standalone offer. */
     static Decision evaluate(OfferSnapshot offer, FilterSettings settings) {
         // The narrow +$ ceiling is only the original baseline policy, never newly raised working rates.
-        if (offer.payCents == null && offer.payAtMostCents != null) settings = settings.withoutAutopilotAxes();
+        if (offer.payCents == null && offer.payAtMostCents != null) settings = settings.withoutAutopilotAxes().withoutTimeAdjustment();
         return evaluateAt(offer, settings).withRules(settings);
     }
 
@@ -147,10 +147,13 @@ final class OfferRule {
         if (asks.missing || (settings.maxStops > 0 && offer.stops == null)) {
             return new Decision(Result.REVIEW, required, VALUE_NOT_FOUND, offer, score, bar, false, autopilot);
         }
-        int baselineScore = settings.hasAutopilotAxes() ? AreaScore.baselineScorePercent(settings, offer) : score;
-        boolean below = (bar < FilterSettings.BAR_AT_MINIMUMS || settings.hasAutopilotAxes())
+        int baselineScore = settings.hasAutopilotAxes() || settings.timeAware
+                ? AreaScore.baselineScorePercent(settings, offer) : score;
+        boolean below = (bar < FilterSettings.BAR_AT_MINIMUMS || settings.hasAutopilotAxes() || settings.timeAware)
                 && baselineScore >= 0 && baselineScore < FilterSettings.BAR_AT_MINIMUMS;
-        String reason = settings.hasAutopilotAxes()
+        String reason = settings.timeAware && settings.timeWeight.factor != TimeScore.ONE
+                ? (below ? "below your minimums; passes time-aware requirements" : "meets time-aware requirements")
+                : settings.hasAutopilotAxes()
                 ? below ? "below your minimums; passes Autopilot's current minimums"
                         : "meets Autopilot's current minimums"
                 : bar > FilterSettings.BAR_AT_MINIMUMS ? "meets the " + bar + "% bar"
@@ -175,7 +178,8 @@ final class OfferRule {
      * minimum is set. With the bar below 100, a KEEP that would not pass at 100 is marked below the minimums.
      */
     static Decision evaluateAddOn(AddOnOffer addOn, FilterSettings settings) {
-        FilterSettings strict = settings.withoutAutopilotAxes().withScoreByArea(false).withAcceptanceLearning(false);
+        FilterSettings strict = settings.withoutAutopilotAxes().withoutTimeAdjustment()
+                .withScoreByArea(false).withAcceptanceLearning(false);
         return evaluateAddOnStrict(addOn, strict).withRules(strict);
     }
 

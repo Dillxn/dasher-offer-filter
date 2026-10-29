@@ -314,18 +314,20 @@ final class AutopilotRuntime {
     static void requestPlan(Context context, Trigger trigger) {
         if (context == null || trigger == null) return;
         Context app = app(context);
+        boolean timeOnly;
         try {
             if (!Consent.accepted(app)) return;
             FilterSettings rules = FilterStore.load(app);
-            if (!rules.autopilot) return;
-            if (trigger == Trigger.TICK && (!rules.enabled || !Dashing.on(app) || Dashing.isPaused(app))) return;
+            if (!rules.autopilot && !rules.timeAware) return;
+            timeOnly = trigger == Trigger.TICK && (!rules.enabled || !Dashing.on(app) || Dashing.isPaused(app));
+            if (timeOnly && !rules.timeAware) return;
         } catch (RuntimeException unreadable) {
             log(app, AutopilotText.logPlanFailed(unreadable));
             return;
         }
         if (!pending.compareAndSet(false, true)) return;
         try {
-            executor().execute(() -> plan(app));
+            executor().execute(() -> plan(app, timeOnly));
         } catch (RejectedExecutionException stopped) {
             pending.set(false);
         }
@@ -372,7 +374,7 @@ final class AutopilotRuntime {
     }
 
     /** One plan, on the planning thread. */
-    private static void plan(Context app) {
+    private static void plan(Context app, boolean timeOnly) {
         // A request from now on asks for a plan of its own: this one may already have read its inputs.
         pending.set(false);
         try {
@@ -380,6 +382,13 @@ final class AutopilotRuntime {
             long planned = generation.get();
             // Before the state is read: a user's change from here on drops this plan instead of meeting its state.
             long epoch = goalEpoch.get();
+            TimeScoreRuntime.prepare(app, wallClock.getAsLong());
+            if (TimeScoreRuntime.wanted()) {
+                Runnable timeRequester = commitRequester;
+                if (timeRequester != null) timeRequester.run();
+            }
+            // Paused/off-dash display can refresh its clock context without running Autopilot's market planner.
+            if (timeOnly) return;
             FilterStore.AutopilotReconciliation guard = FilterStore.captureAutopilotReconciliation(app);
             if (guard == null) return;
             FilterSettings rules = guard.rules;
@@ -536,7 +545,15 @@ final class AutopilotRuntime {
         try {
             if (!Consent.accepted(app)) return Commit.NO_PLAN;
             FilterStore.PendingAutopilotAxes pendingAxes = FilterStore.pendingAutopilotAxes(app);
-            if (pendingAxes != null) return commitAcceptedAxes(app, pendingAxes);
+            if (pendingAxes != null && FilterStore.load(app).autopilot) return commitAcceptedAxes(app, pendingAxes);
+            synchronized (LOCK) {
+                if (TimeScoreRuntime.commit(app, wallClock.getAsLong())) {
+                    latest.set(null);
+                    notifyListeners();
+                    requestPlan(app, Trigger.COMMIT);
+                    return Commit.COMMITTED;
+                }
+            }
             Autopilot.Plan plan = latest.get();
             if (plan == null) return Commit.NO_PLAN;
             FilterSettings rules = FilterStore.load(app);
@@ -718,6 +735,7 @@ final class AutopilotRuntime {
         Context app = app(context);
         try {
             if (!Consent.accepted(app)) return false;
+            if (TimeScoreRuntime.wanted()) return true;
             if (FilterStore.pendingAutopilotAxes(app) != null) return FilterStore.load(app).autopilot;
             Autopilot.Plan plan = latest.get();
             if (plan == null) return false;
@@ -959,7 +977,7 @@ final class AutopilotRuntime {
             }
         }
         notifyListeners();
-        if (change != UserChange.TURNED_OFF) requestPlan(app, Trigger.USER);
+        if (change != UserChange.TURNED_OFF || FilterStore.load(app).timeAware) requestPlan(app, Trigger.USER);
     }
 
     /**
@@ -975,6 +993,7 @@ final class AutopilotRuntime {
         Context app = app(context);
         synchronized (LOCK) {
             generation.incrementAndGet();
+            TimeScoreRuntime.clear();
             latest.set(null);
             AutopilotStore.clear(app);
             FilterStore.clearAutopilotAxes(app, true);
@@ -1134,6 +1153,7 @@ final class AutopilotRuntime {
      */
     static void forgetCache() {
         synchronized (LOCK) {
+            TimeScoreRuntime.clear();
             latest.set(null);
             pending.set(false);
             commitRequester = null;

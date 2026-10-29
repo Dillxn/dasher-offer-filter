@@ -43,7 +43,7 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "29 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.45";
+    static final String TERMS_VERSION = "0.6.46";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -61,7 +61,7 @@ public final class LegalTextsTest {
      * 0.6.45 updates the Feedback/Export diagnostics navigation, with the same collection and consent scopes.
      */
     static final String PRIVACY_EFFECTIVE = "29 October 2026";
-    static final String PRIVACY_VERSION = "0.6.45";
+    static final String PRIVACY_VERSION = "0.6.46";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {

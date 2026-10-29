@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 29 October 2026 · for {app} 0.6.45
+            Beta terms, effective 29 October 2026 · for {app} 0.6.46
 
             ## What {app} is
 
@@ -68,6 +68,22 @@ final class LegalTexts {
 
             ## What it does
 
+            - Time-aware scoring (from 0.6.46) is optional and starts off, in How offers are judged. It compares \
+            the value of retained standalone offers near the current local time with offers overall, using the same \
+            current saved and enabled learned rules for every comparison. It can raise or lower a standalone score \
+            by at most 25%, and therefore change which offers are declined in either Strict or Area mode, with or \
+            without Autopilot. It uses up to the last 200 retained offers from the last 28 days, including declined \
+            offers, with more weight on recent days; add-ons, paused observations, skipped stores, apparent \
+            misreads and unread scores are excluded. It needs at least 30 eligible offers overall and 12 within 90 \
+            minutes of the local time across at least three dates. Until then it uses the normal score. Estimates \
+            use medians and are pulled toward no adjustment when evidence is sparse. Updates apply only between \
+            offers at the existing safe point. Saved minimums and learned bests are unchanged; the existing hard \
+            maximum stops, unknown-fact review, strict add-on checks and separate strict automatic-acceptance \
+            checks remain. Autopilot records the adjustment with a personal acceptance so reconstructing its \
+            working minimums preserves that acceptance's recorded score. Offer details show the applied factor, \
+            sample counts and score before adjustment. Turning the switch off restores scoring without this \
+            adjustment and, like a mode change, resets Autopilot's working references and holds. Local history is \
+            evidence of past offers, not a forecast or promise about earnings.
             - It reads the Dasher app's screen and notifications on your phone, through Android's accessibility \
             service and notification access, which you turn on yourself. With no rule set, it reads nothing of \
             Dasher's screen. While auto-decline is paused (from 0.6.35), it still reads each offer on Dasher's \
@@ -300,7 +316,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 29 October 2026 · for {app} 0.6.45
+            Beta privacy policy, effective 29 October 2026 · for {app} 0.6.46
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -311,6 +327,17 @@ final class LegalTexts {
 
             ## What it reads on the phone
 
+            - When you enable Time-aware scoring (off by default, from 0.6.46), existing retained offer timestamps \
+            and numeric facts are compared on this phone by local time of day. Only eligible offers from the last \
+            28 days of the existing last-200 history are used; this does not lengthen retention or create a second \
+            offer history. The device's current time zone interprets those timestamps, including older ones; the \
+            app does not recover an earlier time zone or infer a market from location. The switch is saved, and a \
+            decision's numeric scoring snapshot records its multiplier, nearby and overall sample counts, number of \
+            nearby dates, and local reference minute. Working estimates live in memory and are recomputed after \
+            restart. Clear history removes their evidence and the snapshots. No new screen content, location fix, \
+            identity or network request is collected for this feature. Existing optional diagnostic reports can \
+            include the decision's score and whether time-aware scoring is on, under the same reporting choices \
+            described below.
             - Dasher's screen, through Android's accessibility service, while Dasher is on screen or in its half of \
             a split screen: each offer's pay, miles, time, stops and displayed total item count, and the other text \
             Dasher shows, which can include store names, customer names and addresses. With no rule set, it reads \

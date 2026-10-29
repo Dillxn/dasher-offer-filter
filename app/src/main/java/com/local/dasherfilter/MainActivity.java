@@ -196,6 +196,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** Over everything while an update installs; after a minute it offers "Still updating? Continue". */
     private UpdatingCover updatingCover;
     private ScrollView settingsPage;
+    private TextView timeScoreState;
     private boolean showingSettings;
     /**
      * The first-run notice, over everything until it is accepted: the homepage shows only it, and nothing behind it
@@ -1324,27 +1325,47 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     private void chooseScoreMode() {
         FilterSettings rules = FilterStore.load(this);
-        OwnWindowTouches.show(new AlertDialog.Builder(this)
-                .setTitle("How offers are judged")
-                .setSingleChoiceItems(new String[] {
-                        "Strict · every active minimum must be met",
-                        "Area · stronger pay or rates can compensate for weaker ones"
-                }, rules.scoreByArea ? 1 : 0, (dialog, which) -> {
-                    FilterStore.setScoreByArea(this, which == 1);
-                    rulesChanged();
-                    refresh();
-                    dialog.dismiss();
-                })
-                .setNeutralButton("About", (dialog, which) -> OwnWindowTouches.show(new AlertDialog.Builder(this)
-                        .setTitle("Strict and area scoring")
-                        .setMessage("Strict checks every active minimum. Area compares the offer's combined pay and rate "
-                                + "shape with the resolved minimums, so one measure can compensate for another. "
-                                + "Autopilot applies its bar once to the chosen mode. Max stops remains a hard limit; "
-                                + "missing required facts stay for review and add-ons stay strict.\n\n"
-                                + "Permitted by the filter means left for you to decide, not accepted. Automatic "
-                                + "acceptance is a separate opt-in and still requires every minimum at 100% or any higher bar.")
-                        .setPositiveButton("OK", null)))
-                .setNegativeButton("Cancel", null));
+        LinearLayout body = ui.column();
+        body.setPadding(ui.dp(20), 0, ui.dp(20), ui.dp(12));
+        android.widget.RadioGroup modes = new android.widget.RadioGroup(this);
+        String[] names = {"Strict · every active minimum must be met",
+                "Area · stronger pay or rates can compensate for weaker ones"};
+        for (int i = 0; i < names.length; i++) {
+            android.widget.RadioButton mode = new android.widget.RadioButton(this);
+            mode.setId(i + 1);
+            mode.setText(names[i]);
+            mode.setTextColor(ui.ink);
+            mode.setMinHeight(ui.dp(48));
+            modes.addView(mode);
+        }
+        modes.check(rules.scoreByArea ? 2 : 1);
+        modes.setOnCheckedChangeListener((group, id) -> {
+            FilterStore.setScoreByArea(this, id == 2);
+            rulesChanged();
+            refresh();
+        });
+        body.addView(modes, Ui.matchWidth());
+        Switch time = ui.toggle(body, "Time-aware scoring", rules.timeAware);
+        TextView state = ui.text(rules.timeAware ? rules.timeWeight.describe() : "Off · normal scoring", 15,
+                ui.inkSecondary, false);
+        timeScoreState = state;
+        time.setOnCheckedChangeListener((view, on) -> {
+            FilterStore.setTimeAware(this, on);
+            rulesChanged();
+            refresh();
+            state.setText(on ? FilterStore.load(this).timeWeight.describe() : "Off · normal scoring");
+        });
+        body.addView(state, Ui.matchWidth());
+        body.addView(ui.text(TimeScore.EXPLANATION + "\n\nAutopilot applies its bar once. Max stops stays a hard "
+                + "limit and missing required facts stay for review. A passing offer is left for you to decide. "
+                + "Automatic acceptance is a separate opt-in and still checks every saved and enabled learned "
+                + "minimum at 100% or a higher bar, plus any stricter Autopilot working minimums.",
+                15, ui.inkSecondary, false), Ui.matchWidth());
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(body);
+        AlertDialog dialog = OwnWindowTouches.show(new AlertDialog.Builder(this).setTitle("How offers are judged")
+                .setView(scroll).setPositiveButton("Close", null));
+        dialog.setOnDismissListener(ignored -> { if (timeScoreState == state) timeScoreState = null; });
     }
 
     private void showLearningDetails() {
@@ -2020,6 +2041,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             return;
         }
         FilterSettings saved = FilterStore.load(this);
+        if (timeScoreState != null) timeScoreState.setText(saved.timeAware
+                ? saved.timeWeight.describe() : "Off · normal scoring");
         int state = saved.enabled ? 1 : saved.hasAnyRule() ? 2 : 3;
         shownState = state;
         hero.setAction(saved.enabled ? SetupPage.PAUSE : saved.hasAnyRule() ? SetupPage.RESUME : "Set up rules");

@@ -9071,7 +9071,7 @@ public final class OfferFilterService extends AccessibilityService {
         if (OfferRule.SKIP_LIST.equals(decision.reason)) autopilotAcceptancePermit = null;
         // The score this showing's ticket shows: an accept of it moves Autopilot's bar there (0.6.40), never a score
         // worked out again once the learner may have learned from it.
-        if (autopilotAcceptancePermit != null) autopilotAcceptancePermit.noteScore(decision.scorePercent);
+        if (autopilotAcceptancePermit != null) autopilotAcceptancePermit.noteScore(decision.scorePercent, settings);
         acceptedTracker.observeOffer(learn, routeAfter, isAddOn, decision.basis, secondsLeft, routeStored, now);
         offerAcceptTarget = scan.accept;
         offerDeclineTarget = scan.decline;
