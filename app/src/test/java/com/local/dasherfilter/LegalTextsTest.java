@@ -41,9 +41,9 @@ public final class LegalTextsTest {
      * The beta texts' effective identities, also read by ConsentGateTest. Only a text changed in substance gets
      * a new identity in its header; then tools/legal_texts.py regenerates the app's matching copy.
      */
-    static final String TERMS_EFFECTIVE = "23 October 2026";
+    static final String TERMS_EFFECTIVE = "29 October 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.40";
+    static final String TERMS_VERSION = "0.6.44";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -55,11 +55,12 @@ public final class LegalTextsTest {
      * (one Share anonymous diagnostics switch for every diagnostic, off for everyone until turned on); 0.6.35 both
      * (paused, Dasher's screen is read to show each offer's score, nothing tapped; Decline after 10 seconds); 0.6.37
      * both (an offer declined by hand holds Autopilot's bar just above its score for the 24 offers after it); 0.6.40
-     * both (an accept moves Autopilot's bar to that offer's own score; working minimums saved before are rescaled once;
-     * the bar's last 40 changes are kept for the chart).
+     * both (an accept moves Autopilot's bar to that offer's own score; the bar's last 40 changes are kept for the
+     * chart); 0.6.44 both (retained confirmed personal history repairs current working minimums and the bar;
+     * its original 24-offer hold fixes the bar unless a newer personal decline holds it higher).
      */
-    static final String PRIVACY_EFFECTIVE = "23 October 2026";
-    static final String PRIVACY_VERSION = "0.6.40";
+    static final String PRIVACY_EFFECTIVE = "29 October 2026";
+    static final String PRIVACY_VERSION = "0.6.44";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -139,8 +140,12 @@ public final class LegalTextsTest {
                         + "hour, independently up or down",
                 // 0.6.40: the bar moves to the accepted offer's own score and holds there.
                 "From 0.6.40 the shared bar moves at the same time to that offer's own Autopilot score",
-                "The newest acceptance replaces earlier accepted levels and holds the bar at least at that level "
-                        + "for the next 24 counted offers, across dashes",
+                "The newest acceptance replaces earlier accepted levels",
+                "holds the bar at its original recorded score for the next 24 counted offers, across dashes",
+                "The history can repair a missed update or an older incorrectly normalized adjustment",
+                "Merely passing, timing out or disappearing is not an acceptance",
+                "Records from before a goal or rules reset cannot restore the old adjustment",
+                "ordinary goal and offer-rate planning cannot move the bar away from the accepted score",
                 "add-ons and automatic acceptance, which ask your saved and enabled learned minimums at the bar, "
                         + "follow the bar to its new level",
                 "A change of your goal (turning Autopilot on with another goal included), minimums, max stops, "
@@ -311,6 +316,10 @@ public final class LegalTextsTest {
                 "its newest acceptance and anchor bar then replace their highest-score hold",
                 "at most three exact numeric rate pairs", "one pending copy with numeric consent and policy markers",
                 "The latest 200 decision snapshots retain the exact adjustments used for their original decision",
+                "This includes eligible records already on the phone at the update and repairs after a restart",
+                "Rebuilding does not start that hold again",
+                "Clear history removes the evidence, so it cannot rebuild cleared adjustments",
+                "No new observations are collected for this repair",
                 "not included in reports, automatic summaries or the timing study",
                 "fixed category Autopilot, without exporting the working rates",
                 "the bar it was judged at and whether Autopilot set that bar",

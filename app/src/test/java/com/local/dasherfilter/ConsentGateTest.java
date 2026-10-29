@@ -166,7 +166,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         int words = 0;
         for (String[] point : Consent.POINTS) words += (point[0] + " " + point[1]).split("\\s+").length;
         assertTrue(words + " words", words <= 420);
-        assertEquals("37 (0.6.40): an accept moves Autopilot's bar to that offer's own score", 37,
+        assertEquals("38 (0.6.44): retained confirmations repair Autopilot's working minimums and bar", 38,
                 Consent.VERSION);
         // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
         String account = point("Your Dasher account.");
@@ -228,7 +228,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Autopilot never changes your saved minimums or learned bests",
                 "each readable active working minimum to that offer's own pay per stop, pay per mile or pay per hour, "
                         + "independently up or down",
-                "The newest acceptance replaces earlier accepted levels", "Auto-accept starts off.",
+                "The newest acceptance replaces earlier accepted levels",
+                "the latest eligible confirmed personal acceptance in the retained decision history",
+                "Merely passing, timing out or disappearing is not an acceptance", "Auto-accept starts off.",
                 "it can press Back and retry the same offer, at most twice",
                 "Peek is on by default after you accept the current notice", "Peek may tap Dasher's ⚙ button once",
                 "You can turn Peek off in Settings.", "it keeps your unlocked screen from timing out",
@@ -392,8 +394,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // Autopilot Area score; 32, Autopilot's bar down to 10%; 33, split screen retired with the divider's moves;
         // 34, one Share anonymous diagnostics switch; 35, paused offers read and scored, nothing tapped; 36, a decline
         // by hand raises Autopilot's bar just above that offer; 37, an accept moves the bar to that offer's own score,
-        // and the bar's changes are kept for the chart. A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(37, Consent.VERSION);
+        // and the bar's changes are kept for the chart; 38, retained confirmations repair current working minimums
+        // and bar. A phone that accepted 14 (0.5.0) sees it again too.
+        assertEquals(38, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

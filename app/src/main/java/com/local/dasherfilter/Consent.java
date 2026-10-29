@@ -75,7 +75,12 @@ final class Consent {
     // working minimums still holds the bar at its score; and the bar's last 40 changes are kept for the chart's bar
     // line (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing"). The
     // notice's words are unchanged: the Terms and Privacy say it.
-    static final int VERSION = 37;
+    // 38 (0.6.44): retained confirmed personal history now repairs the current working shape and bar, including an
+    // older incorrectly normalized shape, from the original score and numeric rules after the last policy reset.
+    // The acceptance's 24-offer hold fixes the bar at that score unless a newer personal decline holds it higher.
+    // No new collection; the current notice and normal safe point are still required. The Terms and Privacy and
+    // notice's What changed box disclose this use of already retained history; the short points stay unchanged.
+    static final int VERSION = 38;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

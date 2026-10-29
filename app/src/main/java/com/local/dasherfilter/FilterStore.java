@@ -67,6 +67,8 @@ final class FilterStore {
     private static final String AUTOPILOT_AXES_PENDING = "autopilot_axes_pending_v1";
     private static final String AUTOPILOT_AXES_EPOCH = "autopilot_axes_epoch_v1";
     private static final String AUTOPILOT_RESUME_BAR = "autopilot_axes_resume_bar_v1";
+    /** Confirmations observed before a deliberate reset or new requirements cannot reconstruct cleared axes. */
+    private static final String AUTOPILOT_HISTORY_SINCE = "autopilot_history_since_v1";
     private static long autopilotObservationSequence;
     private static long lastAutopilotAcceptanceSequence;
     /** The lowest and highest bar Autopilot may set: {@link Autopilot#BAR_MIN}'s 10 (50 before 0.6.32) and 150. */
@@ -914,6 +916,7 @@ final class FilterStore {
                 // The user's new requirements must be visible immediately, not hidden behind an old working shape.
                 // An offer already on screen may still teach when the user subsequently accepts it.
                 edit.remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR);
+                endAutopilotHistory(prefs, edit, wallClock.getAsLong());
             }
             edit.apply();
         }
@@ -958,6 +961,7 @@ final class FilterStore {
             if (FilterSettings.sanitizedGoal(prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_DEFAULT))
                     != FilterSettings.sanitizedGoal(goal)) {
                 edit.remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR);
+                endAutopilotHistory(prefs, edit, wallClock.getAsLong());
                 advanceAutopilotEvidence(prefs, edit);
                 if (on && !wasOn) edit.putInt(AUTOPILOT_BAR, FilterSettings.BAR_AT_MINIMUMS);
             }
@@ -989,6 +993,55 @@ final class FilterStore {
         synchronized (FilterStore.class) {
             if (!prefs.getBoolean(AUTOPILOT_ON, false) || bar(prefs) != expected) return false;
             prefs.edit().putInt(AUTOPILOT_BAR, next).apply();
+            return true;
+        }
+    }
+
+    /** Snapshot guard for a history-derived repair; a consent transition invalidates the plan, not its history. */
+    static final class AutopilotReconciliation {
+        final FilterSettings rules;
+        final long epoch, consentAt, historySince;
+        final int consentVersion;
+
+        private AutopilotReconciliation(FilterSettings rules, SharedPreferences prefs, SharedPreferences consent) {
+            this.rules = rules;
+            epoch = prefs.getLong(AUTOPILOT_AXES_EPOCH, 0);
+            historySince = prefs.getLong(AUTOPILOT_HISTORY_SINCE, 0);
+            consentAt = consent.getLong(Consent.ACCEPTED_AT, 0);
+            consentVersion = consent.getInt(Consent.ACCEPTED_VERSION, 0);
+        }
+
+        boolean matches(Context context) {
+            SharedPreferences prefs = prefs(context);
+            SharedPreferences consent = context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE);
+            FilterSettings now = read(prefs);
+            return Consent.accepted(context) && now.autopilot && rules.rulesKey().equals(now.rulesKey())
+                    && rules.minimumScalePercent == now.minimumScalePercent
+                    && epoch == prefs.getLong(AUTOPILOT_AXES_EPOCH, 0)
+                    && historySince == prefs.getLong(AUTOPILOT_HISTORY_SINCE, 0)
+                    && consentAt == consent.getLong(Consent.ACCEPTED_AT, 0)
+                    && consentVersion == consent.getInt(Consent.ACCEPTED_VERSION, 0);
+        }
+    }
+
+    static AutopilotReconciliation captureAutopilotReconciliation(Context context) {
+        load(context);
+        synchronized (FilterStore.class) {
+            if (!Consent.accepted(context)) return null;
+            SharedPreferences prefs = prefs(context);
+            FilterSettings rules = read(prefs);
+            return !rules.autopilot ? null : new AutopilotReconciliation(rules, prefs,
+                    context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE));
+        }
+    }
+
+    /** Called only with unchanged history at the scanner's normal safe point. No saved or learned knob is changed. */
+    static boolean commitReconciledAutopilot(Context context, AutopilotReconciliation guard,
+                                            AutopilotAxes axes, int bar) {
+        synchronized (FilterStore.class) {
+            if (guard == null || axes == null || axes.isEmpty() || bar < BAR_MIN || bar > BAR_MAX
+                    || !guard.matches(context) || pendingAutopilotAxes(context) != null) return false;
+            prefs(context).edit().putString(AUTOPILOT_AXES, axes.encode()).putInt(AUTOPILOT_BAR, bar).apply();
             return true;
         }
     }
@@ -1172,6 +1225,7 @@ final class FilterStore {
             SharedPreferences prefs = prefs(context);
             SharedPreferences.Editor edit = prefs.edit().remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING)
                     .remove(AUTOPILOT_RESUME_BAR);
+            endAutopilotHistory(prefs, edit, wallClock.getAsLong());
             if (invalidateEvidence) advanceAutopilotEvidence(prefs, edit);
             edit.apply();
         }
@@ -1180,6 +1234,15 @@ final class FilterStore {
     private static void advanceAutopilotEvidence(SharedPreferences prefs, SharedPreferences.Editor edit) {
         edit.putLong(AUTOPILOT_AXES_EPOCH, prefs.getLong(AUTOPILOT_AXES_EPOCH, 0) + 1)
                 .remove(AUTOPILOT_AXES_PENDING);
+    }
+
+    static long autopilotHistorySince(Context context) {
+        return prefs(context).getLong(AUTOPILOT_HISTORY_SINCE, 0);
+    }
+
+    /** In the same write as a deliberate clear; consent transitions and Adopt do not advance this boundary. */
+    private static void endAutopilotHistory(SharedPreferences prefs, SharedPreferences.Editor edit, long wall) {
+        edit.putLong(AUTOPILOT_HISTORY_SINCE, Math.max(wall, prefs.getLong(AUTOPILOT_HISTORY_SINCE, 0)));
     }
 
     // ---- The minimums grew (0.5.1 to 0.6.20): the Undo of a growth made then ----
@@ -1203,6 +1266,7 @@ final class FilterStore {
             SharedPreferences.Editor edit = prefs.edit().putInt(FLAT, grown.flatBefore).putInt(PER_MILE, grown.mileBefore)
                     .putInt(PER_MINUTE, grown.minuteBefore).putLong(MINIMUMS_SINCE, wall)
                     .remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR);
+            endAutopilotHistory(prefs, edit, wall);
             minimaChanged(prefs, edit);
             edit.apply();
             return true;
@@ -1317,6 +1381,7 @@ final class FilterStore {
         synchronized (FilterStore.class) {
             SharedPreferences.Editor edit = prefs.edit().remove(ADOPTION).remove(LEARNED_RAISE)
                     .remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR);
+            endAutopilotHistory(prefs, edit, wallClock.getAsLong());
             policyChangedSince(prefs, edit);
             writeAccepted(edit, AcceptedFloors.NONE);
             advanceEpoch(prefs, edit);
@@ -1427,6 +1492,7 @@ final class FilterStore {
             SharedPreferences prefs = prefs(context);
             SharedPreferences.Editor edit = prefs.edit().putLong(MINIMUMS_SINCE, wallClock.getAsLong())
                     .remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR);
+            endAutopilotHistory(prefs, edit, wallClock.getAsLong());
             if (a.flatBefore != a.flatAfter) edit.putInt(FLAT, a.flatBefore);
             if (a.mileBefore != a.mileAfter) edit.putInt(PER_MILE, a.mileBefore);
             if (a.minuteBefore != a.minuteAfter) edit.putInt(PER_MINUTE, a.minuteBefore);

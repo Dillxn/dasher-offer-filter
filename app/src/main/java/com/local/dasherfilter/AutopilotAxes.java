@@ -23,14 +23,14 @@ import java.util.Objects;
  * <p>From 0.6.31 the same acceptance also keeps its total pay, normalized the same way: Area mode weighs an offer's
  * total pay against it for a quarter of the score ({@link AreaScore}; the owner's "ticket value"). It is total against total:
  * never pay per stop × stops, and never drawn on the pay-per-stop spoke. State written before 0.6.31 has none until
- * the next acceptance; nothing reconstructs it.
+ * another acceptance or, from 0.6.44, reconciliation from an eligible retained confirmation's complete record.
  */
 final class AutopilotAxes {
     static final AutopilotAxes NONE = new AutopilotAxes(new Rate[3], null, 0, FilterSettings.BAR_AT_MINIMUMS);
     private static final int MAX_ENCODED = 4096;
     private static final int MAX_INTEGER_DIGITS = 512;
 
-    /** The latest prospective acceptance which set at least one active, observed rate. */
+    /** The latest confirmed personal acceptance which set at least one active, observed rate. */
     final long acceptedAt;
     /**
      * The bar this acceptance set and its next-24-offers protection: that offer's own Autopilot score as seen, held to
@@ -141,6 +141,15 @@ final class AutopilotAxes {
         Rate whole = Rate.observed(offer.payCents, BigDecimal.ONE, reference);
         AutopilotAxes result = new AutopilotAxes(next, whole, at, reference);
         return equals(result) ? this : result;
+    }
+
+    /** Same effective references expressed at another bar, for identifying an old normalization of one acceptance. */
+    AutopilotAxes rebased(int bar, long at) {
+        if (isEmpty() || bar < FilterStore.BAR_MIN || bar > FilterStore.BAR_MAX) return NONE;
+        BigInteger from = BigInteger.valueOf(referenceBar), to = BigInteger.valueOf(bar);
+        Rate[] next = rates.clone();
+        for (int i = 0; i < next.length; i++) if (next[i] != null) next[i] = next[i].scaled(from, to);
+        return new AutopilotAxes(next, totalPay == null ? null : totalPay.scaled(from, to), at, bar);
     }
 
     /**

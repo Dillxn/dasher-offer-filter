@@ -903,6 +903,17 @@ final class DecisionLog {
         return version;
     }
 
+    /**
+     * A derived-state compare-and-set against this exact history snapshot. The small callback must not wait on
+     * another thread or call back into the runtime; callers take the runtime lock before this history lock.
+     * History writers never acquire that runtime lock, and Clear history releases FilterStore before taking ours.
+     */
+    static boolean atVersion(long expected, java.util.function.BooleanSupplier commit) {
+        synchronized (LOCK) {
+            return version == expected && commit.getAsBoolean();
+        }
+    }
+
     static void clear(Context context) {
         FilterStore.clearLearningHistory(context);
         CameBack.clear();

@@ -668,21 +668,22 @@ final class AutopilotText {
     private static final OfferSnapshot RATE_EXAMPLE = new OfferSnapshot(null, 1.0, 60, 1);
 
     /**
-     * While an offer the user accepted by hand holds the bar (0.6.11, {@link Autopilot.Plan#floorBinds}; across dashes
-     * from 0.6.18; for the 24 offers after it from 0.6.21, counted down): "The bar stays at 63% or more for your next
-     * 15 offers: you accepted an offer that scored 63% of your minimums. Changing your goal or minimums lets it go
-     * sooner."; while the bar is still below it ({@link #risingTo}, 0.6.19), when it rises: "The bar rises to 63% as
-     * soon as no offer is up, and stays at 63% or more for your next 15 offers: …" (0.6.20; 0.6.19 said once Dasher is
-     * on screen). From 0.6.37, while an offer the user declined by hand holds it
-     * ({@link Autopilot.Plan#floorDeclined}): "The bar stays at 40% or more for your next 24 offers: you declined an
-     * offer that scored 39%, so offers no better are declined. …" (at the top bar, "… scored 149% or more, and the bar
-     * goes no higher. …"). Null otherwise.
+     * Explain the active personal-choice hold. From 0.6.44, a complete retained acceptance fixes the current bar
+     * at its original score for the remaining counted offers, so a stale bar can move down as well as up. A newer
+     * personal decline can hold it higher; that decline's own hold can outlast the acceptance's exact hold.
      */
     static String detailsFloor(Status s) {
         Autopilot.Plan plan = s.plan;
-        if (!s.on || plan == null || !plan.floorBinds()) return null;
+        if (!s.on || plan == null || (!plan.acceptedHold && !plan.floorBinds())) return null;
         int left = plan.floorOffersLeft;
         String next = " for your next " + (left == 1 ? "offer" : left + " offers");
+        if (plan.acceptedHold && !plan.floorDeclined) {
+            String holds = s.bar == plan.floor ? "The bar stays at " + plan.floor + "%" + next
+                    : "The bar moves to " + plan.floor + "% as soon as no offer is up, and stays there" + next;
+            return holds + ": your latest confirmed acceptance in history sets these working minimums and this "
+                    + "hold from its recorded score. A newer acceptance replaces them; a newer personal decline can "
+                    + "hold the bar higher. Changing your goal or minimums lets it go sooner.";
+        }
         String holds = risingTo(s) >= 0
                 ? "The bar rises to " + plan.floor + "% as soon as no offer is up, and stays at " + plan.floor
                         + "% or more" + next

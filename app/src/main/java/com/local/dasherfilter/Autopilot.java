@@ -34,8 +34,9 @@ import java.util.TimeZone;
  *
  * <p>Autopilot never accepts anything and never decides a single offer. From 0.6.29 the runtime supplies independent
  * working rates set by the latest prospective personal acceptance ({@link AutopilotAxes}). This planner protects
- * that acceptance's reference bar for the next {@value #FLOOR_OFFERS} counted offers, and optimizes its shared buffer
- * over that working shape. A newer lower acceptance replaces an older higher one. Before a working shape exists,
+ * that acceptance's reference bar for the next {@value #FLOOR_OFFERS} counted offers. Full retained confirmed
+ * history reconstructs its working shape and keeps that exact bar (or a later personal decline's higher floor)
+ * during the hold; after it expires, the planner optimizes its shared buffer over the reconstructed shape. A newer lower acceptance replaces an older higher one. Before a working shape exists,
  * the legacy highest-accepted-score hold ({@link #acceptedFloor}, at most 150%) remains. From 0.6.37 a decline by
  * hand since the latest acceptance raises that protection, never lowers it: the bar stays one point above the
  * declined offer's score for the next {@value #FLOOR_OFFERS} counted offers ({@link #declinedFloor}). The saved
@@ -291,6 +292,8 @@ final class Autopilot {
          * {@link DecisionLog#handDeclinedAt}); {@link #NEVER} when it has none.
          */
         final long declinedByHandAt;
+        /** Original displayed score, never rescored after the acceptance taught the learner. */
+        final int recordedScore;
 
         /** A line decided at exactly the minimums with Autopilot off, under the current rules model. */
         OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
@@ -326,6 +329,14 @@ final class Autopilot {
         OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
                     boolean arExempt, int bar, boolean autopilot, int model, FilterSettings scoringRules,
                     boolean skipped, long acceptedByHandAt, long declinedByHandAt) {
+            this(facts, at, addOn, replay, accepted, declined, arExempt, bar, autopilot, model, scoringRules,
+                    skipped, acceptedByHandAt, declinedByHandAt, -1);
+        }
+
+        OfferRecord(OfferSnapshot facts, long at, boolean addOn, boolean replay, boolean accepted, boolean declined,
+                    boolean arExempt, int bar, boolean autopilot, int model, FilterSettings scoringRules,
+                    boolean skipped, long acceptedByHandAt, long declinedByHandAt, int recordedScore) {
+            this.recordedScore = recordedScore;
             this.acceptedByHandAt = acceptedByHandAt;
             this.declinedByHandAt = declinedByHandAt;
             this.skipped = skipped;
@@ -720,6 +731,10 @@ final class Autopilot {
          * live evidence missed): 0.6.40's healed hold, at its score now.
          */
         final boolean floorHealed;
+        /** Full retained personal-acceptance evidence determines these rates; null when no reconstruction is justified. */
+        final AutopilotAxes reconciledAxes;
+        /** During the original 24-offer window the confirmed choice sets the exact bar, not merely a lower bound. */
+        final boolean acceptedHold;
         /** The committed bar the plan started from. */
         final int current;
         final int goal;
@@ -792,10 +807,12 @@ final class Autopilot {
             this.floorOffersLeft = floor < 0 ? 0 : d.floorOffersLeft;
             this.floorDeclined = floor >= 0 && d.floorDeclined;
             this.floorHealed = floor >= 0 && d.floorHealed;
-            this.target = Math.max(target, floor);
+            this.reconciledAxes = mode == Mode.OFF || mode == Mode.NO_RULES ? null : d.reconciledAxes;
+            this.acceptedHold = reconciledAxes != null && d.acceptedHold && floor >= 0;
+            this.target = acceptedHold ? floor : Math.max(target, floor);
             this.current = d.state.current;
             this.goal = d.rules.autopilotGoalPercent;
-            this.rulesKey = d.rules.rulesKey();
+            this.rulesKey = d.sourceRulesKey;
             this.computedAt = d.wallNow;
             this.generation = d.generation;
             this.counted = d.windowThetas.length;
@@ -855,7 +872,7 @@ final class Autopilot {
 
         /** The accepted (or, from 0.6.37, declined) floor holds the bar above what the mode alone would want. */
         boolean floorBinds() {
-            return floor > ownTarget;
+            return acceptedHold || floor > ownTarget;
         }
 
         /** The acceptance rate is known and below a goal. */
@@ -896,10 +913,14 @@ final class Autopilot {
         int floorOffersLeft;
         boolean floorDeclined;
         boolean floorHealed;
+        String sourceRulesKey;
+        AutopilotAxes reconciledAxes;
+        boolean acceptedHold;
 
         Draft(Inputs in, List<OfferRecord> window, int[] thetas, List<MixLine> mix, ArNow ar, Rate rate,
               boolean exemptionsIgnored) {
             rules = in.rules;
+            sourceRulesKey = rules.rulesKey();
             state = in.state;
             wallNow = in.wallNow;
             generation = in.generation;
@@ -966,7 +987,11 @@ final class Autopilot {
      * ({@link #acceptedFloor}); the plan's target is never below it, except while off or with no money minimum.
      */
     static Plan plan(Inputs in) {
-        FilterSettings rules = in.rules;
+        FilterSettings original = in.rules;
+        AutopilotAxes anchor = acceptedAxes(original, in.newestFirst, in.floorSince, in.wallNow);
+        FilterSettings rules = anchor == null ? original : original.withAutopilotAxes(anchor);
+        Inputs effective = new Inputs(rules, in.newestFirst, in.waits, in.reading, in.state, in.wallNow,
+                in.generation, in.minimumsSince, in.zone, in.costPerMileCents, in.floorSince, in.keptAccepts);
         State state = in.state;
         int goal = rules.autopilotGoalPercent;
         List<OfferRecord> counted = countedLines(in.newestFirst);
@@ -980,26 +1005,17 @@ final class Autopilot {
         ArNow ar = arNow(in.reading, counted, ignoreExempt, in.wallNow);
         Rate rate = lambda(in.waits, in.wallNow);
         List<MixLine> mix = mix(rules, window, thetas, in.costPerMileCents);
-        Draft draft = new Draft(in, window, thetas, mix, ar, rate, ignoreExempt);
+        Draft draft = new Draft(effective, window, thetas, mix, ar, rate, ignoreExempt);
+        draft.sourceRulesKey = original.rulesKey();
+        draft.reconciledAxes = anchor;
+        draft.acceptedHold = anchor != null && anchorOffersLeft(anchor, counted) > 0;
         if (rules.hasAutopilotAxes()) {
             // A prospective personal acceptance sets a new independent working shape. Its own reference bar holds
             // that shape for the next 24 offers; no older, higher accepted score may override a newer lower choice.
             // Re-scoring history would also lose partial-axis accepts and reintroduce the learner's pay +1 cent.
             draft.floorOffersLeft = anchorOffersLeft(rules.autopilotAxes, counted);
             draft.floor = draft.floorOffersLeft > 0 ? rules.autopilotAxes.referenceBar : -1;
-            // Declarative, so it heals (0.6.40; the owner, 23 October 2026: "the app should be declarative and
-            // therefore naturally self healing"): a hand accept the history holds after the one that set the shape
-            // (its live evidence missed, so no shape followed it) still sets the floor at its score, the latest
-            // deciding, for the 24 offers after it.
-            // Only an offer judged with Autopilot on counts: one taken while it was off was never Autopilot's.
-            HandAccept newer = newestAccept(handAccepts(rules, judgedByAutopilot(in.newestFirst)), in.floorSince);
-            if (newer != null && newer.at > rules.autopilotAxes.acceptedAt + DEDUP_MS) {
-                int left = FLOOR_OFFERS - offersBetween(counted, newer.at, Long.MAX_VALUE);
-                boolean holds = left > 0 && newer.score >= BAR_MIN;
-                draft.floor = holds ? newer.score : -1;
-                draft.floorOffersLeft = holds ? left : 0;
-                draft.floorHealed = holds;
-            }
+            draft.floorHealed = anchor != null && !anchor.equals(original.autopilotAxes);
         } else {
             List<HandAccept> accepts = handAccepts(rules, in.newestFirst, in.keptAccepts);
             draft.floor = acceptedFloor(accepts, in.floorSince, counted);
@@ -1009,7 +1025,8 @@ final class Autopilot {
         // offers after it, and never lowers it (0.6.37; the owner, 23 October 2026: "if i decline an offer then
         // autopilot should raise my mins to its"). The latest accept still decides alone what came before it.
         List<HandDecline> declines = handDeclines(rules, in.newestFirst,
-                Math.max(in.floorSince, latestAccept(rules, in.newestFirst, in.keptAccepts)));
+                Math.max(in.floorSince, anchor == null ? latestAccept(rules, in.newestFirst, in.keptAccepts)
+                        : anchor.acceptedAt));
         int declined = declinedFloor(declines, counted);
         if (declined >= BAR_MIN && declined >= draft.floor) {
             draft.floor = declined;
@@ -1081,6 +1098,55 @@ final class Autopilot {
             kept.add(record);
         }
         return Collections.unmodifiableList(kept);
+    }
+
+    /**
+     * Derives the latest confirmed personal choice from its immutable decision, including after restart/update.
+     * The latest eligible confirmation is a barrier: an incomplete newer record never revives an older choice.
+     * Only full retained history has this authority; the legacy time-and-facts-only kept accepts do not.
+     */
+    static AutopilotAxes acceptedAxes(FilterSettings current, List<OfferRecord> lines, long since, long now) {
+        if (current == null || !current.autopilot || !current.hasMonetaryRule() || lines == null) return null;
+        OfferRecord latest = null;
+        boolean ambiguous = false;
+        for (OfferRecord line : lines) {
+            if (line == null || line.acceptedByHandAt == NEVER || line.acceptedByHandAt < since
+                    || line.at < since || line.acceptedByHandAt > now || line.at > now || !line.autopilot
+                    || line.addOn || line.replay || line.skipped || OfferSanity.looksMisread(line.facts)) continue;
+            if (latest == null || line.acceptedByHandAt > latest.acceptedByHandAt) {
+                latest = line;
+                ambiguous = false;
+            } else if (line.acceptedByHandAt == latest.acceptedByHandAt
+                    && (!line.facts.fingerprint().equals(latest.facts.fingerprint())
+                        || line.recordedScore != latest.recordedScore || line.bar != latest.bar
+                        || line.scoringRules == null || latest.scoringRules == null
+                        || !line.scoringRules.scoringKey().equals(latest.scoringRules.scoringKey()))) ambiguous = true;
+        }
+        if (latest == null || ambiguous || latest.facts.payCents == null || latest.facts.payCents <= 0
+                || latest.recordedScore < 0 || latest.model != DecisionLog.MODEL
+                || latest.scoringRules == null || !latest.scoringRules.autopilot
+                || !latest.scoringRules.hasMonetaryRule()
+                || current.maxStops > 0 && latest.facts.stops != null && latest.facts.stops > current.maxStops) return null;
+        // Use the decision's predecessor and bar for unread axes. Current mutable rates would make a partial
+        // reconstruction depend on which event happened to execute first. Goal is deliberately not compared:
+        // older persisted numeric policy snapshots did not retain it; the reset cutoff is its authority.
+        FilterSettings observed = latest.scoringRules.withMinimumScalePercent(latest.bar);
+        // The live path applies this acceptance's learner update before calibrating working axes. Reproduce
+        // only that local transition from its original proof; future learned highs never enter reconstruction.
+        if (observed.acceptanceLearning) observed = observed.withAccepted(observed.accepted.raisedBy(latest.facts));
+        AutopilotAxes desired = observed.autopilotAxes.withOffer(observed, latest.facts,
+                latest.acceptedByHandAt, latest.recordedScore);
+        if (desired.isEmpty() || desired == observed.autopilotAxes) return null;
+        AutopilotAxes stored = current.autopilotAxes;
+        if (stored.acceptedAt > desired.acceptedAt) {
+            // The scanner and history writer stamp the same acceptance separately. A close, exactly equivalent
+            // reference is that same choice; anything else may be a newer confirmation not yet in history.
+            if (stored.acceptedAt - desired.acceptedAt > DEDUP_MS
+                    || !stored.rebased(desired.referenceBar, desired.acceptedAt).equals(desired)) return null;
+            // Preserve the later confirmed timestamp instead of shortening an equivalent live anchor's hold.
+            desired = desired.rebased(desired.referenceBar, stored.acceptedAt);
+        }
+        return desired;
     }
 
     // ---- (b) The accepted floor (0.6.11) ----

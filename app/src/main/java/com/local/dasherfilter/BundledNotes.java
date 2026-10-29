@@ -171,6 +171,14 @@ final class BundledNotes {
             "The chart's purple bar line now follows the bar offer by offer, with a word where it moved (accepted, "
                     + "hold over, 1 in 5 pass…)."};
 
+    /** Notice 38 and 0.6.44: the current bar and working minimums reconcile from confirmed retained history. */
+    private static final String[] HISTORY_REPAIRS = {
+            "Autopilot now checks your retained history to correct its bar and working minimums from your latest "
+                    + "confirmed acceptance, including one missed before this update. You do not need to accept again.",
+            "For the original 24-offer hold, the bar stays at that offer's recorded score unless a newer offer you "
+                    + "decline holds it higher. Passing or timing out does not count as accepting.",
+            "Clear history and changes to your goal or rules prevent earlier offers from restoring old adjustments."};
+
     private static final String SKYLINE_BACK =
             "The chart's buildings and trees are back: each building is the offer's pay, its tree the score, with a "
                     + "pay line and the 100% line.";
@@ -296,6 +304,7 @@ final class BundledNotes {
         notice(36, DECLINE_RAISES);
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
+        notice(38, HISTORY_REPAIRS);
         release("0.5.0",
                 "New Autopilot (the Auto button) adjusts how much of your minimums an offer must pay, toward a goal "
                         + "you pick: acceptance rate 70%, 50%, or pay first.",
@@ -508,6 +517,7 @@ final class BundledNotes {
         // 0.6.43: 0.6.40's change whole again. Play Protect blocked 0.6.40, 0.6.41 (its accept half) and 0.6.42 (0.6.39's
         // code under a new number) alike, so no code of 0.6.40's was the cause.
         release("0.6.43", BAR_FOLLOWS);
+        release("0.6.44", HISTORY_REPAIRS);
         // 0.4.73 never shipped and nothing builds under its name any more: it has no entry (and so no card).
     }
 

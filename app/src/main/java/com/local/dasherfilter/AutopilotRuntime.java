@@ -42,8 +42,9 @@ import java.util.function.LongSupplier;
  * commit goes straight to the target, still only at a safe point.
  *
  * <p><b>Saved minimums and learned bests stay separate.</b> From 0.6.29 a confirmed prospective personal acceptance
- * stages independent Autopilot working rates, up or down, through {@link #confirmedManualAcceptance}. Their atomic
- * safe-point commit takes priority over scalar plans and preserves the shared bar. The saved knobs and learner's
+ * stages independent Autopilot working rates, up or down, through {@link #confirmedManualAcceptance}. Full retained
+ * confirmed history also derives those rates and repairs their present state, including after restart or update.
+ * Atomic safe-point commits set the history-derived exact bar during the original 24-offer acceptance hold. The saved knobs and learner's
  * bests never change here. From 0.5.1 to 0.6.20 a commit could grow saved minimums ({@link Growth}); a growth made
  * then keeps its note and Undo ({@link #undoGrowth}, the user's change) while it still applies.
  *
@@ -170,6 +171,21 @@ final class AutopilotRuntime {
     // ---- State ----
 
     private static final AtomicReference<Autopilot.Plan> latest = new AtomicReference<>();
+    /** The exact evidence behind the published plan; never retained across restart or reused for another plan. */
+    private static final class HistoryPlan {
+        final Autopilot.Plan plan;
+        final FilterStore.AutopilotReconciliation guard;
+        final long version, epoch, since;
+        HistoryPlan(Autopilot.Plan plan, FilterStore.AutopilotReconciliation guard, long version, long epoch, long since) {
+            this.plan = plan;
+            this.guard = guard;
+            this.version = version;
+            this.epoch = epoch;
+            this.since = since;
+        }
+    }
+    private static volatile HistoryPlan historyPlan;
+
     private static final AtomicBoolean pending = new AtomicBoolean();
     /** Clear history moves it on: anything worked out from before is dropped. */
     private static final AtomicLong generation = new AtomicLong();
@@ -327,7 +343,8 @@ final class AutopilotRuntime {
 
     /**
      * The existing detector confirmed a personal standalone acceptance. Only its prospective live permit can stage
-     * a working-shape update; no history read, automatic request or attempted tap can create one. A queued update
+     * the fast-path working-shape update. Planning independently reconciles complete confirmed history; automatic
+     * requests and attempted taps never acquire that authority. A queued update
      * invalidates older plans and asks the scanner to commit it at its existing safe point.
      */
     static FilterStore.AutopilotAcceptance confirmedManualAcceptance(Context context,
@@ -363,10 +380,16 @@ final class AutopilotRuntime {
             long planned = generation.get();
             // Before the state is read: a user's change from here on drops this plan instead of meeting its state.
             long epoch = goalEpoch.get();
-            FilterSettings rules = FilterStore.load(app);
-            if (!rules.autopilot) return;
+            FilterStore.AutopilotReconciliation guard = FilterStore.captureAutopilotReconciliation(app);
+            if (guard == null) return;
+            FilterSettings rules = guard.rules;
             long wall = wallClock.getAsLong();
+            long historyVersion = DecisionLog.version();
             List<Autopilot.OfferRecord> lines = records(DecisionLog.recent(app, HISTORY_LINES));
+            if (DecisionLog.version() != historyVersion) {
+                requestPlan(app, Trigger.COMMIT);
+                return;
+            }
             List<QualifyingWait.Sample> waits = QualifyingWaitStore.snapshot(app);
             AutopilotStore.Reading stored = AutopilotStore.reading(app, wall);
             Autopilot.State state = state(app, rules);
@@ -376,7 +399,7 @@ final class AutopilotRuntime {
             if (AutopilotStore.undoToggleRestartOnce(app, payFirst)) log(app, AutopilotText.LOG_FLOOR_PAST_TOGGLES);
             // The accepted floor counts hand accepts since the user's last change of goal or rules, each for the 24
             // offers after it, across dashes (0.6.21; the last 7 days from 0.6.18; this dash before).
-            long floorSince = AutopilotStore.floorSince(app);
+            long floorSince = Math.max(AutopilotStore.floorSince(app), guard.historySince);
             // Those accepts are kept past the latest 200 lines for 7 days (0.6.19), never after Clear history.
             List<Autopilot.OfferRecord> kept;
             synchronized (LOCK) {
@@ -388,7 +411,7 @@ final class AutopilotRuntime {
             if (hook != null) hook.run();
             Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, waits, reading(stored), state, wall,
                     planned, since, TimeZone.getDefault(), CostPerMile.cents(app), floorSince, kept));
-            String dropped = publish(app, plan, state, epoch, stored, wall);
+            String dropped = publish(app, plan, state, epoch, stored, wall, guard, historyVersion, floorSince);
             if (dropped != null) {
                 log(app, dropped);
                 return;
@@ -412,17 +435,23 @@ final class AutopilotRuntime {
      * @return null when published; otherwise the log line saying why it was dropped
      */
     private static String publish(Context app, Autopilot.Plan plan, Autopilot.State before, long epoch,
-                                  AutopilotStore.Reading stored, long wall) {
+                                  AutopilotStore.Reading stored, long wall, FilterStore.AutopilotReconciliation guard,
+                                  long historyVersion, long floorSince) {
         synchronized (LOCK) {
             if (plan.generation != generation.get()) return AutopilotText.DISCARD_CLEARED;
             if (!plan.rulesKey.equals(FilterStore.load(app).rulesKey())) return AutopilotText.DISCARD_RULES;
-            if (epoch != goalEpoch.get()) return AutopilotText.DISCARD_AUTOPILOT_CHANGED;
+            if (epoch != goalEpoch.get() || !guard.matches(app)) return AutopilotText.DISCARD_AUTOPILOT_CHANGED;
+            if (historyVersion != DecisionLog.version() || floorSince != reconciliationSince(app)) {
+                requestPlan(app, Trigger.COMMIT);
+                return "plan discarded: confirmed history changed";
+            }
             if (plan.recovering != before.recovering || plan.extra != before.extra
                     || plan.checkpointAt != before.checkpointAt || plan.checkpointAr != before.checkpointAr) {
                 boolean checkpoint = plan.checkpointAt != Autopilot.NEVER && plan.checkpointAt > 0;
                 AutopilotStore.savePlanState(app, plan.recovering, plan.extra, checkpoint ? plan.checkpointAt : 0,
                         checkpoint ? plan.checkpointAr : -1);
             }
+            historyPlan = new HistoryPlan(plan, guard, historyVersion, epoch, floorSince);
             latest.set(plan);
             Runnable hook = beforePlanLogForTests;
             if (hook != null) hook.run();
@@ -482,7 +511,7 @@ final class AutopilotRuntime {
                 entry.action == DecisionLog.Action.REPLAY, DecisionLog.accepted(entry), declined,
                 DecisionLog.hasStep(entry, DecisionLog.StepKind.AR_EXEMPT), entry.barPercent, entry.autopilot,
                 entry.model, entry.scoringRules, OfferRule.SKIP_LIST.equals(entry.reason),
-                DecisionLog.handAcceptedAt(entry), DecisionLog.handDeclinedAt(entry));
+                DecisionLog.handAcceptedAt(entry), DecisionLog.handDeclinedAt(entry), entry.scorePercent);
     }
 
     // ---- Commits ----
@@ -519,6 +548,8 @@ final class AutopilotRuntime {
             String stale = staleness(plan, rules, wall);
             int current = rules.minimumScalePercent;
             if (stale != null || plan.current != current) return discard(app, plan, stale);
+            if (plan.reconciledAxes != null && (!plan.reconciledAxes.equals(rules.autopilotAxes)
+                    || plan.acceptedHold && plan.target != current)) return commitReconciled(app, plan);
             Autopilot.Reason jump = jumpCause(app);
             long elapsed = elapsedClock.getAsLong();
             Autopilot.Step step = step(app, plan, jump, elapsed);
@@ -576,6 +607,55 @@ final class AutopilotRuntime {
             log(app, AutopilotText.logCommitFailed(failure));
             return Commit.FAILED;
         }
+    }
+
+    /** Recomputable history authority: repair both rates and the current planned bar in one safe-point write. */
+    private static Commit commitReconciled(Context app, Autopilot.Plan plan) {
+        Runnable hook = beforeWriteForTests;
+        if (hook != null) hook.run();
+        boolean committed = false;
+        int next = plan.current;
+        Commit result = Commit.DISCARDED;
+        synchronized (LOCK) {
+            HistoryPlan source = historyPlan;
+            if (latest.get() == plan && source != null && source.plan == plan
+                    && source.epoch == goalEpoch.get() && source.since == reconciliationSince(app)
+                    && staleness(plan, FilterStore.load(app), wallClock.getAsLong()) == null) {
+                // After the original hold expires, repair the references without bypassing ordinary adaptation.
+                Autopilot.Reason jump = jumpCause(app);
+                long elapsed = elapsedClock.getAsLong();
+                Autopilot.Step move = step(app, plan, jump, elapsed);
+                final int set = move.next;
+                next = set;
+                committed = DecisionLog.atVersion(source.version,
+                        () -> FilterStore.commitReconciledAutopilot(app, source.guard, plan.reconciledAxes, set));
+                result = committed ? Commit.COMMITTED : Commit.CONFLICT;
+                if (committed) {
+                    goalEpoch.incrementAndGet();
+                    latest.set(null);
+                    AutopilotStore.clearJump(app);
+                    if (plan.acceptedHold || set != plan.current) {
+                        Autopilot.Reason reason = plan.acceptedHold
+                                ? (plan.floorDeclined ? Autopilot.Reason.DECLINED : Autopilot.Reason.ACCEPTED_AXES)
+                                : Autopilot.commitReason(plan, plan.current, set, jump);
+                        AutopilotStore.recordChange(app, plan.current, set, reason.name(), wallClock.getAsLong(),
+                                set > plan.current, move.kind == Autopilot.StepKind.RELEASE);
+                        lastCommitElapsed = elapsed;
+                        if (set > plan.current) lastRaiseElapsed = elapsed;
+                    }
+                }
+            }
+            if (!committed) latest.compareAndSet(plan, null);
+        }
+        if (committed) log(app, "confirmed history reconciled: Autopilot bar " + plan.current + "% to "
+                + next + "%; acceptance hold " + (plan.acceptedHold ? "active" : "ended"));
+        requestPlan(app, Trigger.COMMIT);
+        if (committed) notifyListeners();
+        return result;
+    }
+
+    private static long reconciliationSince(Context app) {
+        return Math.max(AutopilotStore.floorSince(app), FilterStore.autopilotHistorySince(app));
     }
 
     /** The complete accepted working shape lands together, even when the shared bar itself stays unchanged. */
@@ -663,6 +743,7 @@ final class AutopilotRuntime {
 
     private static boolean wanted(Context app, Autopilot.Plan plan) {
         return FilterStore.pendingAutopilotAxes(app) != null || jumpCause(app) != null
+                || plan.reconciledAxes != null && !plan.reconciledAxes.equals(FilterStore.load(app).autopilotAxes)
                 || step(app, plan, null, elapsedClock.getAsLong()).next != plan.current;
     }
 
@@ -671,6 +752,8 @@ final class AutopilotRuntime {
      * change was the floor's, to this bar) straight back once no floor holds it.
      */
     private static Autopilot.Step step(Context app, Autopilot.Plan plan, Autopilot.Reason jump, long elapsed) {
+        if (plan.acceptedHold) return new Autopilot.Step(plan.target,
+                plan.target == plan.current ? Autopilot.StepKind.HOLD : Autopilot.StepKind.FLOOR);
         AutopilotStore.Change last = AutopilotStore.lastChange(app);
         boolean floorHeld = last != null && (Autopilot.Reason.ACCEPTED.name().equals(last.why)
                 || Autopilot.Reason.ACCEPTED_AXES.name().equals(last.why)
@@ -683,6 +766,10 @@ final class AutopilotRuntime {
     /** Why a plan can no longer be used, in the spec's order, as its log line; null when it still can. */
     private static String staleness(Autopilot.Plan plan, FilterSettings rules, long wall) {
         if (plan.generation != generation.get()) return AutopilotText.DISCARD_CLEARED;
+        HistoryPlan source = historyPlan;
+        if (source != null && source.plan == plan && source.version != DecisionLog.version()) {
+            return "plan discarded: confirmed history changed";
+        }
         if (Math.abs(wall - plan.computedAt) > Autopilot.PLAN_MAX_AGE_MS) return AutopilotText.DISCARD_OLD;
         if (!plan.rulesKey.equals(rules.rulesKey())) return AutopilotText.DISCARD_RULES;
         return null;

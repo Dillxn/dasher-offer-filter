@@ -1,3 +1,15 @@
+## 0.6.44 — Confirmed history corrects Autopilot's current bar
+
+Version 0.6.44 (code 136) makes the current Autopilot adjustment follow retained confirmed history. An acceptance that should have lowered the bar can correct it now, even if its live update was missed or an older version kept the wrong normalization.
+
+- **Your latest confirmed acceptance sets the adjustment.** Its original recorded score, offer facts and numeric rules determine the working minimums. For its original next 24 counted offers, the bar stays at that score (10% to 150%), unless a newer personal decline holds it higher. Ordinary goal and offer-rate planning resumes when that hold ends; rebuilding never starts the count again.
+- **Passing is not accepting.** Passed, expired, automatic, ambiguous, add-on, skipped, paused and Autopilot-off offers cannot supply this adjustment. A newer acceptance without enough recorded evidence blocks an older acceptance from taking its place. Existing strict auto-accept checks and all touch, lock and action safeguards remain.
+- **Repair survives a restart or update.** The planner checks retained confirmations again and commits at the existing safe point. Clear history and rules or goal resets prevent old evidence from restoring a cleared adjustment. Saved minimums, learner bests and original decision snapshots are not rewritten.
+- **Notice 38.** Terms and Privacy for 0.6.44, effective 29 October 2026, explain the use of already retained history. No new observations, recipients or sharing choices are added. The short notice remains 420 words; its What changed box explains the repair.
+- **Kept suites.** ConsentGateTest and LegalTextsTest now check notice 38 and the matching legal texts. No tests were added or restored.
+
+Phone behavior has not been verified for this version.
+
 ## 0.6.43 — Your accept sets Autopilot's bar; the chart tracks the bar (0.6.40 again)
 
 Version 0.6.43 (code 135) is 0.6.40's code and texts whole again under a new number. Google Play Protect blocked 0.6.40, then 0.6.41 (its accept half alone) and 0.6.42 (0.6.39's code under a new number) alike as harmful on the owner's phone (24 October 2026: "still flags"), while 0.6.39's own file, scanned earlier, had passed. So nothing in 0.6.40's code is the cause: Play Protect now blocks any new file of this app, and only Google's appeal clears that.
