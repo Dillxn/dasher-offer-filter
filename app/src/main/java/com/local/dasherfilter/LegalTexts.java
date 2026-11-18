@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 29 October 2026 · for {app} 0.6.47
+            Beta terms, effective 29 October 2026 · for {app} 0.6.48
 
             ## What {app} is
 
@@ -154,31 +154,33 @@ final class LegalTexts {
             another goal included), minimums, max stops, mode or learning ends that hold and clears the working \
             adjustments; a pause, turning Autopilot off and on again with the same goal, and Adopt keep them, \
             including an already confirmed pending update. After the 24 offers the hold ends and the usual bar \
-            adjustment continues; the independent references remain until replaced or cleared. From 0.6.37, a \
-            standalone offer you decline yourself while Autopilot is on and auto-decline is not paused (a Decline \
-            of yours, counted once Dasher goes back to waiting for offers or shows another offer; the app's own \
-            declines and an offer left to time out do not count) raises the bar to one point above that offer's \
-            Autopilot score, at most 150%, when that is higher, and holds it at least there for the next 24 counted \
-            offers, across dashes, even during an acceptance's hold and above what an acceptance goal allows, so \
-            offers that score no better are declined. It never lowers the bar and does not change the working \
-            minimums. Your next such acceptance replaces it, a decline from before your latest acceptance holds \
-            nothing, and the changes that end an acceptance's hold end it too. Add-ons, skipped stores' offers, \
-            offers with more stops than your maximum, and offers that look misread or whose pay or a needed figure \
-            was not read do not raise it. Autopilot can permit offers below your saved or learned minimums, or \
-            decline offers that meet them. Offers it permits only below your saved or learned minimums are left to \
-            you and never auto-accepted. Autopilot never changes your saved minimums or learned bests; it changes \
-            only its separate working requirements. Turning it off judges offers at exactly the saved and enabled \
-            learned minimums again. Acceptance learning keeps its separate best-ever rates. From 0.5.1 to 0.6.20 \
-            Autopilot also raised saved minimums, at most 10% at a time, with Let my minimums grow to turn that \
-            off; that growth and its switch were removed in 0.6.21. A growth made before 0.6.21 keeps its note on \
-            the homepage, with Undo, until you tap it or your minimums change another way. Auto-accept starts off. \
-            If you separately enable it in Settings, it can tap Accept on a complete standalone offer that strictly \
-            meets every active saved and enabled learned minimum at 100% or any higher Autopilot bar, and also \
-            meets Autopilot's independent working minimums wherever they ask more, even in area mode, committing \
-            you to that delivery. Automatic acceptance leaves add-ons and unclear offers to you. Add-on filtering \
-            stays strict against saved minimums at the current bar; standalone learned floors do not apply to \
-            add-ons unless adopted as saved minimums, and independent Autopilot adjustments do not apply to \
-            add-ons.
+            adjustment continues; the independent references remain until replaced or cleared. From 0.6.48 an offer \
+            whose pay the app did not read (Dasher's notification alone, or a screen read without its pay) does not \
+            count toward the 24 offers of any hold, an accept's or a decline's; it still counts as an offer Dasher \
+            sent for the acceptance-rate goal and Autopilot's pass share. From 0.6.37, a standalone offer you \
+            decline yourself while Autopilot is on and auto-decline is not paused (a Decline of yours, counted once \
+            Dasher goes back to waiting for offers or shows another offer; the app's own declines and an offer left \
+            to time out do not count) raises the bar to one point above that offer's Autopilot score, at most 150%, \
+            when that is higher, and holds it at least there for the next 24 counted offers, across dashes, even \
+            during an acceptance's hold and above what an acceptance goal allows, so offers that score no better \
+            are declined. It never lowers the bar and does not change the working minimums. Your next such \
+            acceptance replaces it, a decline from before your latest acceptance holds nothing, and the changes \
+            that end an acceptance's hold end it too. Add-ons, skipped stores' offers, offers with more stops than \
+            your maximum, and offers that look misread or whose pay or a needed figure was not read do not raise \
+            it. Autopilot can permit offers below your saved or learned minimums, or decline offers that meet them. \
+            Offers it permits only below your saved or learned minimums are left to you and never auto-accepted. \
+            Autopilot never changes your saved minimums or learned bests; it changes only its separate working \
+            requirements. Turning it off judges offers at exactly the saved and enabled learned minimums again. \
+            Acceptance learning keeps its separate best-ever rates. From 0.5.1 to 0.6.20 Autopilot also raised \
+            saved minimums, at most 10% at a time, with Let my minimums grow to turn that off; that growth and its \
+            switch were removed in 0.6.21. A growth made before 0.6.21 keeps its note on the homepage, with Undo, \
+            until you tap it or your minimums change another way. Auto-accept starts off. If you separately enable \
+            it in Settings, it can tap Accept on a complete standalone offer that strictly meets every active saved \
+            and enabled learned minimum at 100% or any higher Autopilot bar, and also meets Autopilot's independent \
+            working minimums wherever they ask more, even in area mode, committing you to that delivery. Automatic \
+            acceptance leaves add-ons and unclear offers to you. Add-on filtering stays strict against saved \
+            minimums at the current bar; standalone learned floors do not apply to add-ons unless adopted as saved \
+            minimums, and independent Autopilot adjustments do not apply to add-ons.
             - It also declines a standalone offer from a store you put on your skip list (from an offer's details; \
             Settings → Skipped stores removes one), whatever it pays, when it reads that store's name on Dasher's \
             screen. An offer from two stores is declined when either is on the list; an offer whose store it cannot \
@@ -316,7 +318,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 29 October 2026 · for {app} 0.6.47
+            Beta privacy policy, effective 29 October 2026 · for {app} 0.6.48
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -489,7 +491,11 @@ final class LegalTexts {
             said declining it does not lower your acceptance rate, what was seen of it afterward (accepted, \
             declined by hand, or not counted and why), and a few masked lines read from the offer. This history has \
             no age-based expiry: entries remain until newer decisions replace them or you clear history or \
-            uninstall. Aggregate outcome counts are kept separately until you clear history or uninstall.
+            uninstall. From 0.6.48, when it is full, the oldest offer whose pay was never read and that decided \
+            nothing (not accepted, not declined by the app or by you, with no acceptance-rate outcome), at least 30 \
+            minutes older than the newest, is replaced first, so offers the app could not read do not push the \
+            readable ones out; only when there is none does the oldest decision go. Aggregate outcome counts are \
+            kept separately until you clear history or uninstall.
             - Your skip list (from 0.6.10): the names of the stores you add from an offer's details, until you \
             remove them in Settings → Skipped stores or uninstall; Clear history leaves it, as it leaves your \
             rules. The stores read on recent offers, for their details' Skip buttons, are kept only in the app's \
@@ -816,9 +822,11 @@ final class LegalTexts {
             recoveries; automatic accepts not sent, and why; the types of screen-read and notification errors with \
             the place in the app's code where they happened; how Dasher's window was laid out; what Peek did, by \
             fixed category; that dash's decisions, with times counted from the dash's start; masked log lines only \
-            around those problems; any recent stop summary; and the offer timing study's rows for that dash. Never \
-            coordinates, place names, or an install or device identifier. At most one a dash and three a day. \
-            Turning it off discards summaries not yet sent and the timing study's data.
+            around those problems (from 0.6.48 copied, on the phone, with that dash's counts once each problem's \
+            moment has passed, so they are not lost as the log rotates; they go when the summary is sent or \
+            discarded, or you clear history); any recent stop summary; and the offer timing study's rows for that \
+            dash. Never coordinates, place names, or an install or device identifier. At most one a dash and three \
+            a day. Turning it off discards summaries not yet sent and the timing study's data.
             - After a crash or a stop for not responding: with **Share anonymous diagnostics** on, the stop's \
             summary goes with the next summary after a dash. Otherwise the homepage shows "{app} stopped \
             unexpectedly last time" with Send feedback, which opens the same Feedback screen with the stop selected \

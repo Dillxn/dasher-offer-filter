@@ -583,6 +583,7 @@ final class DashSummary {
         Context app = context.getApplicationContext();
         long epoch = Feedback.automaticEpoch(app);
         WORKER.execute(() -> {
+            keepDueExcerpts(app);
             long[] quiet = Dashing.quietlyEnded(app);
             if (quiet != null) summarizeSafely(app, quiet[0], quiet[1], End.QUIET, epoch);
         });
@@ -852,27 +853,14 @@ final class DashSummary {
     /**
      * Masked log lines around each problem the dash counted (at most {@value #MAX_ANOMALIES}, the newest), timed from
      * the dash's start; "" when there was none. The log is already masked; it is masked again as it is read, and
-     * nothing of it carries the acceptance rate ({@link #withoutAcceptanceRate(String)}).
+     * nothing of it carries the acceptance rate ({@link #withoutAcceptanceRate(String)}). A problem's lines kept once
+     * its window had passed ({@link #keepDueExcerpts}, 0.6.48) are used as kept: the log itself holds only its newest
+     * few kilobytes, so by a long dash's end the lines around its early problems were often gone ("no log lines kept").
      */
     private static String excerpts(Context app, long start, JSONObject model) {
         JSONArray anomalies = model.optJSONArray(ANOMALIES);
         if (anomalies == null || anomalies.length() == 0) return "";
-        // As every report reads the log: a line of a payment, account or earnings screen is a not-kept note, and an
-        // older version's retired reporting and learning lines are left out.
-        String log = DiagnosticLog.reportable(DiagnosticLog.read(app));
-        List<long[]> times = new ArrayList<>();
-        List<String> texts = new ArrayList<>();
-        SimpleDateFormat format = new SimpleDateFormat(TIME_PATTERN, Locale.US);
-        for (String line : log.split("\n")) {
-            // The text starts where the time ends, whatever the length of its zone ("Z" or "-04:00").
-            ParsePosition end = new ParsePosition(0);
-            Date at = format.parse(line, end);
-            if (at == null) continue;
-            String text = withoutAcceptanceRate(line.substring(end.getIndex()));
-            if (text == null) continue;
-            times.add(new long[] {at.getTime()});
-            texts.add(text);
-        }
+        LogLines log = null;
         StringBuilder out = new StringBuilder("== Log lines around those problems (masked)\n");
         for (int i = 0; i < anomalies.length(); i++) {
             JSONObject anomaly = anomalies.optJSONObject(i);
@@ -888,19 +876,104 @@ final class DashSummary {
                 // version counted: the question's words survive redaction, and so does "acceptance rate".
                 out.append("   read: ").append(withoutAcceptanceRate(shown)).append('\n');
             }
-            StringBuilder excerpt = new StringBuilder();
-            int lines = 0;
-            for (int j = 0; j < times.size() && lines < MAX_EXCERPT_LINES; j++) {
-                long when = times.get(j)[0];
-                if (when < at - EXCERPT_BEFORE_MS || when > at + EXCERPT_AFTER_MS) continue;
-                String line = relative(when - start) + texts.get(j) + "\n";
-                if (excerpt.length() + line.length() > MAX_EXCERPT_CHARS) break;
-                excerpt.append(line);
-                lines++;
+            String excerpt;
+            if (anomaly.has(KEPT_LOG)) {
+                excerpt = anomaly.optString(KEPT_LOG);
+            } else {
+                if (log == null) log = logLines(app);
+                excerpt = excerpt(log, at, start);
             }
-            out.append(excerpt.length() == 0 ? "   (no log lines kept)\n" : excerpt);
+            out.append(excerpt.isEmpty() ? "   (no log lines kept)\n" : excerpt);
         }
         return out.toString();
+    }
+
+    /** In an anomaly: its log lines, kept once its window had passed (timed from the dash's start), "" for none. */
+    private static final String KEPT_LOG = "log";
+
+    /** The masked offers log, as every report reads it, split into each line's time and its text. */
+    private static final class LogLines {
+        final List<Long> times = new ArrayList<>();
+        final List<String> texts = new ArrayList<>();
+    }
+
+    private static LogLines logLines(Context app) {
+        // As every report reads the log: a line of a payment, account or earnings screen is a not-kept note, and an
+        // older version's retired reporting and learning lines are left out.
+        String log = DiagnosticLog.reportable(DiagnosticLog.read(app));
+        LogLines lines = new LogLines();
+        SimpleDateFormat format = new SimpleDateFormat(TIME_PATTERN, Locale.US);
+        for (String line : log.split("\n")) {
+            // The text starts where the time ends, whatever the length of its zone ("Z" or "-04:00").
+            ParsePosition end = new ParsePosition(0);
+            Date at = format.parse(line, end);
+            if (at == null) continue;
+            String text = withoutAcceptanceRate(line.substring(end.getIndex()));
+            if (text == null) continue;
+            lines.times.add(at.getTime());
+            lines.texts.add(text);
+        }
+        return lines;
+    }
+
+    /** The lines from {@value #EXCERPT_BEFORE_MS} ms before {@code at} to {@value #EXCERPT_AFTER_MS} ms after, bounded. */
+    private static String excerpt(LogLines log, long at, long start) {
+        StringBuilder excerpt = new StringBuilder();
+        int lines = 0;
+        for (int j = 0; j < log.times.size() && lines < MAX_EXCERPT_LINES; j++) {
+            long when = log.times.get(j);
+            if (when < at - EXCERPT_BEFORE_MS || when > at + EXCERPT_AFTER_MS) continue;
+            String line = relative(when - start) + log.texts.get(j) + "\n";
+            if (excerpt.length() + line.length() > MAX_EXCERPT_CHARS) break;
+            excerpt.append(line);
+            lines++;
+        }
+        return excerpt.toString();
+    }
+
+    /**
+     * Keeps, in the dash's model, the log lines around each problem whose window has passed and whose lines are not
+     * kept yet (0.6.48): the same lines, bounds and masking the summary would read at the dash's end, read while the
+     * log still holds them. The log is read only when one is due. On this class's thread, under the class lock.
+     *
+     * @return whether anything was kept
+     */
+    private static boolean keepDueExcerpts(Context app, JSONObject model, long now) throws JSONException {
+        JSONArray anomalies = model.optJSONArray(ANOMALIES);
+        if (anomalies == null) return false;
+        long start = model.optLong(START);
+        LogLines log = null;
+        boolean kept = false;
+        for (int i = 0; i < anomalies.length(); i++) {
+            JSONObject anomaly = anomalies.optJSONObject(i);
+            if (anomaly == null || anomaly.has(KEPT_LOG)) continue;
+            long at = anomaly.optLong("t");
+            if (now < at + EXCERPT_AFTER_MS) continue;
+            if (log == null) log = logLines(app);
+            anomaly.put(KEPT_LOG, excerpt(log, at, start));
+            kept = true;
+        }
+        return kept;
+    }
+
+    /**
+     * {@link #keepDueExcerpts} for the dash whose counts are kept, when it is the one under way or just ended and its
+     * summary is not decided yet. On this class's thread.
+     */
+    private static void keepDueExcerpts(Context app) {
+        try {
+            synchronized (DashSummary.class) {
+                if (!Feedback.diagnosticsOn(app) || !Consent.accepted(app)) return;
+                SharedPreferences prefs = prefs(app);
+                long start = prefs.getLong(START, 0);
+                if (start <= 0 || prefs.getLong(SUMMARIZED, 0) == start) return;
+                // At most six problems: cheap to look at; the log is read only when one is due.
+                JSONObject model = model(app, start);
+                if (keepDueExcerpts(app, model, System.currentTimeMillis())) save(app, model);
+            }
+        } catch (JSONException | RuntimeException failure) {
+            // Only diagnostics: the dash's end reads the log as before.
+        }
     }
 
     // ---- What a dash counted, kept on this class's thread ----
@@ -929,6 +1002,7 @@ final class DashSummary {
                 if (prefs(app).getLong(SUMMARIZED, 0) == start) return;
                 JSONObject model = model(app, start);
                 change.apply(model);
+                keepDueExcerpts(app, model, System.currentTimeMillis());
                 flushWindow(model);
                 save(app, model);
             }

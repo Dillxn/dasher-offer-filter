@@ -25,7 +25,8 @@ import org.json.JSONObject;
 /**
  * Always-on, on-device history of offer decisions, so a surprising decline can be explained afterwards. It keeps
  * the parsed numbers, the rule outcome and the action taken, plus only the screen lines that carried a number or
- * a pay label, masked ({@link PersonalText}): no names or addresses. Bounded to {@link #MAX_ENTRIES}; leaves the phone
+ * a pay label, masked ({@link PersonalText}): no names or addresses. Bounded to {@link #MAX_ENTRIES} ({@link #trim}:
+ * unread offers that decided nothing go first, 0.6.48); leaves the phone
  * only in a report the user chooses to send, or in diagnostics after a dash the user turned on. One offer is one line: Dasher's notification of an offer the screen read is folded into the
  * screen's line ({@link OfferPairing}), and two notification incarnations are never one line.
  */
@@ -782,7 +783,7 @@ final class DecisionLog {
                     all.add(entry);
                     recount(context, null, tally(entry));
                 }
-                while (all.size() > MAX_ENTRIES) all.remove(0);
+                trim(all);
                 persist(context, all);
             }
             // A new offer, not a later step of one already recorded: it counts once toward its area.
@@ -791,6 +792,44 @@ final class DecisionLog {
             DiagnosticLog.log(context, "decision-log", "record failed: " + error.getClass().getSimpleName());
         }
         return taken;
+    }
+
+    /**
+     * Brings the history down to {@link #MAX_ENTRIES} (0.6.48). The oldest line that {@link #spareFirst} goes first;
+     * only when none is left does the oldest line of any kind go, as before. So a run of offers the app could not read
+     * no longer pushes the readable history out (Autopilot's window, time-aware scoring and the chart read the same
+     * 200 lines), while every line that holds an acceptance, a decline or an acceptance-rate outcome is kept in order.
+     * The all-time totals ({@link #totals}) are kept apart and are not changed. Under {@link #LOCK}.
+     */
+    static void trim(List<Entry> all) {
+        while (all.size() > MAX_ENTRIES) {
+            int drop = 0;
+            // A line still young may yet take its outcome (a "Not accepted" step comes seconds to minutes later).
+            long settled = all.get(all.size() - 1).at - SPARE_AFTER_MS;
+            for (int i = 0; i < all.size() - 1; i++) {
+                if (all.get(i).at < settled && spareFirst(all.get(i))) {
+                    drop = i;
+                    break;
+                }
+            }
+            all.remove(drop);
+        }
+    }
+
+    /** How old, against the newest line, a line must be before {@link #trim} spares it first. */
+    static final long SPARE_AFTER_MS = 30 * 60_000L;
+
+    /**
+     * A line the history spares first when full: an offer whose pay was never read (Dasher's notification alone, or a
+     * screen read without its pay), not an add-on, that decided nothing Autopilot, learning or the acceptance rate
+     * reads: not accepted, not declined by the app or by the user, no "Not accepted" or "Counted as your Decline"
+     * step, no hidden notification of a failing offer.
+     */
+    static boolean spareFirst(Entry entry) {
+        return entry != null && entry.facts.payCents == null && !entry.addOn && !accepted(entry)
+                && outcome(entry) != Outcome.DECLINED
+                && !hasStep(entry, StepKind.NOT_ACCEPTED) && !hasStep(entry, StepKind.DECLINE_COUNTED)
+                && !(entry.action == Action.NOTIFICATION_HIDDEN && entry.result == OfferRule.Result.DECLINE);
     }
 
     /** Explicit late completion evidence may correct only the app's just-given-up outcome, never a user's takeover. */

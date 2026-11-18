@@ -1,3 +1,18 @@
+## 0.6.48 — Unread offers stop eating history; diagnostics keep more
+
+Version 0.6.48 (code 140) answers the owner's message of 18 November 2026: "Offer filter app is struggling to read orders, and I don't know if the current diagnostics that I send include past order screens, reads, and things like that anymore since we consolidated. Also, I'm concerned that the no reads are knocking off historical data without replacing it."
+
+- **What the diagnostics carried.** Since 0.6.34, feedback with Share anonymous diagnostics on sends the whole masked report: the newest 100 decisions with their read lines, the offers log and Dasher's other screens. But the phone kept only 20 KB of the offers log and 16 KB of the screens log, so on a busy dash a report reached back an hour or so. The summary after a dash read the log only at the dash's end, so the lines around its early problems were often gone ("(no log lines kept)").
+- **Now.** The phone keeps up to 36 KB of the offers log and 28 KB of the screens log, still never more than 24 hours, and diagnostics sent with feedback carry up to 30,000 and 22,000 characters of them. Export diagnostics keeps its sizes, to stay inside Android's sharing limit. The summary after a dash copies the log lines around each problem, with the same bounds and masking, once that problem's 10 seconds have passed, so they are kept even after the log rotates. It still never carries the screens log.
+- **No-reads and history.** An offer whose pay wasn't read takes a line in the 200-line history like any other. When the history was full, each one pushed out the oldest readable offer. Now, once the history is full, the oldest unread offer that decided nothing (not accepted, not declined, no acceptance-rate outcome, and at least 30 minutes older than the newest) goes first. Only when there is none does the oldest line go. The all-time counts are unchanged.
+- **No-reads and Autopilot's holds.** An unread offer counted toward the 24 offers an accept or a decline holds the bar for, so a run of no-reads could end a hold early. Now only offers whose pay was read count toward a hold. Unread offers still count in Autopilot's window as offers left to you, and in the acceptance-rate goal, since Dasher counts them.
+- **Terms and Privacy** for 0.6.48 say so. Nothing new is collected or sent, so the notice stays 39.
+- **Kept suites.** LegalTextsTest's version pins are 0.6.48. No tests were added or restored.
+
+This doesn't fix the reading failures themselves. The next reports, with more of the log kept, should show why offers went unread.
+
+No phone has run this build.
+
 ## 0.6.44 — Confirmed history corrects Autopilot's current bar
 
 Version 0.6.44 (code 136) makes the current Autopilot adjustment follow retained confirmed history. An acceptance that should have lowered the bar can correct it now, even if its live update was missed or an older version kept the wrong normalization.

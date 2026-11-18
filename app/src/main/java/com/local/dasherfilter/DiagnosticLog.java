@@ -57,11 +57,16 @@ final class DiagnosticLog {
     private static final java.util.regex.Pattern SOURCE_TAG = java.util.regex.Pattern.compile(
             "(?:^| )\\[([a-z][a-z0-9_-]*)\\] ");
     private static volatile long prunedAt;
-    /** Each log is trimmed to roughly what a report carries of it, with a little to spare. */
-    private static final int MAX_BYTES = 20 * 1024;
-    private static final int KEEP_BYTES = 16 * 1024;
-    private static final int SCREENS_MAX_BYTES = 16 * 1024;
-    private static final int SCREENS_KEEP_BYTES = 12 * 1024;
+    /**
+     * Each log is trimmed to roughly what diagnostics sent with feedback carry of it ({@link #FEEDBACK_LOG_CHARS},
+     * {@link #FEEDBACK_SCREENS_CHARS}), with a little to spare. 0.6.48 widened them from 20/16 KB and 16/12 KB: on a
+     * busy dash those held only the last hour or so, and the lines around an earlier problem were gone before a
+     * report was sent.
+     */
+    private static final int MAX_BYTES = 36 * 1024;
+    private static final int KEEP_BYTES = 32 * 1024;
+    private static final int SCREENS_MAX_BYTES = 28 * 1024;
+    private static final int SCREENS_KEEP_BYTES = 24 * 1024;
     /** The screens log's lines for Dasher's other screens, and for its turn-by-turn navigation. */
     static final String SCREEN_SOURCE = "screen";
     private static final String NAVIGATION_SOURCE = "navigation";
@@ -77,6 +82,12 @@ final class DiagnosticLog {
     /** Keeps a shared report comfortably inside Android's intent size limit (strings travel as UTF-16, twice). */
     private static final int MAX_REPORT_LOG_CHARS = 14_000;
     private static final int MAX_REPORT_SCREENS_CHARS = 10_000;
+    /**
+     * What diagnostics sent with feedback carry of each log (0.6.48): they go in parts of their own
+     * ({@link Feedback#diagnosticParts}), not through Android's sharing limit, so they carry what the phone keeps.
+     */
+    static final int FEEDBACK_LOG_CHARS = 30_000;
+    static final int FEEDBACK_SCREENS_CHARS = 22_000;
     static final int MAX_REPORT_CHARS = 60_000;
     static final String TRUNCATED = "\n[report truncated]";
     static final int REPORT_DECISIONS = 100;
@@ -546,14 +557,22 @@ final class DiagnosticLog {
 
     /** The whole report with the newest {@code decisions} decisions (fewer, when a report must fit a size). */
     static String fullReport(Context context, int decisions) {
+        return fullReport(context, decisions, MAX_REPORT_LOG_CHARS, MAX_REPORT_SCREENS_CHARS);
+    }
+
+    /**
+     * As {@link #fullReport(Context, int)}, carrying at most {@code logChars} of the offers log and {@code screensChars}
+     * of the screens log (the newest, fitted as each log itself is).
+     */
+    static String fullReport(Context context, int decisions, int logChars, int screensChars) {
         // The rules and Autopilot's state read together, so the report's rules line and its Autopilot line agree.
         AutopilotText.Status autopilot = AutopilotRuntime.status(context, AutopilotRuntime.wallClock.getAsLong(),
                 OfferFilterService.isConnected());
         FilterSettings rules = autopilot.rules;
         SharedPreferences updates = Updater.prefs(context);
-        String log = fitLog(PersonalText.maskLine(reportable(read(context))), MAX_REPORT_LOG_CHARS, false);
+        String log = fitLog(PersonalText.maskLine(reportable(read(context))), logChars, false);
         String screens = newestScreens(PersonalText.maskLine(withoutAccountScreens(readScreens(context))),
-                System.currentTimeMillis());
+                System.currentTimeMillis(), screensChars);
         return REPORT_SUBJECT + " — " + AppName.NAME + " " + Updater.version(context) + "\n"
                 + phone() + "\n"
                 + "Generated " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX", Locale.US).format(new Date())
@@ -624,9 +643,14 @@ final class DiagnosticLog {
      * log itself is ({@link #fitScreens}), so navigation never pushes another screen of the last 30 minutes out.
      */
     static String newestScreens(String log, long now) {
-        if (log.length() <= MAX_REPORT_SCREENS_CHARS) return log;
+        return newestScreens(log, now, MAX_REPORT_SCREENS_CHARS);
+    }
+
+    /** As {@link #newestScreens(String, long)}, at most {@code chars}. */
+    static String newestScreens(String log, long now, int chars) {
+        if (log.length() <= chars) return log;
         String omitted = "[older entries omitted]\n";
-        return omitted + fitScreens(log, MAX_REPORT_SCREENS_CHARS - omitted.length(), false, now);
+        return omitted + fitScreens(log, chars - omitted.length(), false, now);
     }
 
     /** The newest {@code chars} of a log, starting at a whole line. */
