@@ -533,6 +533,12 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        release("0.6.48",
+                "Offers whose pay couldn't be read no longer use up the 24 offers an accept or a decline holds "
+                        + "Autopilot's bar for.",
+                "When your history is full, those unread offers go first, so they no longer push readable "
+                        + "offers out.",
+                "Diagnostics keep more of the recent log and keep the lines around each problem of a dash.");
         release("0.6.44", HISTORY_REPAIRS);
         release("0.6.45",
                 "Feedback is one screen now. Open Feedback in Settings, choose a recent offer when relevant, "

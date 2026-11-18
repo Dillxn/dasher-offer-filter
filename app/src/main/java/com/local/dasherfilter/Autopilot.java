@@ -1151,14 +1151,28 @@ final class Autopilot {
 
     // ---- (b) The accepted floor (0.6.11) ----
 
-    /** The latest prospective working-shape anchor's remaining offer hold; its rates remain after the hold ends. */
+    /**
+     * The latest prospective working-shape anchor's remaining offer hold; its rates remain after the hold ends. Only
+     * offers whose pay was read count toward it ({@link #countsTowardHold}).
+     */
     static int anchorOffersLeft(AutopilotAxes axes, List<OfferRecord> counted) {
         if (axes == null || axes.isEmpty()) return 0;
         int after = 0;
         if (counted != null) for (OfferRecord offer : counted) {
-            if (offer != null && offer.at > axes.acceptedAt && ++after >= FLOOR_OFFERS) return 0;
+            if (countsTowardHold(offer) && offer.at > axes.acceptedAt && ++after >= FLOOR_OFFERS) return 0;
         }
         return FLOOR_OFFERS - after;
+    }
+
+    /**
+     * Whether a counted line uses up one of a hold's {@value #FLOOR_OFFERS} offers (0.6.48): only one whose pay was
+     * read. An offer the app could not read (Dasher's notification alone, "Pay unknown", or a screen read without its
+     * pay) still counts in the window and the acceptance-rate accounting, as an offer Dasher sent that the app left to
+     * the user; but a run of unread offers no longer ends the bar's hold after an accept or a decline before 24 offers
+     * Autopilot could actually judge have come.
+     */
+    static boolean countsTowardHold(OfferRecord line) {
+        return line != null && line.facts.payCents != null;
     }
 
     /** An offer the user accepted by hand: when (its ACCEPTED step, wall clock) and its score under the plan's rules. */
@@ -1344,12 +1358,15 @@ final class Autopilot {
         return left;
     }
 
-    /** How many of {@code counted} were decided after {@code from} and before {@code to} (wall clock). */
+    /**
+     * How many of {@code counted} were decided after {@code from} and before {@code to} (wall clock), only offers
+     * whose pay was read ({@link #countsTowardHold}).
+     */
     static int offersBetween(List<OfferRecord> counted, long from, long to) {
         int between = 0;
         if (counted == null) return between;
         for (OfferRecord line : counted) {
-            if (line != null && line.at > from && line.at < to) between++;
+            if (countsTowardHold(line) && line.at > from && line.at < to) between++;
         }
         return between;
     }
