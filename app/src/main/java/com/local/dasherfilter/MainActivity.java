@@ -134,8 +134,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
             + "areas, cached place names, unsent automatic diagnostics, and Autopilot's acceptance-rate reading and "
             + "recent bar changes from this phone, with its note that your minimums grew, learned bests and adoption "
             + "Undo. "
-            + "Your saved rules (including adopted minimums) and Autopilot settings "
-            + "stay.";
+            + "Your minimums go back to the typical $2.00 a stop, $1.00 a mile and $15 an hour (0.6.54); your other "
+            + "rules and Autopilot settings stay.";
     /** The view of Autopilot's details' words ({@link #showAutopilotDetails}). */
     static final int DETAILS_WORDS_ID = 0x4F460104;
     /**
@@ -3281,6 +3281,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     // files go off this thread; a summary being built is never queued).
                     Feedback.clearAutomatic(this);
                     StopReports.clearSoon(this);
+                    // A clean start (the owner, 19 November 2026, after a clear left adopted minimums in place while
+                    // Autopilot went back to 100% for its first 20 offers: "Also reset minimums").
+                    if (useTypicalMinimums("clear history")) rulesChanged();
                     pickedArea = false;
                     areaMap.select(null);
                     followNewest = true;

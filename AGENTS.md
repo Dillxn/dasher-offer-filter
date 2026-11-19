@@ -12,6 +12,10 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.54 (19 November 2026): Clear history resets the saved minimums
+
+- The owner, after a clear left adopted minimums ($10.66/stop, $6.61/mi, $0.93/min) in place while Autopilot went back to its LEARNING gate (bar 100 until MIN_WINDOW 20 counted offers): asked on a card, chose "Also reset minimums". MainActivity.confirmClearHistory now calls useTypicalMinimums("clear history") (Autopilot.STARTER_* through barBackToMinimums and storeRules) and rulesChanged. Terms and Privacy 0.6.54, notice 41; CLEAR_HISTORY says it.
+
 # 0.6.53 (19 November 2026): scores, time weight, released holds and the active route from history
 
 - From the declarative audit after 0.6.52 (eight items; 1 learned bests, 5 the bar-change list and 7 the stall correction are not done):

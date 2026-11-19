@@ -1,3 +1,14 @@
+## 0.6.54 — Clear history resets your minimums
+
+Version 0.6.54 (code 146) answers the owner's report of 19 November 2026: "i cleared my history on offer filter but it didn't seem to clear my mins bc the next offer I got was given a red reject score".
+
+- **Why.** Clear history kept your saved minimums by design, adopted ones included (the owner's were about $10.66 a stop, $6.61 a mile and $0.93 a minute). It also removed the history Autopilot plans from, so Autopilot judged the next 20 offers at exactly 100% of those minimums, where before it had held its bar near 40–50%. Nearly every offer scored red.
+- **Now.** Clear history also sets your saved minimums back to the typical ones, $2.00 a stop, $1.00 a mile and $15 an hour, the same as setup's "Use typical minimums", with Autopilot's bar starting from 100% for them. Learned bests and their Undo were already cleared; max stops, the skip list, scoring mode, learning and Autopilot's settings stay. The dialog says so.
+- **Notice 41.** Terms and Privacy for 0.6.54 say Clear history resets your minimums. Accept it once more to keep filtering.
+- **Kept suites.** ConsentGateTest expects notice 41 and LegalTextsTest the 0.6.54 texts. No tests were added.
+
+No phone has run this build.
+
 ## 0.6.53 — More from history, less from the moment
 
 Version 0.6.53 (code 145) follows the owner's message of 19 November 2026 ("I want it to be data driven and declarative, not event driven") with four fixes from an audit of values saved at a moment and trusted later.

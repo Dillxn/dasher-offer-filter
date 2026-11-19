@@ -84,7 +84,9 @@ final class Consent {
     // 40 (0.6.52): an add-on's history line keeps its route before and after (pay, miles, minutes, stops, items), and its
     // whole-route score is worked out from them (the owner, 19 November 2026: "I want it to be data driven and
     // declarative, not event driven"). The Privacy says it; the short points stay unchanged.
-    static final int VERSION = 40;
+    // 41 (0.6.54): Clear history sets the saved minimums back to the typical ones (the owner, 19 November 2026: "Also
+    // reset minimums"). The Terms and Privacy say it; the short points stay unchanged.
+    static final int VERSION = 41;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

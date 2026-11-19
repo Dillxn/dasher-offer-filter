@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 29 October 2026 · for {app} 0.6.48
+            Beta terms, effective 19 November 2026 · for {app} 0.6.54
 
             ## What {app} is
 
@@ -204,9 +204,10 @@ final class LegalTexts {
             known implausible figure rejects the lesson. Learned bests can activate an unset money minimum. Off or \
             paused retains learned bests without new learning. Confirmed Reset clears active bests and Undo; prior \
             decision snapshots remain until Clear history. Clear history clears both active learning and that \
-            history. Adopt raises only lower saved minimums, which then apply to add-ons too. Reset and Clear \
-            history keep your minimums as they are. Learning is local and makes no promise about earnings or future \
-            offers.
+            history. Adopt raises only lower saved minimums, which then apply to add-ons too. Reset keeps your \
+            minimums as they are. From 0.6.54 Clear history sets your saved minimums back to the typical ones \
+            ($2.00 a stop, $1.00 a mile and $15 an hour); your other rules stay. Learning is local and makes no \
+            promise about earnings or future offers.
             - If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, \
             it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
             checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \
@@ -318,7 +319,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 19 November 2026 · for {app} 0.6.52
+            Beta privacy policy, effective 19 November 2026 · for {app} 0.6.54
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -499,11 +500,12 @@ final class LegalTexts {
             readable ones out; only when there is none does the oldest decision go. Aggregate outcome counts are \
             kept separately until you clear history or uninstall.
             - Your skip list (from 0.6.10): the names of the stores you add from an offer's details, until you \
-            remove them in Settings → Skipped stores or uninstall; Clear history leaves it, as it leaves your \
-            rules. The stores read on recent offers, for their details' Skip buttons, are kept only in the app's \
-            memory, never written to the phone's storage or put in a report. The offers declined for the skip list \
-            keep the reason "on your skip list" in the decision history, never the store's name, and the logs note \
-            only that a store was added or removed and how many are on the list.
+            remove them in Settings → Skipped stores or uninstall; Clear history leaves it, as it leaves your rules \
+            other than your minimums, which from 0.6.54 it sets back to the typical ones. The stores read on recent \
+            offers, for their details' Skip buttons, are kept only in the app's memory, never written to the \
+            phone's storage or put in a report. The offers declined for the skip list keep the reason "on your skip \
+            list" in the decision history, never the store's name, and the logs note only that a store was added or \
+            removed and how many are on the list.
             - Your cost per mile (from 0.6.10): a whole number of cents, off unless you set it in Autopilot's \
             details, kept until you change it or uninstall; Clear history leaves it. Autopilot's log notes when you \
             change it.

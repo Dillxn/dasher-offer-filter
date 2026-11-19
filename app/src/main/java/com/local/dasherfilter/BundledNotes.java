@@ -305,6 +305,9 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        // 0.6.54 (the owner, 19 November 2026: "Also reset minimums").
+        notice(41, "Clear history now also sets your minimums back to the typical $2.00 a stop, $1.00 a mile and $15 an "
+                + "hour.");
         // 0.6.52 (the owner, 19 November 2026: "I want it to be data driven and declarative, not event driven").
         notice(40, "An add-on's line in your history now keeps your route before it and the whole route after it, and "
                 + "its score is worked out from them.");
@@ -536,6 +539,9 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.54 (the owner, 19 November 2026, after a clear left adopted minimums in place: "Also reset minimums").
+        release("0.6.54", "Clear history now gives you a clean start: your minimums go back to the typical $2.00 a stop, "
+                + "$1.00 a mile and $15 an hour, so Autopilot's first offers aren't judged against your old ones.");
         // 0.6.53 (the owner, 19 November 2026: "data driven and declarative, not event driven"; the audit after 0.6.52).
         release("0.6.53",
                 "More of what Offer Filter shows and uses is now worked out from your history, so a missed moment (a "
