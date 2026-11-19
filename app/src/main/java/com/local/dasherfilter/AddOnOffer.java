@@ -54,11 +54,19 @@ final class AddOnOffer {
             for (String phrase : ADD_ON_PHRASES) {
                 if (label.contains(phrase)) return true;
             }
-            if (label.indexOf('$') >= 0 && !INCLUDED_PAY.matcher(label).find()) amounts++;
+            if (label.indexOf('$') >= 0 && !includedPay(label)) amounts++;
             addedPay |= ADDED_PAY_LABEL.matcher(label).matches();
             addedStops |= ADDED_STOPS_LINE.matcher(label).lookingAt();
         }
         return addedPay && addedStops && amounts == 1;
+    }
+
+    /**
+     * Whether a lower-case label only names a part of the offer's pay ("Includes $0.50 for Platinum"), never the pay
+     * itself: Dasher shows it above the amount it is part of, on add-ons and on standalone offers (0.6.49, 0.6.50).
+     */
+    static boolean includedPay(String lowerLabel) {
+        return INCLUDED_PAY.matcher(lowerLabel).find();
     }
 
     /**

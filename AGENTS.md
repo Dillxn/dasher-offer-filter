@@ -12,6 +12,11 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.50 (19 November 2026): Platinum offers' pay is read again
+
+- The owner's report e0902eb3 (the feedback row id; its report token b8bd791c: a reference the app shows can be either) and the diagnostics of 17 and 18 November: every standalone offer with "[icon] Includes $0.50 for Platinum" above its "$8.60" was REVIEW "pay not found" (two amounts). OfferParser.parsePay and busyTotal now skip AddOnOffer.includedPay lines, the same rule as 0.6.49's add-ons.
+- A report's evidence can stop at Accept with "screen below the offer not kept (account word: e-a-r-n-i-n-g-s)": the diagnostics' [screen] lines then still show the labels down to Accept (masked), which is where the Platinum line showed.
+
 # 0.6.49 (19 November 2026): an "Includes $…" line no longer hides an add-on
 
 - The owner's two problem reports of 18 November 2026 (0.6.48, tokens a51a0f85 and 13ebcd64, read from the feedback table with the service-role key now on the session's environment as SUPABASE_URL and SUPABASE_SECRET_KEY): add-on cards "+$4.85" / "+$8.15", "+1 stop (3.5 mi) • +12 min", with "Includes $0.50 for …", decided REVIEW "pay not found" with addOn false.

@@ -236,6 +236,8 @@ final class OfferParser {
             String line = lines.get(i);
             String lower = line.toLowerCase(Locale.US);
             if (isRate(lower)) continue;
+            // "Includes $0.50 for Platinum" names a part of the pay beside it, not a second total (0.6.50).
+            if (AddOnOffer.includedPay(lower)) continue;
             boolean payLabel = lower.contains("guaranteed") || lower.contains("total pay");
             Matcher matcher = MONEY.matcher(line);
             boolean lineHasMoney = false;
@@ -285,6 +287,7 @@ final class OfferParser {
             Matcher money = MONEY.matcher(line);
             if (!money.find()) continue;
             String lower = line.toLowerCase(Locale.US);
+            if (AddOnOffer.includedPay(lower)) continue;
             if (isRate(lower)) return none(why, "a rate");
             if (lower.contains("guaranteed") || lower.contains("total pay")) return none(why, "labeled pay");
             Matcher bare = BARE_PLUS_AMOUNT.matcher(line);

@@ -1,3 +1,13 @@
+## 0.6.50 — Platinum offers are read again
+
+Version 0.6.50 (code 142) answers the owner's report of 19 November 2026 ("misread another", sent from 0.6.49) and the diagnostics of 17 and 18 November: every offer showing Dasher's Platinum line was left as "pay unknown", such as "Includes $0.50 for Platinum, $8.60, incl. tips, 2 stops (5.7 mi) • 27 min".
+
+- **Why.** A standalone offer's pay is its one amount. The Platinum line's "$0.50", a part of the same pay, made two amounts, and the parser rightly would not guess between them.
+- **Now.** A line that only says what the pay includes ("Includes $… for …") is skipped when reading pay, on standalone offers and in Dasher's busy shape, as 0.6.49 did for add-ons (AddOnOffer.includedPay, used by OfferParser.parsePay and busyTotal). The reported offers read $8.60, $5.45 and $23.60; offers without the line, the busy shape and two real totals read as before.
+- **Not changed.** No notice, Terms or Privacy change. No tests were added; a throwaway probe (never committed) read the reported offers and the unchanged cases.
+
+No phone has run this build.
+
 ## 0.6.49 — Add-ons with an "Includes $…" line are read again
 
 Version 0.6.49 (code 141) answers the owner's two misread reports of 18 November 2026 (sent from 0.6.48): add-on cards showing "+$4.85" and "+$8.15" with "+1 stop (3.5 mi) • +12 min" were left as "pay unknown".
