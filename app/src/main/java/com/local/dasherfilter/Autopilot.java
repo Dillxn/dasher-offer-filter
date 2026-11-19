@@ -727,6 +727,12 @@ final class Autopilot {
         /** The floor is a decline's ({@link #declinedFloor}, 0.6.37), not an accept's. */
         final boolean floorDeclined;
         /**
+         * The level of the newest hold whose 24 offers have ended (an accept's, a decline's or the working minimums'
+         * anchor), -1 when none: a bar still at it was put there by that hold and goes straight back once no floor holds
+         * it (0.6.53, worked out from history instead of the last change's stored note).
+         */
+        final int releasedFloor;
+        /**
          * The floor is a hand accept's that the history holds after the working shape's own, which set no shape (its
          * live evidence missed): 0.6.40's healed hold, at its score now.
          */
@@ -806,6 +812,7 @@ final class Autopilot {
             this.floor = mode == Mode.OFF || mode == Mode.NO_RULES ? -1 : d.floor;
             this.floorOffersLeft = floor < 0 ? 0 : d.floorOffersLeft;
             this.floorDeclined = floor >= 0 && d.floorDeclined;
+            this.releasedFloor = mode == Mode.OFF || mode == Mode.NO_RULES ? -1 : d.releasedFloor;
             this.floorHealed = floor >= 0 && d.floorHealed;
             this.reconciledAxes = mode == Mode.OFF || mode == Mode.NO_RULES ? null : d.reconciledAxes;
             this.acceptedHold = reconciledAxes != null && d.acceptedHold && floor >= 0;
@@ -913,6 +920,7 @@ final class Autopilot {
         int floorOffersLeft;
         boolean floorDeclined;
         boolean floorHealed;
+        int releasedFloor = -1;
         String sourceRulesKey;
         AutopilotAxes reconciledAxes;
         boolean acceptedHold;
@@ -1034,6 +1042,7 @@ final class Autopilot {
             draft.floorDeclined = true;
             draft.floorHealed = false;
         }
+        draft.releasedFloor = releasedFloor(rules, in, counted, declines);
 
         if (!rules.autopilot) return draft.gated(Mode.OFF);
         if (!rules.hasMonetaryRule()) return draft.gated(Mode.NO_RULES);
@@ -1155,6 +1164,34 @@ final class Autopilot {
      * The latest prospective working-shape anchor's remaining offer hold; its rates remain after the hold ends. Only
      * offers whose pay was read count toward it ({@link #countsTowardHold}).
      */
+    /**
+     * The level of the newest hold that has run its 24 offers (0.6.53): the working minimums' anchor, an accept since
+     * the floor's start, or a decline; -1 when none has ended. Worked out from history each plan.
+     */
+    private static int releasedFloor(FilterSettings rules, Inputs in, List<OfferRecord> counted,
+                                     List<HandDecline> declines) {
+        long newestAt = Long.MIN_VALUE;
+        int level = -1;
+        if (rules.hasAutopilotAxes() && anchorOffersLeft(rules.autopilotAxes, counted) <= 0) {
+            newestAt = rules.autopilotAxes.acceptedAt;
+            level = rules.autopilotAxes.referenceBar;
+        } else if (!rules.hasAutopilotAxes()) {
+            for (HandAccept accept : handAccepts(rules, in.newestFirst, in.keptAccepts)) {
+                if (accept.at >= in.floorSince && accept.at > newestAt && !holds(accept, in.floorSince, counted)) {
+                    newestAt = accept.at;
+                    level = accept.score;
+                }
+            }
+        }
+        if (declines != null) for (HandDecline decline : declines) {
+            if (decline.at > newestAt && offersBetween(counted, decline.at, Long.MAX_VALUE) >= FLOOR_OFFERS) {
+                newestAt = decline.at;
+                level = decline.above;
+            }
+        }
+        return level >= BAR_MIN ? level : -1;
+    }
+
     static int anchorOffersLeft(AutopilotAxes axes, List<OfferRecord> counted) {
         if (axes == null || axes.isEmpty()) return 0;
         int after = 0;

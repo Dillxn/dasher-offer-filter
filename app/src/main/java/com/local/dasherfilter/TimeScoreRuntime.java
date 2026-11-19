@@ -25,10 +25,18 @@ final class TimeScoreRuntime {
         }
     }
 
+    /**
+     * The committed weight, only within the 15-minute bucket, time zone and rules it was worked out for (0.6.53): a
+     * weight from an earlier bucket is another time of day's, so it is no weight until the next safe point commits the
+     * current one, never a stale one (the owner, 19 November 2026: "data driven and declarative, not event driven").
+     */
     static TimeScore.Weight weight(FilterSettings rules) {
         Prepared value = active;
+        long now = System.currentTimeMillis();
         return rules.timeAware && value != null && value.generation == AutopilotRuntime.generation()
-                && value.key.equals(TimeScore.key(rules)) ? value.weight : TimeScore.Weight.NONE;
+                && value.key.equals(TimeScore.key(rules)) && value.zone.equals(ZoneId.systemDefault().getId())
+                && Math.floorDiv(value.at, TimeScore.BUCKET_MS) == Math.floorDiv(now, TimeScore.BUCKET_MS)
+                ? value.weight : TimeScore.Weight.NONE;
     }
 
     /** Current history's comparison for display, independent of whether the scanner can apply it yet. */

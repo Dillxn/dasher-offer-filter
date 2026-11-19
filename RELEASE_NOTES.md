@@ -1,3 +1,16 @@
+## 0.6.53 — More from history, less from the moment
+
+Version 0.6.53 (code 145) follows the owner's message of 19 November 2026 ("I want it to be data driven and declarative, not event driven") with four fixes from an audit of values saved at a moment and trusted later.
+
+- **Scores.** A regular offer's score is worked out from its own figures and the rules its line keeps whenever the line is made or read; the stored figure is used only for lines older than those rules (before 0.5.0's model 3). Autopilot's rebuild of its working minimums reads the same worked-out score. A throwaway probe found the worked-out score equal to the decision's in all 30 cases tried (strict, area, working minimums, time-aware).
+- **Time-of-day weight.** With Time-aware scoring on, the weight applies only in the 15-minute slot, time zone and rules it was worked out for. An older slot's weight is no longer used for a later offer (or after a restart); until the next safe point applies the current one, offers are judged without it.
+- **The end of a hold.** Whether the bar was put where it is by a hold that has now run its 24 offers (and so goes straight back) is worked out from history each plan (Autopilot.Plan.releasedFloor), not from the last change's stored note, which turning Autopilot off clears.
+- **The route add-ons are judged against.** When an accepted offer's route was never saved (a restart, an accept seen late), the newest accepted line in history (an add-on's whole route after it, or a standalone offer's own figures) stands in, unless the route was cleared after it (a delivery's or the dash's end) or progress made its travel stale.
+- **Not yet.** Learned minimums still rise only from an accept the app sees live: rebuilding them from history needs the moments of an Undo or a reset to be kept as well, so it is its own change. The chart's list of bar changes and Autopilot's recovery correction stay as they are.
+- **Not changed.** Nothing new is kept or sent: no notice, Terms or Privacy change. No tests were added.
+
+No phone has run this build.
+
 ## 0.6.52 — Add-on scores come from your history
 
 Version 0.6.52 (code 144) answers the owner's message of 19 November 2026 about 0.6.51: "I want it to be data driven and declarative, not event driven."

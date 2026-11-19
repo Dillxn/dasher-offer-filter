@@ -536,6 +536,10 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.53 (the owner, 19 November 2026: "data driven and declarative, not event driven"; the audit after 0.6.52).
+        release("0.6.53",
+                "More of what Offer Filter shows and uses is now worked out from your history, so a missed moment (a "
+                        + "restart, an accept seen late) no longer leaves it wrong.");
         // 0.6.52 (the owner, 19 November 2026: "I want it to be data driven and declarative, not event driven").
         release("0.6.52",
                 "An add-on's score now comes from the route it keeps in your history, so the ticket and chart always "

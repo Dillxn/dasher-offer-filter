@@ -774,11 +774,9 @@ final class AutopilotRuntime {
     private static Autopilot.Step step(Context app, Autopilot.Plan plan, Autopilot.Reason jump, long elapsed) {
         if (plan.acceptedHold) return new Autopilot.Step(plan.target,
                 plan.target == plan.current ? Autopilot.StepKind.HOLD : Autopilot.StepKind.FLOOR);
-        AutopilotStore.Change last = AutopilotStore.lastChange(app);
-        boolean floorHeld = last != null && (Autopilot.Reason.ACCEPTED.name().equals(last.why)
-                || Autopilot.Reason.ACCEPTED_AXES.name().equals(last.why)
-                || Autopilot.Reason.DECLINED.name().equals(last.why))
-                && last.to == plan.current;
+        // The bar sits at the level of the newest hold that has ended: that hold put it there (0.6.53, from history,
+        // where the last change's stored note could be missing or cleared).
+        boolean floorHeld = plan.releasedFloor >= Autopilot.BAR_MIN && plan.releasedFloor == plan.current;
         return Autopilot.step(plan.current, plan.target, jump != null, elapsed - lastCommitElapsed,
                 elapsed - lastRaiseElapsed, plan.offersSinceRaise, plan.barShare, plan.floor, floorHeld);
     }

@@ -12,6 +12,15 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.53 (19 November 2026): scores, time weight, released holds and the active route from history
+
+- From the declarative audit after 0.6.52 (eight items; 1 learned bests, 5 the bar-change list and 7 the stall correction are not done):
+  - DecisionLog.Entry.offerScore: a standalone line with a model-3 rules snapshot and read pay derives scorePercent (AreaScore.scorePercent(scoringRules, facts)); the stored "score" only for older lines.
+  - TimeScoreRuntime.weight returns the committed weight only in its own 15-minute bucket, zone and rules key; else NONE until the next commit.
+  - Autopilot.Plan.releasedFloor (Autopilot.releasedFloor: the newest anchor, accept or decline hold that has run 24 counted offers); AutopilotRuntime.step's floorHeld is releasedFloor == current, no longer AutopilotStore.lastChange.
+  - ActiveRouteStore.load prefers the newest accepted history line's route (DecisionLog.acceptedAt; add-on routeAfter, standalone facts) when it is newer than SAVED_AT, CLEARED_AT (written by clear) and within 3 hours; TRAVEL_STALE_AT (written by invalidateTravel) after it keeps its pay only. Cached per DecisionLog.version().
+- Learned bests from history (item 1) must also keep the Undo and reset moments, or a fold would re-apply an undone growth.
+
 # 0.6.52 (19 November 2026): add-on lines keep their route; their score is derived
 
 - The owner on 0.6.51's stored add-on score: "I want it to be data driven and declarative, not event driven". OfferRule.Decision.routeBefore/routeAfter (evaluateAddOn: addOn.active and addOn.combined) flow into DecisionLog.Entry.routeBefore/routeAfter (JSON "routeBefore"/"routeAfter"). An add-on Entry's scorePercent is computed in its constructor from routeAfter and scoringRules (Entry.routeScore), so every copy and every load re-derives it; toJson never writes "score" for an add-on. Add-on lines without a route (before 0.6.52, or notification lines) have none.

@@ -262,8 +262,11 @@ final class DecisionLog {
             this.alertTag = alertTag;
             this.replay = replay;
             this.steps = Collections.unmodifiableList(new ArrayList<>(steps));
-            // An add-on's score is its whole route's, worked out from what the line keeps (0.6.52).
-            int score = addOn ? routeScore(this.routeAfter, scoringRules) : scorePercent;
+            // An add-on's score is its whole route's, worked out from what the line keeps (0.6.52); a standalone
+            // offer's is worked out from its facts and the rules it was judged by when the line keeps them (0.6.53),
+            // the recorded figure only for a line written before rules were kept.
+            int score = addOn ? routeScore(this.routeAfter, scoringRules)
+                    : offerScore(facts, scoringRules, model, scorePercent);
             this.scorePercent = score < 0 ? -1 : score;
             this.peeked = peeked;
             this.barPercent = Math.max(1, Math.min(200, barPercent));
@@ -291,6 +294,16 @@ final class DecisionLog {
         private static int routeScore(OfferSnapshot after, FilterSettings rules) {
             if (after == null || after.payCents == null || rules == null) return -1;
             return AreaScore.scorePercent(rules, after);
+        }
+
+        /**
+         * A standalone line's score from its own facts and the rules snapshot it keeps ({@link AreaScore#scorePercent}),
+         * the same as at its decision; the recorded figure for a line without a snapshot (before model 3) or without pay.
+         */
+        private static int offerScore(OfferSnapshot facts, FilterSettings rules, int model, int recorded) {
+            if (rules == null || model < MODEL || facts == null || facts.payCents == null) return recorded;
+            int derived = AreaScore.scorePercent(rules, facts);
+            return derived >= 0 ? derived : recorded;
         }
 
         /** This add-on line with its route before and after accepting it (0.6.52). */
@@ -676,6 +689,30 @@ final class DecisionLog {
      * Unlike {@link #accepted}, never an automatic, add-on, observed or older kind, nor a tap followed by
      * {@link StepKind#NOT_LEARNED}.
      */
+    /**
+     * When the line was accepted, by hand, automatically or as an add-on (the first of its accepted steps, as
+     * {@link #accepted} counts them); {@link Long#MIN_VALUE} when it was not (0.6.53, the route a delivery is on).
+     */
+    static long acceptedAt(Entry entry) {
+        if (entry == null || !accepted(entry)) return Long.MIN_VALUE;
+        for (Step step : entry.steps) {
+            switch (step.kind) {
+                case ACCEPTED:
+                case ACCEPTED_AUTOMATIC:
+                case ACCEPTED_LEARNED:
+                case ACCEPTED_NOT_LEARNED:
+                case ACCEPTED_BEST_SAVED:
+                case ACCEPTED_MINIMUMS_UNCHANGED:
+                case ACCEPTED_ADD_ON:
+                case ACCEPTED_OBSERVED:
+                    return step.at;
+                default:
+                    break;
+            }
+        }
+        return entry.at;
+    }
+
     static long handAcceptedAt(Entry entry) {
         if (entry == null) return Long.MIN_VALUE;
         for (Step step : entry.steps) {
