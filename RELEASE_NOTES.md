@@ -1,3 +1,13 @@
+## 0.6.51 — Add-ons show a score
+
+Version 0.6.51 (code 143) answers the owner's report of 19 November 2026 (d888f9c9, from 0.6.50): an add-on, +$11.65 for 18 min and 3 stops, declined at a 38% bar ("combined route fails: dollars per stop"), "was not scored / did not display a score".
+
+- **Why.** An add-on is judged against your strict minimums on the whole route after accepting it, and on its added travel. The whole route's score was worked out for that check but every add-on decision was recorded with no score, so its ticket showed none and the chart drew no tree.
+- **Now.** An add-on keeps its whole route's score: the route after accepting, as a percent of what your minimums ask of it. The ticket says "Whole-route score N% of your minimums · bar B%", and the chart draws its tree. Only the display changes: Autopilot, the offer clock and the star view still leave add-ons out, and add-ons are judged exactly as before.
+- **Not changed.** No notice, Terms or Privacy change (a decision's score was already kept for every standalone offer). No tests were added.
+
+No phone has run this build.
+
 ## 0.6.50 — Platinum offers are read again
 
 Version 0.6.50 (code 142) answers the owner's report of 19 November 2026 ("misread another", sent from 0.6.49) and the diagnostics of 17 and 18 November: every offer showing Dasher's Platinum line was left as "pay unknown", such as "Includes $0.50 for Platinum, $8.60, incl. tips, 2 stops (5.7 mi) • 27 min".

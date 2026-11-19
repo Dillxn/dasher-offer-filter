@@ -266,7 +266,7 @@ final class DecisionLog {
             return new Entry(System.currentTimeMillis(), source, addOn, facts, decision.requiredCents,
                     decision.result, decision.reason, action, autoDecline,
                     source == Source.SCREEN ? offerEvidence(labels) : evidence(labels)).withScore(
-                    addOn ? -1 : decision.scorePercent).withBar(decision.minimumScalePercent, decision.autopilot)
+                    decision.scorePercent).withBar(decision.minimumScalePercent, decision.autopilot)
                     .withScoringRules(decision.scoringRules);
         }
 

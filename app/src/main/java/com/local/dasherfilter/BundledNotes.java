@@ -533,6 +533,10 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.51 (the owner's report of 19 November 2026 of a declined add-on: "was not scored / did not display a score").
+        release("0.6.51",
+                "Add-ons now show a score too: your whole route's, after accepting, as a percent of your minimums, on "
+                        + "the ticket and as a tree on the chart.");
         // 0.6.50 (the owner's report of 19 November 2026 and the diagnostics of 17 and 18 November: Platinum offers read
         // as "pay unknown").
         release("0.6.50",

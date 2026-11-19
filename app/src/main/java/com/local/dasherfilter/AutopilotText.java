@@ -925,6 +925,9 @@ final class AutopilotText {
 
     static String ticketScoreLine(DecisionLog.Entry entry) {
         if (entry.scorePercent < 0) return null;
+        // An add-on's score is its whole route's after accepting, against the strict minimums (0.6.51).
+        if (entry.addOn) return "Whole-route score " + entry.scorePercent + "% of your minimums"
+                + (entry.barPercent != Autopilot.BAR_OFF ? " · bar " + entry.barPercent + "%" : "");
         if (usesAutopilotScore(entry)) return "Autopilot score " + entry.scorePercent + "% · bar "
                 + entry.barPercent + "%";
         if (entry.model >= 3 && "area".equals(entry.scoreKind)) {

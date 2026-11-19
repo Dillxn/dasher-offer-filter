@@ -191,17 +191,22 @@ final class OfferRule {
             return decision;
         }
         return new Decision(Result.KEEP, decision.requiredCents,
-                "combined route and add-on below your minimums; pass the " + bar + "% bar", decision.basis, -1, bar,
-                true, settings.autopilot);
+                "combined route and add-on below your minimums; pass the " + bar + "% bar", decision.basis,
+                decision.scorePercent, bar, true, settings.autopilot);
     }
 
+    /**
+     * Every add-on decision carries its whole route's score: the route after accepting, as a percent of what the strict
+     * minimums ask of it (0.6.51, the owner of a declined add-on: "was not scored / did not display a score"). It is
+     * shown only: Autopilot, the offer clock and the star view skip add-on lines, as before.
+     */
     private static Decision addOnAt(AddOnOffer addOn, FilterSettings settings) {
         int bar = settings.minimumScalePercent;
         boolean autopilot = settings.autopilot;
         Decision combined = evaluate(addOn.combined, settings);
         if (combined.result == Result.DECLINE) {
             return new Decision(Result.DECLINE, combined.requiredCents, COMBINED_FAILS + combined.reason,
-                    addOn.combined, -1, bar, false, autopilot);
+                    addOn.combined, combined.scorePercent, bar, false, autopilot);
         }
         OfferSnapshot added = addOn.incremental;
         boolean missing = settings.hasMarginalRule() && added.payCents == null;
@@ -215,16 +220,16 @@ final class OfferRule {
         }
         long marginalCost = marginal == null ? 0 : AreaScore.roundedCents(marginal, bar);
         if (added.payCents != null && added.payCents < marginalCost) {
-            return new Decision(Result.DECLINE, marginalCost, barPrefix(bar) + ADD_ON_ECONOMICS, added, -1, bar,
-                    false, autopilot);
+            return new Decision(Result.DECLINE, marginalCost, barPrefix(bar) + ADD_ON_ECONOMICS, added,
+                    combined.scorePercent, bar, false, autopilot);
         }
         if (combined.result == Result.REVIEW || missing) {
-            return new Decision(Result.REVIEW, marginalCost, addOnUnknowns(addOn, settings), added, -1, bar, false,
-                    autopilot);
+            return new Decision(Result.REVIEW, marginalCost, addOnUnknowns(addOn, settings), added,
+                    combined.scorePercent, bar, false, autopilot);
         }
         return new Decision(Result.KEEP, marginalCost, bar > FilterSettings.BAR_AT_MINIMUMS
                 ? "combined route and add-on meet the " + bar + "% bar"
-                : "combined route and add-on meet your minimums", added, -1, bar, false, autopilot);
+                : "combined route and add-on meet your minimums", added, combined.scorePercent, bar, false, autopilot);
     }
 
     /**
