@@ -86,7 +86,10 @@ final class Consent {
     // declarative, not event driven"). The Privacy says it; the short points stay unchanged.
     // 41 (0.6.54): Clear history sets the saved minimums back to the typical ones (the owner, 19 November 2026: "Also
     // reset minimums"). The Terms and Privacy say it; the short points stay unchanged.
-    static final int VERSION = 41;
+    // 42 (0.6.56): with Share anonymous diagnostics on, a summary of the dash so far also goes about a minute and a half
+    // after an offer whose pay was not read (the owner, 19 November 2026: "i want all diagnostics to be automatic and
+    // consolidated"), at most twelve a day. The Privacy says it; the short points stay unchanged.
+    static final int VERSION = 42;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

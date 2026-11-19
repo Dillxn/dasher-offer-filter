@@ -486,7 +486,7 @@ final class Feedback {
      * study ({@link DispatchStudyStore}), which were three choices before.
      */
     static final String DIAGNOSTICS_SWITCH = "Share anonymous diagnostics";
-    static final String DIAGNOSTICS_LINE = "Masked, after each dash and with feedback you send";
+    static final String DIAGNOSTICS_LINE = "Masked, after each dash, soon after an unread offer, and with feedback you send";
 
     private static final String PREFS = "feedback";
     private static final String DIAGNOSTICS = "diagnostics";

@@ -1,3 +1,14 @@
+## 0.6.56 — Diagnostics go on their own after an unread offer
+
+Version 0.6.56 (code 148) answers the owner's message of 19 November 2026 (after report d9340622, an offer seen only in Dasher's notification while Dasher showed it on screen): "i do not see a share report button anymore. i want all diagnostics to be automatic and consolidated."
+
+- **Before.** With Share anonymous diagnostics on, one summary went after each dash ended (Dasher showed the end, or 30 minutes of quiet), at most three a day. A problem in mid-dash waited for it, and an offer seen only in Dasher's notification was not one of the summary's problems, so no log lines around it went at all.
+- **Now.** Any offer line recorded without its pay (unread on Dasher's screen, or seen only in Dasher's notification) sends, about a minute and a half later and only if its pay is still unread then, a summary of the dash so far, the same masked summary as at a dash's end, with the log lines around every such offer. At most one every ten minutes; the summary at the dash's end then covers only what came after. At most twelve a day. Nothing to tap; the switch stays as it was.
+- **Notice 42.** Privacy (for 0.6.56) says so. Accept it once more to keep filtering.
+- **Kept suites.** ConsentGateTest expects notice 42 and LegalTextsTest the 0.6.56 Privacy. No tests were added.
+
+No phone has run this build.
+
 ## 0.6.55 — Add-ons without a known route show their own score
 
 Version 0.6.55 (code 147) answers the owner's report of 19 November 2026 (ed8475f8, from 0.6.53, just after a Clear history): an add-on, +$4.00 for 4.2 mi and 9 min, declined because its added pay misses what its added miles ask ($27.77), "didn't score".

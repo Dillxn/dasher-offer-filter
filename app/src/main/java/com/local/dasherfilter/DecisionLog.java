@@ -855,12 +855,18 @@ final class DecisionLog {
         return record(context, entry, secondsLeft, false);
     }
 
+    /** An offer line recorded without its pay: diagnostics, when on, go soon on their own (0.6.56). */
+    private static void unreadSoon(Context context, Entry entry) {
+        if (entry != null && entry.facts.payCents == null && !entry.replay) DashSummary.problemSoon(context);
+    }
+
     /**
      * Records the first reading of a proven new screen incarnation separately even when its numbers match the
      * prior offer. Only the scanner's fresh-countdown/new-offer evidence sets this flag; subsequent reads and
      * confirmation upgrades use the ordinary overload. Notification pairing and once-per-offer counts still apply.
      */
     static List<Entry> record(Context context, Entry entry, int secondsLeft, boolean newScreenInstance) {
+        unreadSoon(context, entry);
         List<Entry> taken = new ArrayList<>();
         try {
             synchronized (LOCK) {

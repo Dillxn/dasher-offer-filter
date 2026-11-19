@@ -53,7 +53,12 @@ import org.json.JSONObject;
  * A count belongs to the dash under way when its hook fired, even when the dash ends before it is handled.
  */
 final class DashSummary {
-    static final int MAX_PER_DAY = 3;
+    /** From 0.6.56 also one soon after an unread offer ({@link #problemSoon}), so more a day (it was 3). */
+    static final int MAX_PER_DAY = 12;
+    /** At least this long between two summaries sent for unread offers (0.6.56). */
+    private static final long UNREAD_EVERY_MS = 10 * 60_000L;
+    /** How long after an unread offer its summary goes: its log lines after it are kept by then. */
+    private static final long UNREAD_AFTER_MS = 90_000L;
     private static final int MAX_ANOMALIES = 6;
     private static final int MAX_EXCERPT_LINES = 25;
     private static final int MAX_EXCERPT_CHARS = 2_000;
@@ -145,6 +150,8 @@ final class DashSummary {
     private static final String COUNTS = "counts";
     private static final String ANOMALIES = "anomalies";
     private static final String SUMMARIZED = "summarized";
+    /** When the last summary for unread offers covered the dash up to (0.6.56): the next part of the dash starts there. */
+    private static final String SENT_UNTIL = "sent_until";
     private static final String DAY = "day";
     private static final String TODAY = "today";
 
@@ -169,7 +176,9 @@ final class DashSummary {
     /** Why a dash counts as over. */
     enum End {
         DASH_OVER("Dasher showed the dash ended"),
-        QUIET("nothing of the dash seen for 30 minutes");
+        QUIET("nothing of the dash seen for 30 minutes"),
+        /** An offer's pay went unread (0.6.56): the dash so far goes now, without a button. */
+        UNREAD("an offer's pay was not read");
 
         final String why;
 
@@ -612,6 +621,9 @@ final class DashSummary {
     static void summarize(Context app, long start, long end, End why, long epoch) {
         if (!Consent.accepted(app) || !Feedback.diagnosticsOn(app)) return;
         SharedPreferences prefs = prefs(app);
+        // After a summary for unread offers in this dash, its end covers only what came after (0.6.56).
+        long sent = prefs.getLong(SENT_UNTIL, 0);
+        if (why != End.UNREAD && sent > start && sent <= end) start = sent;
         JSONObject model = null;
         synchronized (DashSummary.class) {
             if (prefs.getLong(SUMMARIZED, 0) == start) return;
@@ -994,7 +1006,7 @@ final class DashSummary {
     /** {@link #record}'s work, on this class's thread. */
     private static void apply(Context app, long at, Change change) {
         try {
-            long start = dashAt(app, at);
+            long start = partAt(app, dashAt(app, at));
             if (start <= 0) return;
             synchronized (DashSummary.class) {
                 // Checked under the lock clear() takes: an opt-out or Clear history before this wins.
@@ -1020,6 +1032,91 @@ final class DashSummary {
         if (current > 0 && at >= current) return current;
         long[] last = Dashing.lastDash(app);
         return last != null && at >= last[0] && at <= last[1] ? last[0] : 0;
+    }
+
+    /**
+     * The start of the part of the dash a count belongs to (0.6.56): the dash's start, or where the last summary for
+     * unread offers in it stopped.
+     */
+    private static long partAt(Context app, long dashStart) {
+        if (dashStart <= 0) return dashStart;
+        long sent = prefs(app).getLong(SENT_UNTIL, 0);
+        return sent > dashStart ? sent : dashStart;
+    }
+
+    // ---- Soon after an unread offer (0.6.56) ----
+
+    private static final java.util.concurrent.ScheduledExecutorService LATER =
+            Executors.newSingleThreadScheduledExecutor(work -> {
+                Thread thread = new Thread(work, "dash-summary-later");
+                thread.setDaemon(true);
+                return thread;
+            });
+    private static final java.util.concurrent.atomic.AtomicBoolean UNREAD_PENDING =
+            new java.util.concurrent.atomic.AtomicBoolean();
+    private static volatile long lastUnreadSentAt;
+
+    /**
+     * An offer's line was recorded without its pay (0.6.56, the owner, 19 November 2026: "i want all diagnostics to
+     * be automatic and consolidated"): with the opt-in on, the dash so far is summarized about a minute and a half
+     * later, at most every ten minutes, if a line of it still has no pay then (a screen reading may yet fold in). Any
+     * thread; cheap.
+     */
+    static void problemSoon(Context context) {
+        if (context == null || !collecting(context) || !UNREAD_PENDING.compareAndSet(false, true)) return;
+        Context app = context.getApplicationContext();
+        long epoch = Feedback.automaticEpoch(app);
+        long wait = Math.max(UNREAD_AFTER_MS, UNREAD_EVERY_MS - (System.currentTimeMillis() - lastUnreadSentAt));
+        try {
+            LATER.schedule(() -> WORKER.execute(() -> {
+                UNREAD_PENDING.set(false);
+                try {
+                    summarizeUnread(app, epoch);
+                } catch (RuntimeException | JSONException failure) {
+                    DiagnosticLog.log(app, "feedback", "could not send the summary for an unread offer: "
+                            + failure.getClass().getSimpleName());
+                }
+            }), wait, TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.RejectedExecutionException stopped) {
+            UNREAD_PENDING.set(false);
+        }
+    }
+
+    /** {@link #problemSoon}'s work, on this class's thread: the dash so far, with every still-unread offer's log lines. */
+    private static void summarizeUnread(Context app, long epoch) throws JSONException {
+        long now = System.currentTimeMillis();
+        long part = partAt(app, dashAt(app, now));
+        if (part <= 0 || !Feedback.automaticAllowed(app, epoch) || !Consent.accepted(app)) return;
+        List<DecisionLog.Entry> unread = new ArrayList<>();
+        for (DecisionLog.Entry entry : DecisionLog.recent(app, DecisionLog.MAX_ENTRIES)) {
+            if (entry.at >= part && entry.at <= now && entry.facts.payCents == null && !entry.replay) unread.add(entry);
+        }
+        if (unread.isEmpty()) return;
+        synchronized (DashSummary.class) {
+            if (prefs(app).getLong(SUMMARIZED, 0) == part) return;
+            JSONObject model = model(app, part);
+            JSONArray known = model.getJSONArray(ANOMALIES);
+            for (int i = unread.size() - 1; i >= 0; i--) {
+                DecisionLog.Entry entry = unread.get(i);
+                boolean listed = false;
+                for (int k = 0; k < known.length(); k++) {
+                    JSONObject one = known.optJSONObject(k);
+                    if (one != null && Math.abs(one.optLong("t") - entry.at) < 15_000L) listed = true;
+                }
+                if (listed) continue;
+                increment(model, "unreadable", "offers");
+                anomaly(model, entry.at, entry.source == DecisionLog.Source.NOTIFICATION
+                        ? "offer seen only in Dasher's notification" : "unreadable offer",
+                        Collections.<String>emptyList());
+            }
+            keepDueExcerpts(app, model, now);
+            save(app, model);
+        }
+        summarize(app, part, now, End.UNREAD, epoch);
+        synchronized (DashSummary.class) {
+            if (prefs(app).getLong(SUMMARIZED, 0) == part) prefs(app).edit().putLong(SENT_UNTIL, now).commit();
+        }
+        lastUnreadSentAt = now;
     }
 
     /** This dash's counts, or new ones when the counts kept were another dash's. */

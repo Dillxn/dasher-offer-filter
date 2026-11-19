@@ -59,13 +59,14 @@ public final class LegalTextsTest {
      * chart); 0.6.44 both (retained confirmed personal history repairs current working minimums and the bar;
      * its original 24-offer hold fixes the bar unless a newer personal decline holds it higher);
      * 0.6.45 updates the Feedback/Export diagnostics navigation, with the same collection and consent scopes;
+     * 0.6.56 the privacy text only (diagnostics also go soon after an unread offer, at most twelve a day);
      * 0.6.54 both (Clear history sets the saved minimums back to the typical ones);
      * 0.6.52 the privacy text only (an add-on's line keeps its route before and after, its score worked out from them);
      * 0.6.48 both (unread offers do not count toward a hold's 24 offers; a full history replaces unread offers that
      * decided nothing first; the summary's log lines around a problem are kept with the dash's counts).
      */
     static final String PRIVACY_EFFECTIVE = "19 November 2026";
-    static final String PRIVACY_VERSION = "0.6.54";
+    static final String PRIVACY_VERSION = "0.6.56";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {

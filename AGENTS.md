@@ -12,6 +12,11 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.56 (19 November 2026): a summary goes soon after an unread offer
+
+- The owner: "i want all diagnostics to be automatic and consolidated" (no Share report button; report d9340622 was a notification-only line while Dasher showed the offer, paused, minimums $0). DecisionLog.record calls DashSummary.problemSoon for a line with no pay; 90 s later (at most every UNREAD_EVERY_MS 10 min) DashSummary.summarizeUnread adds an anomaly for every still-unread line of the dash part ("offer seen only in Dasher's notification" or "unreadable offer"), summarizes the part (End.UNREAD) and stores SENT_UNTIL; partAt starts the next part there, and a dash's end summarizes only what follows. MAX_PER_DAY 12. Notice 42, Privacy 0.6.56, Feedback.DIAGNOSTICS_LINE.
+- Still open: why a paused app saw that offer only in the notification while Dasher showed it. The next unread offer's summary carries the screen log around it.
+
 # 0.6.55 (19 November 2026): an add-on without a known route is scored on its own figures
 
 - The owner's report ed8475f8 (token 1a272910): an add-on DECLINE "add-on marginal economics" with routeBefore and routeAfter empty (no route known, just after a Clear history) had no score. DecisionLog.Entry.addOnScore: the whole route's score, else (only on lines with route fields, where facts are the add-on's increment) AreaScore.scorePercent of the increment under the strict rules with flat 0, i.e. added pay over max(per mile × added miles, per minute × added minutes). Entry.wholeRouteScored tells the ticket which label.

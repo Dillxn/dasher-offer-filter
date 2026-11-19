@@ -319,7 +319,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 19 November 2026 · for {app} 0.6.54
+            Beta privacy policy, effective 19 November 2026 · for {app} 0.6.56
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -829,8 +829,11 @@ final class LegalTexts {
             around those problems (from 0.6.48 copied, on the phone, with that dash's counts once each problem's \
             moment has passed, so they are not lost as the log rotates; they go when the summary is sent or \
             discarded, or you clear history); any recent stop summary; and the offer timing study's rows for that \
-            dash. Never coordinates, place names, or an install or device identifier. At most one a dash and three \
-            a day. Turning it off discards summaries not yet sent and the timing study's data.
+            dash. Never coordinates, place names, or an install or device identifier. From 0.6.56 it also sends one \
+            about a minute and a half after an offer whose pay was not read (on Dasher's screen, or seen only in \
+            Dasher's notification), covering the dash so far with the masked log lines around such offers, at most \
+            one every ten minutes; the summary at the dash's end then covers the rest. At most twelve a day (three \
+            before 0.6.56). Turning it off discards summaries not yet sent and the timing study's data.
             - After a crash or a stop for not responding: with **Share anonymous diagnostics** on, the stop's \
             summary goes with the next summary after a dash. Otherwise the homepage shows "{app} stopped \
             unexpectedly last time" with Send feedback, which opens the same Feedback screen with the stop selected \

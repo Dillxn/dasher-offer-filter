@@ -305,6 +305,9 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        // 0.6.56 (the owner, 19 November 2026: "i want all diagnostics to be automatic and consolidated").
+        notice(42, "With Share anonymous diagnostics on, a summary now also goes soon after an offer whose pay wasn't "
+                + "read, so the problem can be fixed without you sending anything.");
         // 0.6.54 (the owner, 19 November 2026: "Also reset minimums").
         notice(41, "Clear history now also sets your minimums back to the typical $2.00 a stop, $1.00 a mile and $15 an "
                 + "hour.");
@@ -539,6 +542,9 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.56 (the owner, 19 November 2026: "i want all diagnostics to be automatic and consolidated").
+        release("0.6.56", "Diagnostics go on their own now: with Share anonymous diagnostics on, an offer whose pay wasn't "
+                + "read sends the dash so far about a minute and a half later. Nothing to tap.");
         // 0.6.55 (the owner's report of 19 November 2026 of an add-on judged with no known route: "didn't score").
         release("0.6.55", "An add-on judged without your current route now shows a score too: its own pay against what "
                 + "its added miles and time ask.");
