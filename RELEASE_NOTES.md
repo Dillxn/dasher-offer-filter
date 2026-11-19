@@ -1,3 +1,13 @@
+## 0.6.55 — Add-ons without a known route show their own score
+
+Version 0.6.55 (code 147) answers the owner's report of 19 November 2026 (ed8475f8, from 0.6.53, just after a Clear history): an add-on, +$4.00 for 4.2 mi and 9 min, declined because its added pay misses what its added miles ask ($27.77), "didn't score".
+
+- **Why.** An add-on's score was its whole route's (0.6.52), and the app knew no route to add it to, so there was no whole route to score.
+- **Now.** When the whole route can't be scored, an add-on line (one keeping its route fields, from 0.6.52) is scored on its own figures: the added pay against what your per-mile and per-hour minimums ask of its added travel, the same check that judged it. The ticket says which: "Whole-route score N% of your minimums" or "Add-on score N% of what its added miles and time ask". The reported add-on scores 14%. Still worked out from the line each time, never stored.
+- **Not changed.** No notice, Terms or Privacy change. No tests were added; a throwaway probe checked the reported add-on with and without a known route.
+
+No phone has run this build.
+
 ## 0.6.54 — Clear history resets your minimums
 
 Version 0.6.54 (code 146) answers the owner's report of 19 November 2026: "i cleared my history on offer filter but it didn't seem to clear my mins bc the next offer I got was given a red reject score".

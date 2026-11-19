@@ -539,6 +539,9 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.55 (the owner's report of 19 November 2026 of an add-on judged with no known route: "didn't score").
+        release("0.6.55", "An add-on judged without your current route now shows a score too: its own pay against what "
+                + "its added miles and time ask.");
         // 0.6.54 (the owner, 19 November 2026, after a clear left adopted minimums in place: "Also reset minimums").
         release("0.6.54", "Clear history now gives you a clean start: your minimums go back to the typical $2.00 a stop, "
                 + "$1.00 a mile and $15 an hour, so Autopilot's first offers aren't judged against your old ones.");

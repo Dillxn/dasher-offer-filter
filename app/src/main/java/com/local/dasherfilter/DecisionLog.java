@@ -265,7 +265,7 @@ final class DecisionLog {
             // An add-on's score is its whole route's, worked out from what the line keeps (0.6.52); a standalone
             // offer's is worked out from its facts and the rules it was judged by when the line keeps them (0.6.53),
             // the recorded figure only for a line written before rules were kept.
-            int score = addOn ? routeScore(this.routeAfter, scoringRules)
+            int score = addOn ? addOnScore(this.routeAfter, facts, scoringRules)
                     : offerScore(facts, scoringRules, model, scorePercent);
             this.scorePercent = score < 0 ? -1 : score;
             this.peeked = peeked;
@@ -304,6 +304,23 @@ final class DecisionLog {
             if (rules == null || model < MODEL || facts == null || facts.payCents == null) return recorded;
             int derived = AreaScore.scorePercent(rules, facts);
             return derived >= 0 ? derived : recorded;
+        }
+
+        /**
+         * An add-on's score (0.6.55): its whole route's when that route is known, else, on a line that keeps its route
+         * fields (0.6.52 on) and so holds the add-on's own figures as its facts, the added pay against what the per-mile
+         * and per-hour minimums ask of its added travel ({@link OfferRule}'s add-on economics; stops add no ask).
+         */
+        private static int addOnScore(OfferSnapshot after, OfferSnapshot added, FilterSettings rules) {
+            int whole = routeScore(after, rules);
+            if (whole >= 0 || after == null || rules == null || added == null || added.payCents == null) return whole;
+            return AreaScore.scorePercent(rules.withScoreByArea(false).withMinimums(0, rules.perMileCents,
+                    rules.perMinuteCents), added);
+        }
+
+        /** Whether this add-on line's score is its whole route's (else the add-on's own, or none). */
+        boolean wholeRouteScored() {
+            return addOn && routeScore(routeAfter, scoringRules) >= 0;
         }
 
         /** This add-on line with its route before and after accepting it (0.6.52). */

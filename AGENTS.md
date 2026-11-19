@@ -12,6 +12,10 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.55 (19 November 2026): an add-on without a known route is scored on its own figures
+
+- The owner's report ed8475f8 (token 1a272910): an add-on DECLINE "add-on marginal economics" with routeBefore and routeAfter empty (no route known, just after a Clear history) had no score. DecisionLog.Entry.addOnScore: the whole route's score, else (only on lines with route fields, where facts are the add-on's increment) AreaScore.scorePercent of the increment under the strict rules with flat 0, i.e. added pay over max(per mile × added miles, per minute × added minutes). Entry.wholeRouteScored tells the ticket which label.
+
 # 0.6.54 (19 November 2026): Clear history resets the saved minimums
 
 - The owner, after a clear left adopted minimums ($10.66/stop, $6.61/mi, $0.93/min) in place while Autopilot went back to its LEARNING gate (bar 100 until MIN_WINDOW 20 counted offers): asked on a card, chose "Also reset minimums". MainActivity.confirmClearHistory stores Autopilot.STARTER_* minimums through storeRules, before AutopilotRuntime.cleared so the bar's jump stays CLEARED and no bar note is left (useTypicalMinimums would note RULES_CHANGED, which PrivacyBoundaryTest forbids after a clear). PrivacyBoundaryTest.clearHistoryTappedInSettingsLeavesNoReadingAndNoLastChange now expects the typical minimums. Terms and Privacy 0.6.54, notice 41; CLEAR_HISTORY says it.
