@@ -3283,7 +3283,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     StopReports.clearSoon(this);
                     // A clean start (the owner, 19 November 2026, after a clear left adopted minimums in place while
                     // Autopilot went back to 100% for its first 20 offers: "Also reset minimums").
-                    if (useTypicalMinimums("clear history")) rulesChanged();
+                    useTypicalMinimums("clear history");
                     pickedArea = false;
                     areaMap.select(null);
                     followNewest = true;
