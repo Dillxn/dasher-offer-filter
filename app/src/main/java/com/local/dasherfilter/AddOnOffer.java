@@ -87,6 +87,11 @@ final class AddOnOffer {
                 "\\$\\s*" + VALUE + "\\s*(?:additional|extra|more)\\b");
         Measure totalPay = read(payLabels, "\\b(?:new\\s+)?total(?:\\s+(?:pay|payout))?\\s*[:=]?\\s*\\$\\s*" + VALUE);
         Measure addedMiles = delta(travelLabels, "(?:mi|miles?)");
+        // Dasher's add-on card names its added distance in brackets after the stops it adds: "+1 stop (3.5 mi) • +12 min"
+        // (0.6.52; before, only a "+" figure was read, so the whole route had no miles and no score).
+        if (addedMiles.value == null && !addedMiles.conflict) {
+            addedMiles = read(labels, "\\+\\s*[0-9]{1,2}\\s+stops?\\s*\\(\\s*" + VALUE + "\\s*(?:mi|miles?)\\s*\\)");
+        }
         Measure totalMiles = total(travelLabels, "(?:distance|mileage|miles?)", "(?:mi|miles?)");
         Measure addedMinutes = delta(travelLabels, "(?:min|minutes?)");
         Measure totalMinutes = total(travelLabels, "(?:time|duration)", "(?:min|minutes?)");

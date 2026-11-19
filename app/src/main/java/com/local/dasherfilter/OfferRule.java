@@ -44,6 +44,12 @@ final class OfferRule {
         /** Immutable local decision provenance; null only for hand-built/legacy decisions. */
         final FilterSettings scoringRules;
         final String scoreKind;
+        /**
+         * An add-on's route before it (what was already accepted) and its whole route after accepting it (0.6.52); null
+         * for a standalone offer. Its history line keeps both, so its score is worked out from them, never stored.
+         */
+        final OfferSnapshot routeBefore;
+        final OfferSnapshot routeAfter;
 
         Decision(Result result, long requiredCents, String reason) {
             this(result, requiredCents, reason, OfferSnapshot.UNKNOWN);
@@ -64,12 +70,16 @@ final class OfferRule {
 
         Decision(Result result, long requiredCents, String reason, OfferSnapshot basis, int scorePercent,
                  int minimumScalePercent, boolean belowMinimums, boolean autopilot) {
-            this(result, requiredCents, reason, basis, scorePercent, minimumScalePercent, belowMinimums, autopilot, null);
+            this(result, requiredCents, reason, basis, scorePercent, minimumScalePercent, belowMinimums, autopilot, null,
+                    null, null);
         }
 
         private Decision(Result result, long requiredCents, String reason, OfferSnapshot basis, int scorePercent,
-                         int minimumScalePercent, boolean belowMinimums, boolean autopilot, FilterSettings rules) {
+                         int minimumScalePercent, boolean belowMinimums, boolean autopilot, FilterSettings rules,
+                         OfferSnapshot routeBefore, OfferSnapshot routeAfter) {
             this.scoringRules = rules;
+            this.routeBefore = routeBefore;
+            this.routeAfter = routeAfter;
             this.scoreKind = rules != null && rules.scoreByArea ? "area" : "strict";
             this.result = result;
             this.requiredCents = requiredCents;
@@ -83,7 +93,13 @@ final class OfferRule {
 
         Decision withRules(FilterSettings rules) {
             return new Decision(result, requiredCents, reason, basis, scorePercent, minimumScalePercent,
-                    belowMinimums, autopilot, rules);
+                    belowMinimums, autopilot, rules, routeBefore, routeAfter);
+        }
+
+        /** This add-on decision with its route before and after accepting it (0.6.52). */
+        Decision withRoute(OfferSnapshot before, OfferSnapshot after) {
+            return new Decision(result, requiredCents, reason, basis, scorePercent, minimumScalePercent,
+                    belowMinimums, autopilot, scoringRules, before, after);
         }
 
         /** "DECLINE: required at least $6.25 (dollars per hour)"; "KEEP: meets your minimums" when nothing is asked. */
@@ -168,7 +184,8 @@ final class OfferRule {
      */
     static Decision skipped(Decision decision) {
         return new Decision(Result.DECLINE, decision.requiredCents, SKIP_LIST, decision.basis, decision.scorePercent,
-                decision.minimumScalePercent, false, decision.autopilot, decision.scoringRules);
+                decision.minimumScalePercent, false, decision.autopilot, decision.scoringRules, decision.routeBefore,
+                decision.routeAfter);
     }
 
     /**
@@ -180,7 +197,7 @@ final class OfferRule {
     static Decision evaluateAddOn(AddOnOffer addOn, FilterSettings settings) {
         FilterSettings strict = settings.withoutAutopilotAxes().withoutTimeAdjustment()
                 .withScoreByArea(false).withAcceptanceLearning(false);
-        return evaluateAddOnStrict(addOn, strict).withRules(strict);
+        return evaluateAddOnStrict(addOn, strict).withRules(strict).withRoute(addOn.active, addOn.combined);
     }
 
     private static Decision evaluateAddOnStrict(AddOnOffer addOn, FilterSettings settings) {
@@ -197,7 +214,8 @@ final class OfferRule {
 
     /**
      * Every add-on decision carries its whole route's score: the route after accepting, as a percent of what the strict
-     * minimums ask of it (0.6.51, the owner of a declined add-on: "was not scored / did not display a score"). It is
+     * minimums ask of it (0.6.51, the owner of a declined add-on: "was not scored / did not display a score"). Its history
+     * line works the same score out again from the route it keeps (0.6.52, {@link DecisionLog.Entry#routeAfter}). It is
      * shown only: Autopilot, the offer clock and the star view skip add-on lines, as before.
      */
     private static Decision addOnAt(AddOnOffer addOn, FilterSettings settings) {

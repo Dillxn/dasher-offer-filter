@@ -81,7 +81,10 @@ final class Consent {
     // No new collection; the current notice and normal safe point are still required. The Terms and Privacy and
     // notice's What changed box disclose this use of already retained history; the short points stay unchanged.
     // 39 (0.6.46): optional local time-of-day scoring from retained offers and its numeric decision provenance.
-    static final int VERSION = 39;
+    // 40 (0.6.52): an add-on's history line keeps its route before and after (pay, miles, minutes, stops, items), and its
+    // whole-route score is worked out from them (the owner, 19 November 2026: "I want it to be data driven and
+    // declarative, not event driven"). The Privacy says it; the short points stay unchanged.
+    static final int VERSION = 40;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

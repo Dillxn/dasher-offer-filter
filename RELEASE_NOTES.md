@@ -1,3 +1,15 @@
+## 0.6.52 — Add-on scores come from your history
+
+Version 0.6.52 (code 144) answers the owner's message of 19 November 2026 about 0.6.51: "I want it to be data driven and declarative, not event driven."
+
+- **What 0.6.51 did.** It saved each add-on's whole-route score at the moment of its decision. An add-on's history line kept only one set of figures (its own, or the whole route's, whichever check settled it), so the score could not be worked out again from history.
+- **Now.** An add-on decision carries your route before it and the whole route after accepting it, and its history line keeps both (pay, miles, minutes, stops and items). Its score is worked out from the whole route and the rules the line was judged by each time the line is made or read, and never stored. Add-on lines written before keep no route, so they show no score rather than an invented one; regular offers are unchanged.
+- **Added miles in brackets.** Dasher's add-on card puts the added distance in brackets: "+1 stop (3.5 mi) • +12 min". Only a "+" figure was read before, so the whole route had no miles, the add-on often waited for review, and it had no score. The bracketed figure is now read as the added miles when no "+" figure shows, so such add-ons are judged on their whole route.
+- **Notice 40.** Privacy (for 0.6.52) says an add-on's line keeps its route before and after. Accept it once more to keep filtering.
+- **Kept suites.** ConsentGateTest expects notice 40 and LegalTextsTest the 0.6.52 Privacy. No tests were added; a throwaway probe (never committed) checked an add-on line's save and reload (score 51% from its route, none stored), an unknown route (no score) and a regular offer (unchanged).
+
+No phone has run this build.
+
 ## 0.6.51 — Add-ons show a score
 
 Version 0.6.51 (code 143) answers the owner's report of 19 November 2026 (d888f9c9, from 0.6.50): an add-on, +$11.65 for 18 min and 3 stops, declined at a 38% bar ("combined route fails: dollars per stop"), "was not scored / did not display a score".

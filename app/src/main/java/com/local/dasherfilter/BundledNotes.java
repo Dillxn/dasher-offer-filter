@@ -305,6 +305,9 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        // 0.6.52 (the owner, 19 November 2026: "I want it to be data driven and declarative, not event driven").
+        notice(40, "An add-on's line in your history now keeps your route before it and the whole route after it, and "
+                + "its score is worked out from them.");
         notice(39, "Time-aware scoring is an optional switch in How offers are judged; it starts off.",
                 "It uses recent offers on this phone to adjust scores for the local time of day, with normal "
                         + "scoring until enough history exists. The adjustment is kept with each decision.",
@@ -533,6 +536,12 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.52 (the owner, 19 November 2026: "I want it to be data driven and declarative, not event driven").
+        release("0.6.52",
+                "An add-on's score now comes from the route it keeps in your history, so the ticket and chart always "
+                        + "match what was read.",
+                "The added distance Dasher shows in brackets, as in +1 stop (3.5 mi), is read, so the whole route has "
+                        + "its miles and a score.");
         // 0.6.51 (the owner's report of 19 November 2026 of a declined add-on: "was not scored / did not display a score").
         release("0.6.51",
                 "Add-ons now show a score too: your whole route's, after accepting, as a percent of your minimums, on "

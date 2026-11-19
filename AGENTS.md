@@ -12,6 +12,12 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.52 (19 November 2026): add-on lines keep their route; their score is derived
+
+- The owner on 0.6.51's stored add-on score: "I want it to be data driven and declarative, not event driven". OfferRule.Decision.routeBefore/routeAfter (evaluateAddOn: addOn.active and addOn.combined) flow into DecisionLog.Entry.routeBefore/routeAfter (JSON "routeBefore"/"routeAfter"). An add-on Entry's scorePercent is computed in its constructor from routeAfter and scoringRules (Entry.routeScore), so every copy and every load re-derives it; toJson never writes "score" for an add-on. Add-on lines without a route (before 0.6.52, or notification lines) have none.
+- AddOnOffer.parse reads "+1 stop (3.5 mi)" as added miles when no "+N mi" shows (before, combined miles were unknown, so add-ons went to review on "added miles" and had no score).
+- Notice 40, Privacy 0.6.52 (effective 19 November 2026). Terms unchanged (0.6.48).
+
 # 0.6.51 (19 November 2026): add-ons carry their whole route's score
 
 - The owner's report d888f9c9 (row id; token 105b3182): an add-on DECLINE "combined route fails: 38% bar: dollars per stop" "was not scored / did not display a score". OfferRule.addOnAt and evaluateAddOnStrict now pass the combined route's strict scorePercent instead of -1, DecisionLog.Entry.of keeps it for add-ons, and AutopilotText.ticketScoreLine labels it "Whole-route score". Autopilot (lines skipping record.addOn), OfferClock and MinimumsStarView still skip add-ons; DecisionChartView draws their trees.

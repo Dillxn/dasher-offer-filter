@@ -225,17 +225,29 @@ final class DecisionLog {
         final String scoreKind;
         /** Local numeric policy snapshot for model 3; absent on old or incomplete records. */
         final FilterSettings scoringRules;
+        /**
+         * An add-on's route before it and its whole route after accepting it (0.6.52); null for a standalone offer and
+         * for add-on lines written before. An add-on's {@link #scorePercent} is worked out from {@link #routeAfter} and
+         * {@link #scoringRules} whenever the line is made or read, never stored (the owner, 19 November 2026: "I want it
+         * to be data driven and declarative, not event driven"); without them it has none.
+         */
+        final OfferSnapshot routeBefore;
+        final OfferSnapshot routeAfter;
 
         Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents, OfferRule.Result result,
               String reason, Action action, boolean autoDecline, List<String> evidence) {
             this(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence, null, null,
-                    false, Collections.<Step>emptyList(), -1, false, FilterSettings.BAR_AT_MINIMUMS, false, MODEL, "strict", null);
+                    false, Collections.<Step>emptyList(), -1, false, FilterSettings.BAR_AT_MINIMUMS, false, MODEL, "strict", null,
+                    null, null);
         }
 
         private Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents,
                       OfferRule.Result result, String reason, Action action, boolean autoDecline, List<String> evidence,
                       Entry notification, String alertTag, boolean replay, List<Step> steps, int scorePercent,
-                      boolean peeked, int barPercent, boolean autopilot, int model, String scoreKind, FilterSettings scoringRules) {
+                      boolean peeked, int barPercent, boolean autopilot, int model, String scoreKind, FilterSettings scoringRules,
+                      OfferSnapshot routeBefore, OfferSnapshot routeAfter) {
+            this.routeBefore = addOn ? routeBefore : null;
+            this.routeAfter = addOn ? routeAfter : null;
             this.at = at;
             this.source = source;
             this.addOn = addOn;
@@ -250,7 +262,9 @@ final class DecisionLog {
             this.alertTag = alertTag;
             this.replay = replay;
             this.steps = Collections.unmodifiableList(new ArrayList<>(steps));
-            this.scorePercent = scorePercent < 0 ? -1 : scorePercent;
+            // An add-on's score is its whole route's, worked out from what the line keeps (0.6.52).
+            int score = addOn ? routeScore(this.routeAfter, scoringRules) : scorePercent;
+            this.scorePercent = score < 0 ? -1 : score;
             this.peeked = peeked;
             this.barPercent = Math.max(1, Math.min(200, barPercent));
             this.autopilot = autopilot;
@@ -267,32 +281,51 @@ final class DecisionLog {
                     decision.result, decision.reason, action, autoDecline,
                     source == Source.SCREEN ? offerEvidence(labels) : evidence(labels)).withScore(
                     decision.scorePercent).withBar(decision.minimumScalePercent, decision.autopilot)
-                    .withScoringRules(decision.scoringRules);
+                    .withScoringRules(decision.scoringRules).withRoute(decision.routeBefore, decision.routeAfter);
+        }
+
+        /**
+         * An add-on's whole route after accepting it, as a percent of what the strict minimums the line was judged by ask
+         * of it ({@link AreaScore#scorePercent}); -1 without that route, its pay, or the rules.
+         */
+        private static int routeScore(OfferSnapshot after, FilterSettings rules) {
+            if (after == null || after.payCents == null || rules == null) return -1;
+            return AreaScore.scorePercent(rules, after);
+        }
+
+        /** This add-on line with its route before and after accepting it (0.6.52). */
+        Entry withRoute(OfferSnapshot before, OfferSnapshot after) {
+            return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
+                    notification, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind,
+                    scoringRules, before, after);
         }
 
         /** This line, read because Peek brought Dasher up for it, or not. */
         Entry peeked(boolean on) {
             if (on == peeked) return this;
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, scorePercent, on, barPercent, autopilot, model, scoreKind, scoringRules);
+                    notification, alertTag, replay, steps, scorePercent, on, barPercent, autopilot, model, scoreKind, scoringRules,
+                    routeBefore, routeAfter);
         }
 
         /** This line with the offer's score as a whole percent (-1 for none). */
         Entry withScore(int percent) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, percent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
+                    notification, alertTag, replay, steps, percent, peeked, barPercent, autopilot, model, scoreKind, scoringRules,
+                    routeBefore, routeAfter);
         }
 
         /** This line decided at {@code bar} percent of the minimums, with Autopilot {@code auto} (on: it set the bar). */
         Entry withBar(int bar, boolean auto) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, scorePercent, peeked, bar, auto, model, scoreKind, scoringRules);
+                    notification, alertTag, replay, steps, scorePercent, peeked, bar, auto, model, scoreKind, scoringRules,
+                    routeBefore, routeAfter);
         }
 
         Entry withScoringRules(FilterSettings rules) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
                     notification, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model,
-                    rules != null && rules.scoreByArea ? "area" : "strict", rules);
+                    rules != null && rules.scoreByArea ? "area" : "strict", rules, routeBefore, routeAfter);
         }
 
         private boolean sameOffer(Entry other) {
@@ -312,19 +345,22 @@ final class DecisionLog {
         /** An action follow-up keeps the original facts, scoring policy, notification and outcome steps. */
         Entry withAction(Action next, boolean autoDecline) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, next, autoDecline, evidence,
-                    notification, alertTag, false, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
+                    notification, alertTag, false, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules,
+                    routeBefore, routeAfter);
         }
 
         /** This line as of {@code time}: a screen reading is stamped as the history takes it. */
         Entry withTime(long time) {
             return new Entry(time, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
+                    notification, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules,
+                    routeBefore, routeAfter);
         }
 
         /** This line for the notification incarnation whose card has {@code tag}. */
         Entry withAlertTag(String tag, boolean replay) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, tag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
+                    notification, tag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules,
+                    routeBefore, routeAfter);
         }
 
         /**
@@ -334,9 +370,11 @@ final class DecisionLog {
         Entry withNotification(Entry n) {
             Entry nested = new Entry(n.at, n.source, n.addOn, n.facts, n.requiredCents, n.result, n.reason, n.action,
                     n.autoDecline, Collections.<String>emptyList(), null, null, false, Collections.<Step>emptyList(),
-                    n.scorePercent, false, n.barPercent, n.autopilot, n.model, n.scoreKind, n.scoringRules);
+                    n.scorePercent, false, n.barPercent, n.autopilot, n.model, n.scoreKind, n.scoringRules,
+                    n.routeBefore, n.routeAfter);
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    nested, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
+                    nested, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules,
+                    routeBefore, routeAfter);
         }
 
         /** This line with one more step; an exact repeat of the last step is not added again. */
@@ -349,7 +387,8 @@ final class DecisionLog {
             next.add(step);
             while (next.size() > MAX_STEPS) next.remove(0);
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
-                    notification, alertTag, replay, next, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules);
+                    notification, alertTag, replay, next, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules,
+                    routeBefore, routeAfter);
         }
 
         /**
@@ -368,7 +407,10 @@ final class DecisionLog {
             if (facts.stops != null) json.put("stops", facts.stops);
             if (facts.items != null) json.put("items", facts.items);
             if (facts.itemCountApplicable) json.put("itemCountApplicable", true);
-            if (scorePercent >= 0) json.put("score", scorePercent);
+            // An add-on's score is worked out from its route when read, so it is never stored (0.6.52).
+            if (scorePercent >= 0 && !addOn) json.put("score", scorePercent);
+            if (routeBefore != null) json.put("routeBefore", snapshotJson(routeBefore));
+            if (routeAfter != null) json.put("routeAfter", snapshotJson(routeAfter));
             if (model >= STRICT_MODEL) json.put("bar", barPercent).put("auto", autopilot).put("model", model);
             if (model >= MODEL) {
                 json.put("scoreKind", scoreKind);
@@ -436,7 +478,28 @@ final class DecisionLog {
                     json.optBoolean("autoDecline"), evidence, null, null, false, Collections.<Step>emptyList(),
                     json.optInt("score", -1), false, bar, json.optBoolean("auto", false), model,
                     json.optString("scoreKind", "strict"), readRules(json.optJSONObject("rules"), bar,
-                            json.optBoolean("auto", false)));
+                            json.optBoolean("auto", false)), readSnapshot(json.optJSONObject("routeBefore")),
+                    readSnapshot(json.optJSONObject("routeAfter")));
+        }
+
+        /** An add-on route's figures as a line keeps them: pay, miles, minutes, stops and items when read. */
+        private static JSONObject snapshotJson(OfferSnapshot route) throws JSONException {
+            JSONObject json = new JSONObject();
+            if (route.payCents != null) json.put("pay", route.payCents);
+            if (route.miles != null) json.put("miles", route.miles);
+            if (route.minutes != null) json.put("minutes", route.minutes);
+            if (route.stops != null) json.put("stops", route.stops);
+            if (route.items != null) json.put("items", route.items);
+            return json;
+        }
+
+        private static OfferSnapshot readSnapshot(JSONObject json) {
+            if (json == null) return null;
+            return new OfferSnapshot(json.has("pay") ? json.optInt("pay") : null,
+                    json.has("miles") ? json.optDouble("miles") : null,
+                    json.has("minutes") ? json.optInt("minutes") : null,
+                    json.has("stops") ? json.optInt("stops") : null, null, null,
+                    itemCount(json.opt("items")), false);
         }
 
         private static JSONObject rulesJson(FilterSettings rules) throws JSONException {
