@@ -723,11 +723,14 @@ public class PrivacyBoundaryTest {
         assertNotNull(plan);
         assertEquals(0, plan.counted);
         assertEquals(Autopilot.Mode.LEARNING, plan.mode);
-        // Autopilot's switch, goal and the minimums stay.
+        // Autopilot's switch and goal stay; from 0.6.54 the minimums go back to the typical ones (the owner, 19 November
+        // 2026: "Also reset minimums").
         FilterSettings after = FilterStore.load(app);
         assertTrue(after.autopilot);
         assertEquals(70, after.autopilotGoalPercent);
-        assertEquals(2040, after.flatCents);
+        assertEquals(Autopilot.STARTER_FLAT_CENTS, after.flatCents);
+        assertEquals(Autopilot.STARTER_PER_MILE_CENTS, after.perMileCents);
+        assertEquals(Autopilot.STARTER_PER_MINUTE_CENTS, after.perMinuteCents);
         assertEquals("CLEARED", AutopilotStore.jump(app));
     }
 

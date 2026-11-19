@@ -3269,6 +3269,14 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     FeedbackDialogs.forgetContext();
                     DecisionLog.clear(this);
                     QualifyingWaitStore.clear(this);
+                    // A clean start (the owner, 19 November 2026, after a clear left adopted minimums in place while
+                    // Autopilot went back to 100% for its first 20 offers: "Also reset minimums"). Before Autopilot's
+                    // clear, so its own jump ("history cleared") is the bar's reason, with no other bar note.
+                    FilterSettings saved = FilterStore.load(this);
+                    if (!AutopilotText.typicalMinimums(saved)) {
+                        storeRules(saved, saved.withMinimums(Autopilot.STARTER_FLAT_CENTS,
+                                Autopilot.STARTER_PER_MILE_CENTS, Autopilot.STARTER_PER_MINUTE_CENTS));
+                    }
                     // After the history and the watched waiting it plans from: its reading and change note go too.
                     AutopilotRuntime.cleared(this);
                     DiagnosticLog.clear(this);
@@ -3281,9 +3289,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
                     // files go off this thread; a summary being built is never queued).
                     Feedback.clearAutomatic(this);
                     StopReports.clearSoon(this);
-                    // A clean start (the owner, 19 November 2026, after a clear left adopted minimums in place while
-                    // Autopilot went back to 100% for its first 20 offers: "Also reset minimums").
-                    useTypicalMinimums("clear history");
                     pickedArea = false;
                     areaMap.select(null);
                     followNewest = true;

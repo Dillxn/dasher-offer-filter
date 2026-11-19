@@ -14,7 +14,7 @@
 
 # 0.6.54 (19 November 2026): Clear history resets the saved minimums
 
-- The owner, after a clear left adopted minimums ($10.66/stop, $6.61/mi, $0.93/min) in place while Autopilot went back to its LEARNING gate (bar 100 until MIN_WINDOW 20 counted offers): asked on a card, chose "Also reset minimums". MainActivity.confirmClearHistory now calls useTypicalMinimums("clear history") (Autopilot.STARTER_* through barBackToMinimums and storeRules, which notifies the rules change). Terms and Privacy 0.6.54, notice 41; CLEAR_HISTORY says it.
+- The owner, after a clear left adopted minimums ($10.66/stop, $6.61/mi, $0.93/min) in place while Autopilot went back to its LEARNING gate (bar 100 until MIN_WINDOW 20 counted offers): asked on a card, chose "Also reset minimums". MainActivity.confirmClearHistory stores Autopilot.STARTER_* minimums through storeRules, before AutopilotRuntime.cleared so the bar's jump stays CLEARED and no bar note is left (useTypicalMinimums would note RULES_CHANGED, which PrivacyBoundaryTest forbids after a clear). PrivacyBoundaryTest.clearHistoryTappedInSettingsLeavesNoReadingAndNoLastChange now expects the typical minimums. Terms and Privacy 0.6.54, notice 41; CLEAR_HISTORY says it.
 
 # 0.6.53 (19 November 2026): scores, time weight, released holds and the active route from history
 
