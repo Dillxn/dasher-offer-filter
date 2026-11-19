@@ -533,6 +533,10 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.49 (the owner's two reports of 18 November 2026: "+$4.85" and "+$8.15" add-ons read as "pay unknown").
+        release("0.6.49",
+                "An add-on whose card also says what part of its pay is for (\"Includes $0.50 for …\") is read as an "
+                        + "add-on again, with its +$ pay, instead of \"pay unknown\".");
         release("0.6.48",
                 "Offers whose pay couldn't be read no longer use up the 24 offers an accept or a decline holds "
                         + "Autopilot's bar for.",

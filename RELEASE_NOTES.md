@@ -1,3 +1,13 @@
+## 0.6.49 — Add-ons with an "Includes $…" line are read again
+
+Version 0.6.49 (code 141) answers the owner's two misread reports of 18 November 2026 (sent from 0.6.48): add-on cards showing "+$4.85" and "+$8.15" with "+1 stop (3.5 mi) • +12 min" were left as "pay unknown".
+
+- **Why.** Dasher's add-on card has no "add to route" words, so it is recognized by its shape: one amount, a "+$" label, and a route line starting "+1 stop". These cards also carried "Includes $0.50 for …", a part of the same pay, which counted as a second amount; the card was then read as a regular offer, where "+$4.85" is not pay.
+- **Now.** A line that only says what the pay includes ("Includes $0.50 for …") is not counted as another amount (AddOnOffer.INCLUDED_PAY), so both cards read as add-ons paying $4.85 and $8.15. A "+$" beside a real total is still not taken for an add-on.
+- **Not changed.** No notice, Terms or Privacy change. No tests were added; a throwaway probe (never committed) read both reported cards and the total-beside-bonus case.
+
+No phone has run this build.
+
 ## 0.6.48 — Unread offers stop eating history; diagnostics keep more
 
 Version 0.6.48 (code 140) answers the owner's message of 18 November 2026: "Offer filter app is struggling to read orders, and I don't know if the current diagnostics that I send include past order screens, reads, and things like that anymore since we consolidated. Also, I'm concerned that the no reads are knocking off historical data without replacing it."

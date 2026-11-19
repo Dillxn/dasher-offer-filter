@@ -12,6 +12,12 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.49 (19 November 2026): an "Includes $…" line no longer hides an add-on
+
+- The owner's two problem reports of 18 November 2026 (0.6.48, tokens a51a0f85 and 13ebcd64, read from the feedback table with the service-role key now on the session's environment as SUPABASE_URL and SUPABASE_SECRET_KEY): add-on cards "+$4.85" / "+$8.15", "+1 stop (3.5 mi) • +12 min", with "Includes $0.50 for …", decided REVIEW "pay not found" with addOn false.
+- AddOnOffer.isLikely needs exactly one amount beside the "+$" label and the "+N stop" line; the "Includes $0.50" line made two. INCLUDED_PAY ("includes $N") no longer counts as an amount. parse already ignored it (no DELTA before it), so the cards read 485 and 815 cents.
+- Reading reports: GET $SUPABASE_URL/rest/v1/offer_filter_feedback with headers apikey and Authorization: Bearer $SUPABASE_SECRET_KEY; columns received_at, kind, category, message, diagnostics, app_version, report_token, part_index, part_count. Never print the key.
+
 # 0.6.48 (18 November 2026): unread offers stop displacing history and holds; diagnostics keep more
 
 - The owner: "Offer filter app is struggling to read orders, and I don't know if the current diagnostics that I send include past order screens, reads, and things like that anymore since we consolidated. Also, I'm concerned that the no reads are knocking off historical data without replacing it." Then "please fix the repo".

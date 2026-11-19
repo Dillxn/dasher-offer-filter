@@ -20,6 +20,8 @@ final class AddOnOffer {
             "another order", "on your route", "along your route"};
     private static final Pattern ADDED_PAY_LABEL = Pattern.compile("\\+\\s*\\$\\s*" + VALUE);
     private static final Pattern ADDED_STOPS_LINE = Pattern.compile("\\+\\s*[0-9]{1,2}\\s+stops?\\b");
+    /** A part of the added pay named beside it ("Includes $0.50 for …"), not a second amount (0.6.49). */
+    private static final Pattern INCLUDED_PAY = Pattern.compile("\\bincludes?\\s+\\$\\s*" + VALUE);
 
     /** Accepted route context before this add-on; fields are null when unknown. */
     final OfferSnapshot active;
@@ -38,7 +40,9 @@ final class AddOnOffer {
      * An add-on phrase, or Dasher's add-on card with no phrase at all: the screen's one amount is a label of nothing
      * but the added pay, with a route line that starts with the stops it adds ("+$9.40", "incl. tips",
      * "+1 stop (1.9 mi) • +7 min", the owner's 16 October 2026 report). Any other amount leaves it to the phrases: a
-     * bare "+$" beside a total may be a bonus on it.
+     * bare "+$" beside a total may be a bonus on it. A line that only names a part of that pay ("Includes $0.50 for
+     * …") is not another amount (0.6.49, the owner's 18 November 2026 reports: "+$4.85" and "+$8.15" add-ons read as
+     * "pay unknown").
      */
     static boolean isLikely(List<String> labels) {
         if (!OfferEvidence.bounded(labels)) return false;
@@ -50,7 +54,7 @@ final class AddOnOffer {
             for (String phrase : ADD_ON_PHRASES) {
                 if (label.contains(phrase)) return true;
             }
-            if (label.indexOf('$') >= 0) amounts++;
+            if (label.indexOf('$') >= 0 && !INCLUDED_PAY.matcher(label).find()) amounts++;
             addedPay |= ADDED_PAY_LABEL.matcher(label).matches();
             addedStops |= ADDED_STOPS_LINE.matcher(label).lookingAt();
         }
