@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 20 November 2026 · for {app} 0.6.57
+            Beta terms, effective 20 November 2026 · for {app} 0.6.59
 
             ## What {app} is
 
@@ -89,8 +89,10 @@ final class LegalTexts {
             Dasher's screen, except that from 0.6.57, with acceptance learning on, it reads each offer (tapping \
             nothing) so that an offer you accept can set your learned minimums. While auto-decline is paused (from \
             0.6.35), it still reads each offer on Dasher's screen and shows its score and what auto-decline would \
-            do, and taps nothing; offers read while paused teach no learning and do not count for Autopilot. \
-            Turning {app} off in Android's Accessibility settings stops all reading of Dasher's screen.
+            do, and taps nothing; offers read while paused do not count for Autopilot, but from 0.6.59 an offer you \
+            accept yourself while paused teaches acceptance learning and sets Autopilot's working minimums and bar \
+            as when auto-decline is on. Turning {app} off in Android's Accessibility settings stops all reading of \
+            Dasher's screen.
             - It compares each offer with your active minimums: pay per stop, pay per mile and pay per hour of \
             Dasher's time estimate, plus an optional maximum number of stops. Pay per stop (from 0.6.12, when it \
             replaced the minimum pay, keeping its number) is asked for each stop Dasher shows, the pickup included \
@@ -202,14 +204,14 @@ final class LegalTexts {
             and pay per minute at least five minutes. With Learn on, the dashed green triangle shows the calculated \
             learned minimums: the higher saved or learned requirement on every active axis. Automatic accepts, \
             declines, add-ons and ambiguous outcomes do not teach it. Unknown facts do not teach their axes; any \
-            known implausible figure rejects the lesson. Learned bests can activate an unset money minimum. Off or \
-            paused retains learned bests without new learning, except that from 0.6.57, with no minimum set, an \
-            offer you accept teaches it whether or not auto-decline is on. Confirmed Reset clears active bests and \
-            Undo; prior decision snapshots remain until Clear history. Clear history clears both active learning \
-            and that history. Adopt raises only lower saved minimums, which then apply to add-ons too. Reset keeps \
-            your minimums as they are. From 0.6.54 Clear history sets your saved minimums back to the typical ones \
-            ($2.00 a stop, $1.00 a mile and $15 an hour); your other rules stay. Learning is local and makes no \
-            promise about earnings or future offers.
+            known implausible figure rejects the lesson. Learned bests can activate an unset money minimum. \
+            Learning off retains learned bests without new learning. A paused auto-decline keeps learning from \
+            offers you accept (from 0.6.59; from 0.6.57 only with no minimum set). Confirmed Reset clears active \
+            bests and Undo; prior decision snapshots remain until Clear history. Clear history clears both active \
+            learning and that history. Adopt raises only lower saved minimums, which then apply to add-ons too. \
+            Reset keeps your minimums as they are. From 0.6.54 Clear history sets your saved minimums back to the \
+            typical ones ($2.00 a stop, $1.00 a mile and $15 an hour); your other rules stay. Learning is local and \
+            makes no promise about earnings or future offers.
             - If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, \
             it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
             checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \
@@ -321,7 +323,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 20 November 2026 · for {app} 0.6.58
+            Beta privacy policy, effective 20 November 2026 · for {app} 0.6.59
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -479,15 +481,15 @@ final class LegalTexts {
             Automatic accepts, declines, add-ons and ambiguous outcomes do not train it. Unknown facts do not teach \
             their axes; any known implausible figure rejects the lesson. The app also keeps a bounded local \
             identity record to prevent the same acceptance teaching twice and a generation marker to reject stale \
-            observations. Learned bests have no age expiry; pausing or switching learning off retains them. \
-            Confirmed Reset clears active bests and Undo. Earlier decision snapshots keep their original numeric \
-            saved/learned requirements and model for provenance until Clear history, eviction by newer decisions or \
-            uninstall. Clear history and uninstall remove both active learning and decision history. Adopt keeps \
-            the saved minima before and after that adoption and its identity/time for conditional Undo until a \
-            later change, Reset or Clear history invalidates it. When a lesson raises the learned minimums, the app \
-            keeps the learned bests of that lesson, with its identity, for the homepage note until you close it, \
-            adopt them, learning changes, Reset or Clear history. Adopted saved minima remain settings after those \
-            clears.
+            observations. Learned bests have no age expiry; switching learning off retains them, and from 0.6.59 a \
+            paused auto-decline still learns from offers you accept. Confirmed Reset clears active bests and Undo. \
+            Earlier decision snapshots keep their original numeric saved/learned requirements and model for \
+            provenance until Clear history, eviction by newer decisions or uninstall. Clear history and uninstall \
+            remove both active learning and decision history. Adopt keeps the saved minima before and after that \
+            adoption and its identity/time for conditional Undo until a later change, Reset or Clear history \
+            invalidates it. When a lesson raises the learned minimums, the app keeps the learned bests of that \
+            lesson, with its identity, for the homepage note until you close it, adopt them, learning changes, \
+            Reset or Clear history. Adopted saved minima remain settings after those clears.
             - The latest 200 decisions: when, the pay, miles, minutes, stops and total items read, a numeric local \
             snapshot of the saved, learned and independent Autopilot requirements used, whether the offer declared \
             items or shopping, the result, what the app did, the recorded scoring model and score (strict pay \

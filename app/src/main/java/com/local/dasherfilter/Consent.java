@@ -93,7 +93,9 @@ final class Consent {
     // minimums whether or not auto-decline is on (the owner, 20 November 2026). The Terms and Privacy say it.
     // 44 (0.6.58): a history line keeps the masked text read of its offer, and its figures are worked out from it each
     // time the history is read (the owner, 20 November 2026). The Privacy says it.
-    static final int VERSION = 44;
+    // 45 (0.6.59): an offer you accept while auto-decline is paused teaches learning and sets Autopilot's working
+    // minimums (the owner, 20 November 2026). The Terms and Privacy say it.
+    static final int VERSION = 45;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

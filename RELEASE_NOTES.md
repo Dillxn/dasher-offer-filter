@@ -1,3 +1,13 @@
+## 0.6.59 — Accepts made while paused set your minimums
+
+Version 0.6.59 (code 151) answers the owner's report of 20 November 2026: an offer accepted at 9:37 PM scored 120% although "the order before it scored higher and should have set the min". Both were accepted with auto-decline paused, and a paused app learned nothing from accepts: neither acceptance learning nor Autopilot's working minimums and bar (0.6.57 made one exception, the first accept with no minimum set). So the minimums were still the first accept's.
+
+- **Now.** An offer you accept yourself teaches acceptance learning and sets Autopilot's working minimums and bar whether or not auto-decline is paused (FilterStore.captureAutopilotAcceptance, queueAutopilotAcceptance, captureLearning and recordConfirmedManualAcceptance no longer require it on). A pause stops Offer Filter's taps only. Learning off still learns nothing.
+- **Notice 45.** Terms and Privacy for 0.6.59 say so.
+- **Kept suites.** ConsentGateTest expects notice 45 and LegalTextsTest the 0.6.59 texts. No tests were added. Unverified on a phone.
+
+No phone has run this build.
+
 ## 0.6.58 — Your history keeps what was read; figures are worked out when you look
 
 Version 0.6.58 (code 150) answers the owner's message of 20 November 2026: "if we aren't recording enough info then the data parsing we do on the screen read data needs to happen on view render not before storage of the screen read data."

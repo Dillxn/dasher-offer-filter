@@ -305,6 +305,9 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        // 0.6.59 (the owner, 20 November 2026, of an accept made while paused: it "should have set the min").
+        notice(45, "An offer you accept while auto-decline is paused now sets your minimums too, for learning and "
+                + "Autopilot. Pausing only stops taps.");
         // 0.6.58 (the owner, 20 November 2026: "the data parsing ... needs to happen on view render").
         notice(44, "Each offer in your history now keeps the masked text that was read of it, and its figures are "
                 + "worked out from that text whenever you look, so a better reading fixes past offers too.");
@@ -548,6 +551,9 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.59 (the owner, 20 November 2026).
+        release("0.6.59", "Accepts made while auto-decline is paused now set your minimums and Autopilot's bar, like any "
+                + "accept. Pausing only stops Offer Filter from tapping.");
         // 0.6.58 (the owner, 20 November 2026).
         release("0.6.58", "Your history now keeps what was read of each offer, masked, and works its pay, miles and time out "
                 + "from it whenever you look: a reading improved later fixes offers already on your chart.");

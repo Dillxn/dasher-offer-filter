@@ -43,7 +43,7 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "20 November 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.57";
+    static final String TERMS_VERSION = "0.6.59";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -59,6 +59,7 @@ public final class LegalTextsTest {
      * chart); 0.6.44 both (retained confirmed personal history repairs current working minimums and the bar;
      * its original 24-offer hold fixes the bar unless a newer personal decline holds it higher);
      * 0.6.45 updates the Feedback/Export diagnostics navigation, with the same collection and consent scopes;
+     * 0.6.59 both (offers you accept while paused teach learning and set Autopilot's working minimums);
      * 0.6.58 the privacy text only (a line keeps the masked text read of its offer; figures are worked out from it);
      * 0.6.57 both (with learning on and no rule set, offers are read and an accept teaches whatever the switch);
      * 0.6.56 the privacy text only (diagnostics also go soon after an unread offer, at most twelve a day);
@@ -68,7 +69,7 @@ public final class LegalTextsTest {
      * decided nothing first; the summary's log lines around a problem are kept with the dash's counts).
      */
     static final String PRIVACY_EFFECTIVE = "20 November 2026";
-    static final String PRIVACY_VERSION = "0.6.58";
+    static final String PRIVACY_VERSION = "0.6.59";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {

@@ -1091,7 +1091,8 @@ final class FilterStore {
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
             FilterSettings rules = read(prefs);
-            if (!Consent.accepted(context) || !rules.enabled || !rules.autopilot || !rules.hasMonetaryRule()
+            // A paused auto-decline still learns from your own accepts (0.6.59): a pause stops taps, not lessons.
+            if (!Consent.accepted(context) || !rules.autopilot || !rules.hasMonetaryRule()
                     || rules.maxStops > 0 && observed.stops != null && observed.stops > rules.maxStops) return null;
             return new AutopilotPermit(prefs, context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE), observed);
         }
@@ -1161,7 +1162,7 @@ final class FilterStore {
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
             FilterSettings before = read(prefs);
-            if (!Consent.accepted(context) || !before.enabled || !before.autopilot) return AutopilotAcceptance.OFF;
+            if (!Consent.accepted(context) || !before.autopilot) return AutopilotAcceptance.OFF;
             SharedPreferences consent = context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE);
             long elapsed = SystemClock.elapsedRealtime();
             if (permit == null || permit.consumed || permit.sequence <= lastAutopilotAcceptanceSequence
@@ -1328,8 +1329,9 @@ final class FilterStore {
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
             FilterSettings rules = read(prefs);
-            // With no minimum set, learning works however the switch is (0.6.57): the first accept sets them.
-            if (!Consent.accepted(context) || !(rules.enabled || !rules.hasAnyRule()) || !rules.acceptanceLearning) {
+            // Learning works however auto-decline's switch is (0.6.57 with no minimum set; 0.6.59 always, the owner,
+            // 20 November 2026, of an accept made while paused: it "should have set the min").
+            if (!Consent.accepted(context) || !rules.acceptanceLearning) {
                 return null;
             }
             SharedPreferences consent = context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE);
@@ -1346,7 +1348,7 @@ final class FilterStore {
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
             FilterSettings before = read(prefs);
-            if (!Consent.accepted(context) || !(before.enabled || !before.hasAnyRule()) || !before.acceptanceLearning) {
+            if (!Consent.accepted(context) || !before.acceptanceLearning) {
                 return AcceptedLesson.OFF;
             }
             SharedPreferences consent = context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE);

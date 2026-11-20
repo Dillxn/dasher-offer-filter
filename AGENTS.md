@@ -12,6 +12,10 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.59 (20 November 2026): accepts made while paused teach
+
+- The owner, of accepts made with auto-decline paused that set nothing: it "should have set the min". FilterStore.captureAutopilotAcceptance, queueAutopilotAcceptance, captureLearning and recordConfirmedManualAcceptance no longer require rules.enabled. Next (asked on a card: "Reach Platinum"): read Dasher's Ratings page (overall rating, factor points, the acceptance-rate bands), derive the acceptance rate the next tier needs with a 2-point margin, and plan a decline budget over the last 100 offers from history.
+
 # 0.6.58 (20 November 2026): history keeps the masked screen text; figures parsed on load
 
 - The owner: "the data parsing we do on the screen read data needs to happen on view render not before storage of the screen read data." DecisionLog.Entry.screen/screenParts (JSON "screen"/"screenParts"): masked labels (PersonalText.offerPart on screen lines; notification labels unless an account screen), bounded by MAX_SCREEN_LABELS 40, MAX_SCREEN_PARTS 12, MAX_SCREEN_LABEL_CHARS 160, MAX_SCREEN_CHARS 1,500. OfferFilterService.record adds them (withScreen(scan.text, scan.metricParts)); Entry.of keeps a notification's. plainFromJson re-parses (OfferParser.parse(screen, parts), parseNotification, or AddOnOffer.parse(routeBefore, ...) for add-ons, routeAfter included) and merges per field over the recorded facts; result, action and steps stay recorded. Scores follow (Entry.offerScore/addOnScore). Notice 44; Privacy 0.6.58.
