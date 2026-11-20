@@ -1328,7 +1328,10 @@ final class FilterStore {
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
             FilterSettings rules = read(prefs);
-            if (!Consent.accepted(context) || !rules.enabled || !rules.acceptanceLearning) return null;
+            // With no minimum set, learning works however the switch is (0.6.57): the first accept sets them.
+            if (!Consent.accepted(context) || !(rules.enabled || !rules.hasAnyRule()) || !rules.acceptanceLearning) {
+                return null;
+            }
             SharedPreferences consent = context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE);
             return new LearningPermit(prefs.getLong(LEARNING_EPOCH, 0),
                     consent.getInt(Consent.ACCEPTED_VERSION, 0), consent.getLong(Consent.ACCEPTED_AT, 0), observed);
@@ -1343,7 +1346,9 @@ final class FilterStore {
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
             FilterSettings before = read(prefs);
-            if (!Consent.accepted(context) || !before.enabled || !before.acceptanceLearning) return AcceptedLesson.OFF;
+            if (!Consent.accepted(context) || !(before.enabled || !before.hasAnyRule()) || !before.acceptanceLearning) {
+                return AcceptedLesson.OFF;
+            }
             SharedPreferences consent = context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE);
             long elapsed = SystemClock.elapsedRealtime();
             if (permit == null || permit.epoch != prefs.getLong(LEARNING_EPOCH, 0)

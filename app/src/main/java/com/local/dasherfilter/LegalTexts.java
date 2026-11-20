@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 19 November 2026 · for {app} 0.6.54
+            Beta terms, effective 20 November 2026 · for {app} 0.6.57
 
             ## What {app} is
 
@@ -86,10 +86,11 @@ final class LegalTexts {
             evidence of past offers, not a forecast or promise about earnings.
             - It reads the Dasher app's screen and notifications on your phone, through Android's accessibility \
             service and notification access, which you turn on yourself. With no rule set, it reads nothing of \
-            Dasher's screen. While auto-decline is paused (from 0.6.35), it still reads each offer on Dasher's \
-            screen and shows its score and what auto-decline would do, and taps nothing; offers read while paused \
-            teach no learning and do not count for Autopilot. Turning {app} off in Android's Accessibility settings \
-            stops all reading of Dasher's screen.
+            Dasher's screen, except that from 0.6.57, with acceptance learning on, it reads each offer (tapping \
+            nothing) so that an offer you accept can set your learned minimums. While auto-decline is paused (from \
+            0.6.35), it still reads each offer on Dasher's screen and shows its score and what auto-decline would \
+            do, and taps nothing; offers read while paused teach no learning and do not count for Autopilot. \
+            Turning {app} off in Android's Accessibility settings stops all reading of Dasher's screen.
             - It compares each offer with your active minimums: pay per stop, pay per mile and pay per hour of \
             Dasher's time estimate, plus an optional maximum number of stops. Pay per stop (from 0.6.12, when it \
             replaced the minimum pay, keeping its number) is asked for each stop Dasher shows, the pickup included \
@@ -202,10 +203,11 @@ final class LegalTexts {
             learned minimums: the higher saved or learned requirement on every active axis. Automatic accepts, \
             declines, add-ons and ambiguous outcomes do not teach it. Unknown facts do not teach their axes; any \
             known implausible figure rejects the lesson. Learned bests can activate an unset money minimum. Off or \
-            paused retains learned bests without new learning. Confirmed Reset clears active bests and Undo; prior \
-            decision snapshots remain until Clear history. Clear history clears both active learning and that \
-            history. Adopt raises only lower saved minimums, which then apply to add-ons too. Reset keeps your \
-            minimums as they are. From 0.6.54 Clear history sets your saved minimums back to the typical ones \
+            paused retains learned bests without new learning, except that from 0.6.57, with no minimum set, an \
+            offer you accept teaches it whether or not auto-decline is on. Confirmed Reset clears active bests and \
+            Undo; prior decision snapshots remain until Clear history. Clear history clears both active learning \
+            and that history. Adopt raises only lower saved minimums, which then apply to add-ons too. Reset keeps \
+            your minimums as they are. From 0.6.54 Clear history sets your saved minimums back to the typical ones \
             ($2.00 a stop, $1.00 a mile and $15 an hour); your other rules stay. Learning is local and makes no \
             promise about earnings or future offers.
             - If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, \
@@ -319,7 +321,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 19 November 2026 · for {app} 0.6.56
+            Beta privacy policy, effective 20 November 2026 · for {app} 0.6.57
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -344,13 +346,14 @@ final class LegalTexts {
             - Dasher's screen, through Android's accessibility service, while Dasher is on screen or in its half of \
             a split screen: each offer's pay, miles, time, stops and displayed total item count, and the other text \
             Dasher shows, which can include store names, customer names and addresses. With no rule set, it reads \
-            nothing of Dasher's screen; Android's list of windows alone places its tab. While auto-decline is \
-            paused (from 0.6.35; before, it read nothing then either), it reads Dasher's screen as it does when on, \
-            to show each offer's score and what auto-decline would do, and taps nothing; turning {app} off in \
-            Android's Accessibility settings stops all reading of Dasher's screen. Map views it recognizes inside \
-            Dasher's screens are skipped, not read, except while it checks a failed decline or an automatic Accept, \
-            or when a map's own label shows a sign of an offer; whether Dasher's maps are recognized depends on how \
-            Dasher draws them.
+            nothing of Dasher's screen; Android's list of windows alone places its tab. From 0.6.57, with \
+            acceptance learning on, it reads Dasher's screen even with no rule set, as while paused, so an offer \
+            you accept can set your learned minimums. While auto-decline is paused (from 0.6.35; before, it read \
+            nothing then either), it reads Dasher's screen as it does when on, to show each offer's score and what \
+            auto-decline would do, and taps nothing; turning {app} off in Android's Accessibility settings stops \
+            all reading of Dasher's screen. Map views it recognizes inside Dasher's screens are skipped, not read, \
+            except while it checks a failed decline or an automatic Accept, or when a map's own label shows a sign \
+            of an offer; whether Dasher's maps are recognized depends on how Dasher draws them.
             - On Dasher's decline question ("Are you sure you want to decline this offer?"), whether the decline is \
             the app's or yours and whether Autopilot is on or off: the acceptance-rate percentage Dasher shows, and \
             whether Dasher says declining that offer does not lower your acceptance rate. See Autopilot and your \

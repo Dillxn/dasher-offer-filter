@@ -89,7 +89,9 @@ final class Consent {
     // 42 (0.6.56): with Share anonymous diagnostics on, a summary of the dash so far also goes about a minute and a half
     // after an offer whose pay was not read (the owner, 19 November 2026: "i want all diagnostics to be automatic and
     // consolidated"), at most twelve a day. The Privacy says it; the short points stay unchanged.
-    static final int VERSION = 42;
+    // 43 (0.6.57): with Learn on and no minimum set, offers are read (nothing tapped) and an accept sets the learned
+    // minimums whether or not auto-decline is on (the owner, 20 November 2026). The Terms and Privacy say it.
+    static final int VERSION = 43;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

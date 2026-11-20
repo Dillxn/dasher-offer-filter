@@ -1,3 +1,14 @@
+## 0.6.57 — With no minimums, your first accept sets them
+
+Version 0.6.57 (code 149) answers the owner's question of 20 November 2026: "when I accept an order it should raise my mins to that if I have no mins set, right?" It could not: with no minimum set, the app read nothing of Dasher's screen (only its notification, which has no pay), and learning ran only while auto-decline was on, which no minimum turns off.
+
+- **Now.** With Learn on and no minimum set, the app reads each offer on Dasher's screen, shows its figures and taps nothing (no rule still means paused). An offer you accept yourself then teaches the learned bests whether or not auto-decline is on, so your first accept sets your minimums to that offer's own pay per stop, per mile and per hour; from then on offers are scored as usual. Auto-decline stays as you left it: tap the mascot to resume when you're ready.
+- **Not changed.** With Learn off and no minimum set, nothing of Dasher's screen is read, as before. With a minimum set, a pause still teaches nothing.
+- **Notice 43.** Terms and Privacy for 0.6.57 say so. Accept it once more to keep filtering.
+- **Kept suites.** ConsentGateTest expects notice 43 and LegalTextsTest the 0.6.57 texts. No tests were added. Unverified on a phone.
+
+No phone has run this build.
+
 ## 0.6.56 — Diagnostics go on their own after an unread offer
 
 Version 0.6.56 (code 148) answers the owner's message of 19 November 2026 (after report d9340622, an offer seen only in Dasher's notification while Dasher showed it on screen): "i do not see a share report button anymore. i want all diagnostics to be automatic and consolidated."

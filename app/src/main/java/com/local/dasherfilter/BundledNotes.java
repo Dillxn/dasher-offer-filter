@@ -305,6 +305,9 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        // 0.6.57 (the owner, 20 November 2026: "when I accept an order it should raise my mins to that if I have no mins set").
+        notice(43, "With Learn on and no minimums set, Offer Filter now reads offers (tapping nothing), and the first "
+                + "offer you accept sets your minimums.");
         // 0.6.56 (the owner, 19 November 2026: "i want all diagnostics to be automatic and consolidated").
         notice(42, "With Share anonymous diagnostics on, a summary now also goes soon after an offer whose pay wasn't "
                 + "read, so the problem can be fixed without you sending anything.");
@@ -542,6 +545,9 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.57 (the owner, 20 November 2026).
+        release("0.6.57", "With no minimums set and Learn on, the first offer you accept sets your minimums from its own "
+                + "pay per stop, per mile and per hour. Until then offers are read and shown, and nothing is tapped.");
         // 0.6.56 (the owner, 19 November 2026: "i want all diagnostics to be automatic and consolidated").
         release("0.6.56", "Diagnostics go on their own now: with Share anonymous diagnostics on, an offer whose pay wasn't "
                 + "read sends the dash so far about a minute and a half later. Nothing to tap.");

@@ -12,6 +12,10 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.57 (20 November 2026): with Learn on and no minimum, offers are read and an accept teaches
+
+- The owner: "when I accept an order it should raise my mins to that if I have no mins set, right?" OfferFilterService.readsNothing is now no rule AND learning off; FilterStore.captureLearning and recordConfirmedManualAcceptance allow a lesson when enabled OR no rule is set. No rule still counts as paused (pausedNow), so nothing is tapped. The first lesson's learned bests make hasMonetaryRule true (FilterSettings counts learned bests), so reading and scoring then go on as with a minimum; enabled is left as it was. ActionSafetyTest.noRule() turns learning off, so its "reads nothing" checks still hold. Notice 43; Terms and Privacy 0.6.57.
+
 # 0.6.56 (19 November 2026): a summary goes soon after an unread offer
 
 - The owner: "i want all diagnostics to be automatic and consolidated" (no Share report button; report d9340622 was a notification-only line while Dasher showed the offer, paused, minimums $0). DecisionLog.record calls DashSummary.problemSoon for a line with no pay; 90 s later (at most every UNREAD_EVERY_MS 10 min) DashSummary.summarizeUnread adds an anomaly for every still-unread line of the dash part ("offer seen only in Dasher's notification" or "unreadable offer"), summarizes the part (End.UNREAD) and stores SENT_UNTIL; partAt starts the next part there, and a dash's end summarizes only what follows. MAX_PER_DAY 12. Notice 42, Privacy 0.6.56, Feedback.DIAGNOSTICS_LINE.

@@ -7236,7 +7236,11 @@ public final class OfferFilterService extends AccessibilityService {
      * Before 0.6.35 a pause (auto-decline off) read nothing either (the owner, 6 October 2026: "Read nothing").
      */
     static boolean readsNothing(Context context) {
-        return !FilterStore.load(context).hasAnyRule();
+        FilterSettings rules = FilterStore.load(context);
+        // With Learn on, an offer you accept sets your minimums, so offers are read (nothing tapped: no rule means
+        // paused) even before any is set (0.6.57, the owner: "when I accept an order it should raise my mins to that if
+        // I have no mins set, right?").
+        return !rules.hasAnyRule() && !rules.acceptanceLearning;
     }
 
     /**
