@@ -1,3 +1,16 @@
+## 0.6.63 — Accepts move your minimums together; every accept reports its fate
+
+Version 0.6.63 (code 155) answers the owner's reports of 20 November 2026. 065800a5: "says 159% but is less than order before it?" 0c44b868 sent the order before it. Then: diagnostics "should be more automatic and more robust this is to manual".
+
+- **Why the earlier accept set nothing.** The $4.25 (0.9 mi, 10 min, 2 stops) offer at 17:51 was recorded ACCEPTED. The minimums stayed this morning's until the $5.25 accept at 18:06. The lesson's permit, captured when the offer first showed, was void ("stale") if the learning epoch moved before the accept. A pause or resume of auto-decline, any rules change, or more than 5 minutes moved it. The cause wasn't recorded anywhere a report carries: only in the log.
+- **Robust.** FilterStore.recordConfirmedManualAcceptance now checks the notice (then and now) and that the figures match what was first read, at the accept itself. Epoch and age no longer void it.
+- **Moved together.** With minimums set, an accept scales every active minimum by the offer's score (FilterStore.scaledTo, the score at a bar of 100, rounded down), so the offer scores exactly 100%. 0.6.62 copied each rate, so the 0.5-mile $5.25 accept set $10.50 a mile. With none set, each is still set to the offer's own rate. The $5.25 offer beat the $4.25 on every measure, so it would still pass after the $4.25 set them.
+- **Automatic.** Every accepted line now carries its fate as a step: "Your minimums set from this accept" or "Your minimums not set from this accept", with the fixed-word reason (DecisionLog.StepKind LEARNER_MINIMUMS_SET, LEARNER_NOT_SET). A STALE or UNKNOWN accept calls DashSummary.problemSoon. With the opt-in on, the dash so far is sent about 90 s later, naming "accept that did not set your minimums".
+- **Notice 49.** Terms and Privacy for 0.6.63 say so.
+- **Kept suites.** ConsentGateTest expects notice 49 and LegalTextsTest the 0.6.63 texts. Two pinned sentences now state the score-scaling rule. No tests were added. A throwaway probe (deleted, never committed) checked a pause and resume before an accept, the scaling (the $4.25 offer to exactly 100%, then the $5.25 at 157%) and the note.
+
+No phone has run this build.
+
 ## 0.6.62 — One set of minimums
 
 Version 0.6.62 (code 154) answers the owner, 20 November 2026. A $5.40 offer showed "✕ 127%" and was declined: "127% of what?" The ticket's score was against Autopilot's working minimums, which were the previous $8.25 accept's rates ÷ its capped 150% score. The bar held at 150% for 24 offers. Saved minimums, learned bests and those working minimums were three layers doing one job. The owner chose the clean model, with one change: accepts below the minimums lower them, "but offer undo in app".

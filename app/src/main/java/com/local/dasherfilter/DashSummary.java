@@ -178,7 +178,7 @@ final class DashSummary {
         DASH_OVER("Dasher showed the dash ended"),
         QUIET("nothing of the dash seen for 30 minutes"),
         /** An offer's pay went unread (0.6.56): the dash so far goes now, without a button. */
-        UNREAD("an offer's pay was not read");
+        UNREAD("an offer's pay was not read, or an accept did not set your minimums");
 
         final String why;
 
@@ -1089,7 +1089,8 @@ final class DashSummary {
         if (part <= 0 || !Feedback.automaticAllowed(app, epoch) || !Consent.accepted(app)) return;
         List<DecisionLog.Entry> unread = new ArrayList<>();
         for (DecisionLog.Entry entry : DecisionLog.recent(app, DecisionLog.MAX_ENTRIES)) {
-            if (entry.at >= part && entry.at <= now && entry.facts.payCents == null && !entry.replay) unread.add(entry);
+            if (entry.at >= part && entry.at <= now && !entry.replay && (entry.facts.payCents == null
+                    || DecisionLog.hasStep(entry, DecisionLog.StepKind.LEARNER_NOT_SET))) unread.add(entry);
         }
         if (unread.isEmpty()) return;
         synchronized (DashSummary.class) {
@@ -1104,8 +1105,10 @@ final class DashSummary {
                     if (one != null && Math.abs(one.optLong("t") - entry.at) < 15_000L) listed = true;
                 }
                 if (listed) continue;
-                increment(model, "unreadable", "offers");
-                anomaly(model, entry.at, entry.source == DecisionLog.Source.NOTIFICATION
+                boolean lesson = entry.facts.payCents != null;
+                increment(model, lesson ? "accepts that did not set your minimums" : "unreadable", "offers");
+                anomaly(model, entry.at, lesson ? "accept that did not set your minimums"
+                        : entry.source == DecisionLog.Source.NOTIFICATION
                         ? "offer seen only in Dasher's notification" : "unreadable offer",
                         Collections.<String>emptyList());
             }

@@ -1394,10 +1394,11 @@ final class FilterStore {
             }
             SharedPreferences consent = context.getSharedPreferences(Consent.PREFS, Context.MODE_PRIVATE);
             long elapsed = SystemClock.elapsedRealtime();
-            if (permit == null || permit.epoch != prefs.getLong(LEARNING_EPOCH, 0)
-                    || permit.consentVersion != consent.getInt(Consent.ACCEPTED_VERSION, 0)
+            // 0.6.63: judged at the accept itself. A pause, a resume, a rules change or a long look at the offer
+            // since it came no longer voids the lesson (each advanced the epoch, and an accept then taught nothing);
+            // the notice accepted then and now, and figures that match what was first read, still must.
+            if (permit == null || permit.consentVersion != consent.getInt(Consent.ACCEPTED_VERSION, 0)
                     || permit.consentAt != consent.getLong(Consent.ACCEPTED_AT, 0)
-                    || elapsed < permit.observedAt || elapsed - permit.observedAt > 5 * 60_000L
                     || offer == null || offer.contradicts(permit.observed)) return AcceptedLesson.STALE;
             SharedPreferences.Editor edit = prefs.edit();
             // Consumed even if no best changes: duplicate outcomes cannot replay it.
@@ -1411,14 +1412,11 @@ final class FilterStore {
             // minimums should be responsive to that". With none set, it sets all three; an axis you turned off
             // stays off. Undo is on the homepage's note and in Learned minimums.
             int[] was = {before.flatCents, before.perMileCents, before.perMinuteCents};
-            int[] rates = acceptedRates(offer);
             boolean none = was[0] == 0 && was[1] == 0 && was[2] == 0;
-            int[] next = was.clone();
+            int[] next = none ? acceptedRates(offer) : scaledTo(before, offer);
             boolean up = false;
             boolean down = false;
             for (int axis = 0; axis < 3; axis++) {
-                if (rates[axis] <= 0 || (!none && was[axis] == 0)) continue;
-                next[axis] = rates[axis];
                 up |= next[axis] > was[axis];
                 down |= next[axis] < was[axis];
             }
@@ -1696,6 +1694,23 @@ final class FilterStore {
         }
         if (offer.minutes != null && offer.minutes > 0) rates[2] = rate(pay / offer.minutes);
         return rates;
+    }
+
+    /**
+     * Your minimums moved together so this offer scores exactly 100% of them (0.6.63; the owner's report of a
+     * 0.5-mile accept that set $10.50 a mile): each active minimum × its score ÷ 100, rounded down so the offer meets
+     * them. One measure the offer is odd on (a very short or long trip) cannot throw the rest off. Inactive measures stay
+     * off; no score (a figure unread), no change.
+     */
+    static int[] scaledTo(FilterSettings rules, OfferSnapshot offer) {
+        int[] was = {rules.flatCents, rules.perMileCents, rules.perMinuteCents};
+        int score = AreaScore.baselineScorePercent(rules.withAutopilot(false, rules.autopilotGoalPercent), offer);
+        if (score <= 0) return was;
+        int[] next = new int[3];
+        for (int axis = 0; axis < 3; axis++) {
+            next[axis] = was[axis] <= 0 ? 0 : Math.max(1, rate((long) was[axis] * score / 100));
+        }
+        return next;
     }
 
     private static int rate(long cents) {

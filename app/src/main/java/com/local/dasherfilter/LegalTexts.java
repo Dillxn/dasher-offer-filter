@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 20 November 2026 · for {app} 0.6.62
+            Beta terms, effective 20 November 2026 · for {app} 0.6.63
 
             ## What {app} is
 
@@ -141,21 +141,23 @@ final class LegalTexts {
             - Acceptance learning is on by default; the Learn button on the homepage turns it off and on. From \
             0.6.62, while it is on, each positively confirmed manual standalone acceptance (an offer you accepted \
             yourself, including one you took back from the app's decline before it tapped Dasher's confirmation) \
-            sets your minimums to what that offer paid on each measure it shows (pay per stop, the pickup included, \
-            pay per mile and pay per hour, each rounded down to the cent so that offer meets them exactly), up or \
-            down: accepting an offer the filter would decline lowers them, and accepting a better one raises them. \
-            A measure you turned off stays off; with no minimum set, an acceptance sets all three it can read. A \
-            note on the homepage says what changed, with Undo, which puts back your minimums from before that \
-            acceptance; Undo last change in Learned minimums does the same. Undo is conditional and cannot \
-            overwrite a later change of yours, Clear history or another acceptance. Merely passing, timing out or \
-            disappearing is not an acceptance. Automatic accepts, declines, add-ons, ambiguous outcomes and offers \
-            whose pay was not read do not change them; a paused auto-decline does not stop it (from 0.6.59). \
-            Learning off leaves your minimums alone. Before 0.6.62, learning kept separate best-ever learned \
-            minimums that only rose and applied alongside your saved minimums (from 0.6.61 a raise became your \
-            saved minimum at once; before, a note offered Adopt); 0.6.62 makes any learned minimum still asking \
-            more than a saved one your saved minimum, once, and then removes the learned bests. From 0.6.54 Clear \
-            history sets your minimums back to the typical ones ($2.00 a stop, $1.00 a mile and $15 an hour); your \
-            other rules stay. Learning is local and makes no promise about earnings or future offers.
+            sets your minimums so that offer scores exactly 100% of them, up or down: from 0.6.63 all your active \
+            minimums (pay per stop, pay per mile and pay per hour) move together by that offer's score, rounded \
+            down to the cent so it meets them (in 0.6.62 each was set to that offer's own rate, which a very short \
+            or long trip could throw far off). Accepting an offer the filter would decline lowers them, and \
+            accepting a better one raises them. With no minimum set, an acceptance sets each to what that offer \
+            paid on it. A measure you turned off stays off. A note on the homepage says what changed, with Undo, \
+            which puts back your minimums from before that acceptance; Undo last change in Learned minimums does \
+            the same. Undo is conditional and cannot overwrite a later change of yours, Clear history or another \
+            acceptance. Merely passing, timing out or disappearing is not an acceptance. Automatic accepts, \
+            declines, add-ons, ambiguous outcomes and offers whose pay was not read do not change them; a paused \
+            auto-decline does not stop it (from 0.6.59). Learning off leaves your minimums alone. Before 0.6.62, \
+            learning kept separate best-ever learned minimums that only rose and applied alongside your saved \
+            minimums (from 0.6.61 a raise became your saved minimum at once; before, a note offered Adopt); 0.6.62 \
+            makes any learned minimum still asking more than a saved one your saved minimum, once, and then removes \
+            the learned bests. From 0.6.54 Clear history sets your minimums back to the typical ones ($2.00 a stop, \
+            $1.00 a mile and $15 an hour); your other rules stay. Learning is local and makes no promise about \
+            earnings or future offers.
             - If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, \
             it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
             checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \
@@ -267,7 +269,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 20 November 2026 · for {app} 0.6.62
+            Beta privacy policy, effective 20 November 2026 · for {app} 0.6.63
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -423,12 +425,14 @@ final class LegalTexts {
             - Your separate scoring-mode and acceptance-learning choices, and whether you picked the mode yourself: \
             area mode is on by default (from 0.6.27, and set once then for earlier installs); learning is on by \
             default (from 0.6.1, and turned on once then for earlier installs). From 0.6.62, while filtering and \
-            learning are on, a positively confirmed manual standalone acceptance sets your saved minimums to what \
-            that offer paid on each measure it read (pay per stop, the pickup included, pay per mile and pay per \
-            hour), up or down; nothing else is kept of it here. Automatic accepts, declines, add-ons and ambiguous \
-            outcomes do not change them; unknown facts leave their measure alone. The app also keeps a bounded \
-            local identity record to prevent the same acceptance counting twice and a generation marker to reject \
-            stale observations. Each change keeps your minimums before and after it, its identity and time, for a \
+            learning are on, a positively confirmed manual standalone acceptance sets your saved minimums so that \
+            offer scores exactly 100% of them, up or down (from 0.6.63 all active minimums move together by its \
+            score; with none set, each is set to what it paid on that measure); nothing else is kept of it here. \
+            From 0.6.63 each accepted offer's line in the decision history also says whether it set your minimums \
+            and, if not, why, in fixed words. Automatic accepts, declines, add-ons and ambiguous outcomes do not \
+            change them; unknown facts leave their measure alone. The app also keeps a bounded local identity \
+            record to prevent the same acceptance counting twice and a generation marker to reject stale \
+            observations. Each change keeps your minimums before and after it, its identity and time, for a \
             conditional Undo (on the homepage's note until you close it, and in Learned minimums) until a later \
             change, another acceptance or Clear history invalidates it. Before 0.6.62 learning kept separate \
             best-ever learned bests (pay and its stops, and exact pay-per-mile and pay-per-minute pairs) beside \
@@ -760,8 +764,9 @@ final class LegalTexts {
             discarded, or you clear history); any recent stop summary; and the offer timing study's rows for that \
             dash. Never coordinates, place names, or an install or device identifier. From 0.6.56 it also sends one \
             about a minute and a half after an offer whose pay was not read (on Dasher's screen, or seen only in \
-            Dasher's notification), covering the dash so far with the masked log lines around such offers, at most \
-            one every ten minutes; the summary at the dash's end then covers the rest. At most twelve a day (three \
+            Dasher's notification), and from 0.6.63 after an offer you accepted that did not set your minimums when \
+            it should have, covering the dash so far with the masked log lines around such offers, at most one \
+            every ten minutes; the summary at the dash's end then covers the rest. At most twelve a day (three \
             before 0.6.56). Turning it off discards summaries not yet sent and the timing study's data.
             - After a crash or a stop for not responding: with **Share anonymous diagnostics** on, the stop's \
             summary goes with the next summary after a dash. Otherwise the homepage shows "{app} stopped \

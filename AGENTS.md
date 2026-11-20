@@ -12,6 +12,10 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.63 (20 November 2026): accepts move minimums together; every accept reports its fate
+
+- An accept scales all active minimums by its score (FilterStore.scaledTo); per-rate copying (0.6.62) broke on short trips. A lesson is checked at the accept only: notice, plus figures matching the first read. Every accepted line gets LEARNER_MINIMUMS_SET or LEARNER_NOT_SET with the reason, and STALE/UNKNOWN sends DashSummary.problemSoon. Keep diagnostics automatic: a failure the owner would otherwise have to report by hand should put its own reason on the line and send the summary.
+
 # 0.6.62 (20 November 2026): one set of minimums
 
 - The clean model, chosen by the owner. Facts: history, the user's own changes (with Undo records), Dasher readings. Derived: one set of minimums, set by each confirmed manual acceptance up or down (FilterStore.recordConfirmedManualAcceptance, AcceptNoteCard for Undo); a bar of 10–100% that only drops for an acceptance-rate goal (Autopilot.plan → min(share bar, 100)); a score = pay ÷ (minimums × bar). There are no learned bests, working minimums, holds, kept accepts or cost per mile: FilterStore.read returns NONE for both old layers. Don't reintroduce a second layer of minimums. Next: task #4 is superseded by this.

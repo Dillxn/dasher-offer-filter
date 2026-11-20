@@ -102,7 +102,9 @@ final class Consent {
     // 48 (0.6.62): one set of minimums. An offer you accept yourself sets them up or down, with Undo; Autopilot's bar is
     // at most 100% and only drops for an acceptance-rate goal; scores are against what is needed now (the owner, 20
     // November 2026: "okay what's the clean model?"). The Terms and Privacy say it.
-    static final int VERSION = 48;
+    // 49 (0.6.63): an accept moves all your minimums together by its score; each accept's line says whether it set
+    // them, and one that should have and did not sends a summary (the owner, 20 November 2026).
+    static final int VERSION = 49;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

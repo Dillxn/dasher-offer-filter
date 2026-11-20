@@ -8907,11 +8907,16 @@ public final class OfferFilterService extends AccessibilityService {
             boolean permitted = learningPermit != null;
             FilterStore.AcceptedLesson lesson = FilterStore.recordConfirmedManualAcceptance(this, learningPermit,
                     accepted.acceptedOffer);
-            DecisionLog.StepKind learned = lesson == FilterStore.AcceptedLesson.RAISED
-                    ? DecisionLog.StepKind.LEARNER_MINIMUM_RAISED
-                    : lesson == FilterStore.AcceptedLesson.SAVED ? DecisionLog.StepKind.LEARNER_BEST_SAVED
-                    : lesson == FilterStore.AcceptedLesson.UNCHANGED ? DecisionLog.StepKind.LEARNER_UNCHANGED : null;
-            if (learned != null) step(accepted.line, learned, "Confirmed manual standalone acceptance");
+            // Every accept's fate goes on its own line (0.6.63; the owner, 20 November 2026: diagnostics "should be
+            // more automatic and more robust"), so any report or summary says whether it set the minimums and why not.
+            boolean set = lesson == FilterStore.AcceptedLesson.RAISED || lesson == FilterStore.AcceptedLesson.LOWERED
+                    || lesson == FilterStore.AcceptedLesson.SET;
+            step(accepted.line, set ? DecisionLog.StepKind.LEARNER_MINIMUMS_SET : DecisionLog.StepKind.LEARNER_NOT_SET,
+                    lessonWords(lesson, permitted));
+            // An accept that should have set them and did not sends the dash so far on its own (opt-in on).
+            if (lesson == FilterStore.AcceptedLesson.STALE || lesson == FilterStore.AcceptedLesson.UNKNOWN) {
+                DashSummary.problemSoon(this);
+            }
             // Every lesson's fate, in fixed words and no amounts, so a report says why an accept taught nothing.
             DiagnosticLog.log(this, "learner", "manual acceptance: " + lessonWords(lesson, permitted));
             AutopilotRuntime.confirmedManualAcceptance(this, autopilotAcceptancePermit, accepted.acceptedOffer);
@@ -8937,8 +8942,9 @@ public final class OfferFilterService extends AccessibilityService {
             case UNKNOWN: return "not taught: its pay was not read";
             case STALE:
             default:
-                return permitted ? "not taught: the offer's evidence went stale (rules changed, over 5 min, "
-                        + "or its figures differ)" : "not taught: learning was off when the offer came";
+                return permitted ? "not taught: the notice changed since the offer came, or its figures differ from "
+                        + "what was first read" : "not taught: learning was off, or the notice not accepted, when the "
+                        + "offer came";
         }
     }
 

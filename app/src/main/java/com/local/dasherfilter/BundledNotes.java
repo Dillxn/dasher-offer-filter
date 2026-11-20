@@ -305,6 +305,9 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        // 0.6.63 (the owner, 20 November 2026: diagnostics "should be more automatic and more robust").
+        notice(49, "An offer you accept now moves all your minimums together, so it scores exactly 100%; a short or "
+                + "long trip can't throw one measure off. Each accept's history line says whether it set them.");
         // 0.6.62 (the owner, 20 November 2026: "okay what's the clean model?").
         notice(48, "One set of minimums: an offer you accept sets them, up or down, with Undo. Autopilot's bar never "
                 + "goes above them, and scores show the share of what an offer needs, so 100% passes.");
@@ -560,6 +563,10 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.63 (the owner, 20 November 2026).
+        release("0.6.63", "Accepts move all your minimums together by the offer's score, so a 0.5-mile trip can't set "
+                + "$10.50 a mile. A pause or resume before you accept no longer stops an accept from setting them, and "
+                + "an accept that doesn't set them reports itself automatically.");
         // 0.6.62 (the owner, 20 November 2026).
         release("0.6.62", "One set of minimums. An offer you accept sets them to what it paid, even below them; the "
                 + "homepage offers Undo. Autopilot only lowers the bar, for an acceptance-rate goal, and a score of "
