@@ -138,7 +138,13 @@ final class AutopilotText {
         final boolean on;
         /** The bar deciding offers now (exactly 100 while Autopilot is off). */
         final int bar;
+        /** The goal worked to, whole percent (Reach Platinum resolved, {@link Autopilot#goalPercent}); 0 pay first. */
         final int goal;
+        /** The goal as chosen and stored ({@link FilterSettings#GOAL_PLATINUM} for Reach Platinum). */
+        final int storedGoal;
+        /** Dasher's Ratings page (0.6.60), or null; and what its top tier asks, or null. */
+        final AutopilotStore.Ratings ratings;
+        final DasherRatings.Target target;
         final boolean readerConnected;
         /** The latest plan for exactly these rules; null before the first one (or while off). */
         final Autopilot.Plan plan;
@@ -183,14 +189,25 @@ final class AutopilotText {
         Status(FilterSettings rules, boolean readerConnected, Autopilot.Plan plan, AutopilotStore.Reading reading,
                AutopilotStore.Change lastChange, boolean storedRecovering, int storedExtra,
                AutopilotStore.Grew lastGrowth, long wallNow, boolean axesPending) {
+            this(rules, readerConnected, plan, reading, lastChange, storedRecovering, storedExtra, lastGrowth, wallNow,
+                    axesPending, null);
+        }
+
+        Status(FilterSettings rules, boolean readerConnected, Autopilot.Plan plan, AutopilotStore.Reading reading,
+               AutopilotStore.Change lastChange, boolean storedRecovering, int storedExtra,
+               AutopilotStore.Grew lastGrowth, long wallNow, boolean axesPending, AutopilotStore.Ratings ratings) {
             if (rules == null) throw new IllegalArgumentException("rules");
             this.rules = rules;
             this.on = rules.autopilot;
             this.bar = rules.minimumScalePercent;
-            this.goal = rules.autopilotGoalPercent;
+            this.storedGoal = rules.autopilotGoalPercent;
+            this.ratings = ratings;
+            this.target = ratings == null ? null : ratings.target();
             this.readerConnected = readerConnected;
             // A plan made for other rules (another goal, minimum or switch) says nothing about these.
             this.plan = on && plan != null && plan.rulesKey.equals(rules.rulesKey()) ? plan : null;
+            this.goal = this.plan != null ? this.plan.goal
+                    : Autopilot.goalPercent(storedGoal, target == null ? -1 : target.goal);
             this.reading = reading;
             this.lastChange = lastChange;
             this.lastGrowth = lastGrowth;
@@ -294,6 +311,8 @@ final class AutopilotText {
      */
     static String goalLabel(int goal) {
         switch (FilterSettings.sanitizedGoal(goal)) {
+            case FilterSettings.GOAL_PLATINUM:
+                return "Reach Platinum — the acceptance rate your Dasher ratings need, plus 2";
             case FilterSettings.GOAL_TOP_TIER:
                 return "Protect my acceptance rate — 70% or more (a top tier)";
             case FilterSettings.GOAL_TIER:
@@ -319,6 +338,7 @@ final class AutopilotText {
     /** "Autopilot on · goal: acceptance rate 70% or more" / "Autopilot on · pay first". */
     static String toastTurnedOn(int goal) {
         int sane = FilterSettings.sanitizedGoal(goal);
+        if (sane == FilterSettings.GOAL_PLATINUM) return "Autopilot on · goal: reach Platinum";
         return sane == FilterSettings.GOAL_PAY_FIRST ? "Autopilot on · pay first"
                 : "Autopilot on · goal: acceptance rate " + sane + "% or more";
     }
@@ -326,6 +346,7 @@ final class AutopilotText {
     /** With Autopilot already on: "Autopilot goal: acceptance rate 50% or more" / "Autopilot goal: pay first". */
     static String toastGoalChanged(int goal) {
         int sane = FilterSettings.sanitizedGoal(goal);
+        if (sane == FilterSettings.GOAL_PLATINUM) return "Autopilot goal: reach Platinum";
         return sane == FilterSettings.GOAL_PAY_FIRST ? "Autopilot goal: pay first"
                 : "Autopilot goal: acceptance rate " + sane + "% or more";
     }
@@ -579,7 +600,9 @@ final class AutopilotText {
                 + "no offer is up.");
         String floor = detailsFloor(s);
         if (floor != null) lines.add(floor);
-        if (s.on) lines.add("Goal: " + goalLabel(s.goal) + ".");
+        if (s.on) lines.add("Goal: " + goalLabel(s.storedGoal) + ".");
+        String platinum = detailsPlatinum(s);
+        if (platinum != null) lines.add(platinum);
         String ar = detailsAcceptanceRate(s);
         if (ar != null) lines.add(ar);
         String goal = detailsGoalProgress(s);
@@ -1062,7 +1085,9 @@ final class AutopilotText {
     static String reportLine(Status s) {
         List<String> parts = new ArrayList<>();
         parts.add("Autopilot: " + (s.on ? "on" : "off"));
-        parts.add(s.goal == FilterSettings.GOAL_PAY_FIRST ? "pay first" : "goal " + s.goal + "%");
+        parts.add(s.goal == FilterSettings.GOAL_PAY_FIRST ? "pay first" : "goal " + s.goal + "%"
+                + (s.storedGoal == FilterSettings.GOAL_PLATINUM ? " (Platinum" + (s.target == null ? ", ratings unread"
+                : ", needs " + s.target.pointsNeeded + " AR pts") + ")" : ""));
         parts.add("bar " + s.bar + "%");
         if (s.plan != null) {
             parts.add("mode " + s.plan.mode.name());
@@ -1092,6 +1117,44 @@ final class AutopilotText {
         return "AR " + percent + "% (" + String.join(", ", about) + ")";
     }
 
+    /**
+     * Reach Platinum's line (0.6.60): "Platinum needs 85: your other ratings give 58, so acceptance rate needs 27
+     * points, about 82% (from Dasher's Ratings page 2 h ago). Autopilot aims for 84%." Before the page was read, how
+     * to have it read. Null for any other goal.
+     */
+    static String detailsPlatinum(Status s) {
+        if (!s.on || s.storedGoal != FilterSettings.GOAL_PLATINUM) return null;
+        DasherRatings.Target t = s.target;
+        if (t == null) {
+            return "Open Dasher's Ratings page (and its acceptance rate) once with Offer Filter on, and Autopilot will "
+                    + "work out the acceptance rate Platinum needs. Until then it aims for "
+                    + FilterSettings.GOAL_TOP_TIER + "%.";
+        }
+        String seen = " (from Dasher's Ratings page " + ago(s.wallNow - s.ratings.at)
+                + (s.ratings.bands == null ? "; open its acceptance rate once to read the bands exactly" : "") + ")";
+        String head = "Platinum needs " + t.topTier + ": your other ratings give " + t.otherPoints;
+        if (t.pointsNeeded <= 0) {
+            return head + ", enough on their own" + seen + ". Autopilot aims for " + s.goal + "% anyway.";
+        }
+        if (!t.reachable()) {
+            return head + ", so acceptance rate would need " + t.pointsNeeded + " points, more than it gives" + seen
+                    + ". Autopilot keeps as many offers as it can (" + s.goal + "%).";
+        }
+        return head + ", so acceptance rate needs " + t.pointsNeeded + " " + plural(t.pointsNeeded, "point")
+                + ", about " + t.arNeeded + "%" + seen + ". Autopilot aims for " + s.goal + "%, "
+                + DasherRatings.MARGIN + " points to spare.";
+    }
+
+    /** "ratings: overall 84, top 85, AR 77% = 26/30 pts, bands read; Platinum needs AR 82%, goal 84%". */
+    static String logRatings(AutopilotStore.Ratings r) {
+        DasherRatings.Overview o = r.overview;
+        DasherRatings.Target t = r.target();
+        return "ratings: overall " + o.overall + ", top " + (o.topTier > 0 ? String.valueOf(o.topTier) : "unread")
+                + ", AR " + o.arPercent + "% = " + o.arPoints + "/" + o.arMaxPoints + " pts, bands "
+                + (r.bands == null ? "default" : "read") + "; Platinum needs "
+                + (t.reachable() ? "AR " + t.arNeeded + "%" : "more than AR gives") + ", goal " + t.goal + "%";
+    }
+
     // ---- The diagnostic log (category "autopilot"): fixed words and numbers only ----
 
     /** "on; goal 70%" / "on; pay first". */
@@ -1110,7 +1173,8 @@ final class AutopilotText {
     /** "goal 50% (was 70%)"; pay first reads "pay first (was 70%)", and "goal 70% (was pay first)". */
     static String logGoal(int goal, int was) {
         int before = FilterSettings.sanitizedGoal(was);
-        return goalWords(goal) + " (was " + (before == FilterSettings.GOAL_PAY_FIRST ? "pay first" : before + "%")
+        return goalWords(goal) + " (was " + (before == FilterSettings.GOAL_PAY_FIRST ? "pay first"
+                : before == FilterSettings.GOAL_PLATINUM ? "Platinum" : before + "%")
                 + ")";
     }
 
@@ -1210,6 +1274,7 @@ final class AutopilotText {
     /** "goal 70%" or "pay first". */
     private static String goalWords(int goal) {
         int sane = FilterSettings.sanitizedGoal(goal);
+        if (sane == FilterSettings.GOAL_PLATINUM) return "goal Platinum";
         return sane == FilterSettings.GOAL_PAY_FIRST ? "pay first" : "goal " + sane + "%";
     }
 

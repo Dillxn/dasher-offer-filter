@@ -17,6 +17,11 @@ final class FilterSettings {
     static final int GOAL_TOP_TIER = 70;
     static final int GOAL_TIER = 50;
     static final int GOAL_PAY_FIRST = 0;
+    /**
+     * Reach Platinum (0.6.60): not a percent but a choice, resolved before each plan to the acceptance rate Dasher's
+     * Ratings page says the top tier needs, plus 2 ({@link DasherRatings}); {@link #GOAL_TOP_TIER} until it is read.
+     */
+    static final int GOAL_PLATINUM = 101;
     /** The goal a new install has, and the one anything unknown reads as: pay first (0.6.18; 70% before). */
     static final int GOAL_DEFAULT = GOAL_PAY_FIRST;
     /** The bar that means "exactly your minimums". */
@@ -99,9 +104,10 @@ final class FilterSettings {
                 BAR_AT_MINIMUMS);
     }
 
-    /** 70, 50 and 0 (pay first) stand; anything else is the default, pay first (0.6.18; 70 before). */
+    /** Platinum, 70, 50 and 0 (pay first) stand; anything else is the default, pay first (0.6.18; 70 before). */
     static int sanitizedGoal(int percent) {
-        return percent == GOAL_TOP_TIER || percent == GOAL_TIER || percent == GOAL_PAY_FIRST ? percent : GOAL_DEFAULT;
+        return percent == GOAL_PLATINUM || percent == GOAL_TOP_TIER || percent == GOAL_TIER
+                || percent == GOAL_PAY_FIRST ? percent : GOAL_DEFAULT;
     }
 
     private static int money(int cents) {

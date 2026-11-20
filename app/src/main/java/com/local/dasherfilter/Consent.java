@@ -95,7 +95,9 @@ final class Consent {
     // time the history is read (the owner, 20 November 2026). The Privacy says it.
     // 45 (0.6.59): an offer you accept while auto-decline is paused teaches learning and sets Autopilot's working
     // minimums (the owner, 20 November 2026). The Terms and Privacy say it.
-    static final int VERSION = 45;
+    // 46 (0.6.60): Dasher's Ratings page is read as numbers for Autopilot's Reach Platinum goal (the owner, 20 November
+    // 2026: "weighs rating tier wiggle room"). The Terms and Privacy say it.
+    static final int VERSION = 46;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

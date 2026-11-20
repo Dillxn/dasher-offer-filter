@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 20 November 2026 · for {app} 0.6.59
+            Beta terms, effective 20 November 2026 · for {app} 0.6.60
 
             ## What {app} is
 
@@ -60,11 +60,14 @@ final class LegalTexts {
             update that changes the notice. Continuing is your choice, at your own risk; the app makes no promise \
             to preserve your acceptance rate. Autopilot's default goal, pay first, does not try to keep your \
             acceptance rate up. An acceptance-rate goal you choose instead is a best effort, not a promise: \
-            Autopilot cannot accept offers for you, and your acceptance rate rises only when you accept offers. An \
-            offer you accept yourself can set higher Autopilot working minimums and hold its bar above what the \
-            goal allows for the next 24 offers; a newer acceptance replaces those levels and that hold. From \
-            0.6.37, an offer you decline yourself can also raise the bar to just above that offer for the next 24 \
-            offers, even during an acceptance's hold, so more offers are declined automatically.
+            Autopilot cannot accept offers for you, and your acceptance rate rises only when you accept offers. \
+            Reach Platinum (from 0.6.60) aims for the acceptance rate the app works out from the numbers on \
+            Dasher's Ratings page, plus 2 points; that working-out is an estimate of how DoorDash scores ratings, \
+            which DoorDash can change at any time, and it never promises a tier. An offer you accept yourself can \
+            set higher Autopilot working minimums and hold its bar above what the goal allows for the next 24 \
+            offers; a newer acceptance replaces those levels and that hold. From 0.6.37, an offer you decline \
+            yourself can also raise the bar to just above that offer for the next 24 offers, even during an \
+            acceptance's hold, so more offers are declined automatically.
 
             ## What it does
 
@@ -323,7 +326,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 20 November 2026 · for {app} 0.6.59
+            Beta privacy policy, effective 20 November 2026 · for {app} 0.6.60
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -359,6 +362,12 @@ final class LegalTexts {
             - On Dasher's decline question ("Are you sure you want to decline this offer?"), whether the decline is \
             the app's or yours and whether Autopilot is on or off: the acceptance-rate percentage Dasher shows, and \
             whether Dasher says declining that offer does not lower your acceptance rate. See Autopilot and your \
+            acceptance rate below.
+            - On Dasher's Ratings page (from 0.6.60), whenever you open it with a rule set or learning on: your \
+            overall rating, the marks on its rating bar, and your acceptance rate with its points; on its \
+            acceptance-rate page, the acceptance-rate bands and their points. Only these numbers are kept, for \
+            Autopilot's Reach Platinum goal; your other rating factors (completion, on-time, quality, customer \
+            rating and orders) are read on the screen like any other text but not kept. See Autopilot and your \
             acceptance rate below.
             - Dasher's notifications, through Android's notification access. Android shows the app every \
             notification; it ignores every app but Dasher. To decide whether a card of its own is needed, it also \
@@ -710,6 +719,13 @@ final class LegalTexts {
             Autopilot plans or a report is built), and until then stays on the phone unused. A percentage counts \
             only when exactly one stands beside acceptance-rate wording on Dasher's decline question; no text of \
             the question is kept with it.
+            - Dasher's Ratings page (from 0.6.60), whether Autopilot is on or off: the latest overall rating, the \
+            rating bar's highest mark, your acceptance rate and its points (and their most), when it was shown, \
+            Dasher's acceptance-rate bands (each band's percentages and points) once its acceptance-rate page is \
+            shown, and up to 20 pairs of an acceptance rate and the points Dasher gave it. The acceptance rate on \
+            that page also counts as a reading of Dasher's, as above. A Ratings reading older than 30 days is \
+            deleted the next time the app looks at it. Reach Platinum works out from these the acceptance rate the \
+            top tier needs and aims 2 points above it. Numbers only.
             - When Dasher says declining an offer does not lower your acceptance rate, that offer's line in the \
             decision history is marked so, and Autopilot leaves that offer out of its acceptance-rate count (unless \
             Dasher says so of most of your recent declines, which Autopilot then takes as Dasher's general \
@@ -763,24 +779,26 @@ final class LegalTexts {
             how much, how many offers on how many days it rested on, your minimums and Autopilot's bar before and \
             after, and whether its note on the homepage (with Undo) is still waiting. Undo removes it; tapping OK \
             keeps it for Autopilot's details. Numbers only.
-            - The 24-hour logs note each new reading, and Autopilot's plans with the acceptance rate and the offer \
-            rate (offers an hour) they count with, as numbers, and the Undo of such a growth (your minimums before \
-            and after); as for other recognized screens, they can also hold the decline question's masked words \
-            with its percentage.
+            - The 24-hour logs note each new reading, from 0.6.60 each new Ratings reading (overall rating, the \
+            bar's highest mark, acceptance rate and points, whether the bands were read, and the rate and goal \
+            worked out), and Autopilot's plans with the acceptance rate and the offer rate (offers an hour) they \
+            count with, as numbers, and the Undo of such a growth (your minimums before and after); as for other \
+            recognized screens, they can also hold the decline question's masked words with its percentage.
             - Where it goes. Your acceptance rate leaves the phone only in a report you share (**Export \
             diagnostics**), in masked diagnostics sent with feedback (with **Share anonymous diagnostics** on, or \
             in the report offered after a stop), and in **Feedback about a selected offer**, which sends \
-            Autopilot's state and the acceptance rate it counts with. It is never in the summary after each dash: \
-            that summary carries Autopilot's bar and why it changed (never your acceptance rate), so a reason such \
-            as "acceptance rate below your goal" can show it was below your goal, never what it was. The \
-            fingerprint kept with a reading never leaves the phone. The mark that declining an offer does not lower \
-            your acceptance rate is part of that offer's history line and goes with it in Export diagnostics, the \
+            Autopilot's state and the acceptance rate it counts with (with Reach Platinum, the goal it works to and \
+            the acceptance-rate points it says Platinum needs). It is never in the summary after each dash: that \
+            summary carries Autopilot's bar and why it changed (never your acceptance rate), so a reason such as \
+            "acceptance rate below your goal" can show it was below your goal, never what it was. The fingerprint \
+            kept with a reading never leaves the phone. The mark that declining an offer does not lower your \
+            acceptance rate is part of that offer's history line and goes with it in Export diagnostics, the \
             diagnostics sent with feedback and the summary after each dash; feedback about a selected offer leaves \
             it out.
-            - Clear history removes the reading, Autopilot's working figures, the accepted offers it keeps, its \
-            independent working minimums and any pending adjustment, its last-change note and its kept changes, the \
-            note of its last growth (and with it the Undo) and its other notes above. Your rules and Autopilot's \
-            settings stay.
+            - Clear history removes the reading, the Ratings reading and its bands and pairs, Autopilot's working \
+            figures, the accepted offers it keeps, its independent working minimums and any pending adjustment, its \
+            last-change note and its kept changes, the note of its last growth (and with it the Undo) and its other \
+            notes above. Your rules and Autopilot's settings stay.
 
             The acceptance learner and independent Autopilot minimums add no new recipient or automatic-sharing \
             choice. Existing diagnostics can include scoring mode, learning on/off and the recorded score kind, \

@@ -420,8 +420,10 @@ final class AutopilotRuntime {
             }
             Runnable hook = afterInputsForTests;
             if (hook != null) hook.run();
+            AutopilotStore.Ratings ratings = AutopilotStore.ratings(app, wall);
+            int ratingGoal = ratings == null ? -1 : ratings.target().goal;
             Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, waits, reading(stored), state, wall,
-                    planned, since, TimeZone.getDefault(), CostPerMile.cents(app), floorSince, kept));
+                    planned, since, TimeZone.getDefault(), CostPerMile.cents(app), floorSince, kept, ratingGoal));
             String dropped = publish(app, plan, state, epoch, stored, wall, guard, historyVersion, floorSince);
             if (dropped != null) {
                 log(app, dropped);
@@ -1075,6 +1077,73 @@ final class AutopilotRuntime {
         }
     }
 
+    // ---- Dasher's Ratings page (0.6.60) ----
+
+    /** The last labels looked at for the Ratings page, so a screen read again and again is parsed once. */
+    private static volatile int lastRatingsLabels;
+
+    /**
+     * A whole read of Dasher's screen ({@code labels}, what the screen reader already has). Returns at once: when it is
+     * Dasher's Ratings page ({@link DasherRatings#overview}) or its acceptance-rate page ({@link DasherRatings#bands}),
+     * the numbers are kept on the planning thread ({@link AutopilotStore#recordRatings}, {@link
+     * AutopilotStore#recordBands}), the page's acceptance rate counts as a reading of Dasher's like its decline
+     * question's, one line is logged for figures that changed, and Autopilot plans again. No text is kept.
+     */
+    static void screenRead(Context context, List<String> labels) {
+        if (context == null || labels == null || labels.isEmpty()) return;
+        if (!mentionsRatings(labels)) return;
+        int key = labels.hashCode();
+        if (key == lastRatingsLabels) return;
+        lastRatingsLabels = key;
+        Context app = app(context);
+        List<String> copy = new ArrayList<>(labels);
+        long seenGeneration = generation.get();
+        long wall = wallClock.getAsLong();
+        try {
+            executor().execute(() -> ratings(app, copy, seenGeneration, wall));
+        } catch (RejectedExecutionException stopped) {
+            // The page will be read again when next shown.
+        }
+    }
+
+    /** A cheap first look: some label speaks of the overall rating or of acceptance-rate points. */
+    private static boolean mentionsRatings(List<String> labels) {
+        for (String label : labels) {
+            if (label == null) continue;
+            String text = label.toLowerCase(java.util.Locale.US);
+            if (text.contains("overall rating") || text.contains("about acceptance rate")
+                    || text.contains("last 100 offers")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void ratings(Context app, List<String> labels, long seenGeneration, long wall) {
+        try {
+            if (!Consent.accepted(app)) return;
+            DasherRatings.Overview overview = DasherRatings.overview(labels);
+            List<DasherRatings.Band> bands = DasherRatings.bands(labels);
+            if (overview == null && bands == null) return;
+            boolean changed;
+            synchronized (LOCK) {
+                if (seenGeneration != generation.get()) return;
+                changed = AutopilotStore.recordBands(app, bands);
+                if (overview != null) {
+                    changed |= AutopilotStore.recordRatings(app, overview, wall);
+                    changed |= AutopilotStore.recordReading(app, overview.arPercent, "", wall);
+                }
+                if (changed) {
+                    AutopilotStore.Ratings kept = AutopilotStore.ratings(app, wall);
+                    if (kept != null) log(app, AutopilotText.logRatings(kept));
+                }
+            }
+            if (changed) requestPlan(app, Trigger.READING);
+        } catch (RuntimeException failure) {
+            log(app, AutopilotText.logPlanFailed(failure));
+        }
+    }
+
     /** Facts that can name an offer's line: pay, miles, minutes or stops read. */
     private static boolean known(OfferSnapshot facts) {
         return facts != null && (facts.payCents != null || facts.miles != null || facts.minutes != null
@@ -1096,7 +1165,8 @@ final class AutopilotRuntime {
         if (plan != null && plan.generation != generation.get()) plan = null;
         return new AutopilotText.Status(rules, readerConnected, plan, AutopilotStore.reading(app, wallNow),
                 AutopilotStore.lastChange(app), AutopilotStore.recovering(app), AutopilotStore.extra(app),
-                AutopilotStore.lastGrowth(app), wallNow, FilterStore.pendingAutopilotAxes(app) != null);
+                AutopilotStore.lastGrowth(app), wallNow, FilterStore.pendingAutopilotAxes(app) != null,
+                AutopilotStore.ratings(app, wallNow));
     }
 
     // ---- Logging and listeners ----

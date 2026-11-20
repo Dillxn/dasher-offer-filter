@@ -7014,6 +7014,8 @@ public final class OfferFilterService extends AccessibilityService {
             if (judged) {
                 dasherScreenKnown = true;
                 judgedReadAt = started;
+                // Dasher's Ratings page, as numbers, for Reach Platinum (0.6.60); any other screen returns at once.
+                AutopilotRuntime.screenRead(this, sceneLabels);
             }
             // The read's decision and tap are done: Peek's lines of it now.
             flushPeekLines();

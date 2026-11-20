@@ -29,7 +29,11 @@ import org.json.JSONObject;
  *       when, how much, how many offers on how many days, the minimums and the bar before and after, and whether its
  *       homepage note (with Undo) still waits for a tap;</li>
  *   <li>when the user's own last change restarted the accepted floor (0.6.11, {@link #floorSince}), and the figures
- *       of the hand accepts kept for it for 7 days (0.6.19, {@link #keepAccepts}).</li>
+ *       of the hand accepts kept for it for 7 days (0.6.19, {@link #keepAccepts});</li>
+ *   <li>Dasher's Ratings page as numbers (0.6.60, {@link #ratings}): the overall rating, the rating bar's top mark,
+ *       the acceptance rate and its points, the acceptance-rate bands, and up to {@link #RATING_PAIRS_KEPT}
+ *       (rate, points) pairs it has shown, with when; a reading older than {@link #RATINGS_MAX_AGE_MS} is discarded
+ *       when read.</li>
  * </ul>
  * Clear history removes all of it ({@link #clear}). Callers on several threads share it: every read-modify-write is
  * under this class's lock, and every write bumps {@link #version}.
@@ -104,6 +108,21 @@ final class AutopilotStore {
     /** A hand accept is kept this long (0.6.19's 7 days, the accepted floor's reach from 0.6.18 to 0.6.20). */
     static final long KEEP_ACCEPTS_MS = 7 * 24 * 60 * 60_000L;
 
+    /** Dasher's Ratings page (0.6.60): when, overall, top mark (-1 unread), rate, its points and their most. */
+    private static final String RATING_AT = "rating_at";
+    private static final String RATING_OVERALL = "rating_overall";
+    private static final String RATING_TOP = "rating_top";
+    private static final String RATING_AR = "rating_ar";
+    private static final String RATING_AR_POINTS = "rating_ar_points";
+    private static final String RATING_AR_MAX = "rating_ar_max";
+    /** The acceptance-rate bands as {@link DasherRatings#encode} writes them. */
+    private static final String RATING_BANDS = "rating_bands";
+    /** (rate, points) pairs Dasher showed, newest first: "77:26,81:27". */
+    private static final String RATING_PAIRS = "rating_pairs";
+    static final int RATING_PAIRS_KEPT = 20;
+    /** A Ratings reading lasts this long (30 days): the other factors move slowly. */
+    static final long RATINGS_MAX_AGE_MS = 30L * 24 * 60 * 60_000;
+
     /** Changes whenever anything here is written or cleared, so a screen can skip redrawing unchanged state. */
     static volatile long version;
 
@@ -175,6 +194,115 @@ final class AutopilotStore {
             version++;
             return true;
         }
+    }
+
+    // ---- Dasher's Ratings page (0.6.60) ----
+
+    /** The latest Ratings reading and what has been learned of the bands. */
+    static final class Ratings {
+        final DasherRatings.Overview overview;
+        final long at;
+        /** Dasher's bands as read; null before the acceptance-rate page was. */
+        final List<DasherRatings.Band> bands;
+        final List<int[]> pairs;
+
+        Ratings(DasherRatings.Overview overview, long at, List<DasherRatings.Band> bands, List<int[]> pairs) {
+            this.overview = overview;
+            this.at = at;
+            this.bands = bands;
+            this.pairs = pairs;
+        }
+
+        DasherRatings.Target target() {
+            return DasherRatings.target(overview, bands, pairs);
+        }
+    }
+
+    /**
+     * Keeps the overview Dasher's Ratings page showed at {@code wallNow}, and its (rate, points) pair.
+     *
+     * @return whether any figure differs from the kept reading (a repeat only refreshes when it was seen)
+     */
+    static boolean recordRatings(Context context, DasherRatings.Overview overview, long wallNow) {
+        if (overview == null) return false;
+        synchronized (AutopilotStore.class) {
+            SharedPreferences prefs = prefs(context);
+            boolean same = prefs.contains(RATING_AT) && prefs.getInt(RATING_OVERALL, -1) == overview.overall
+                    && prefs.getInt(RATING_TOP, -2) == overview.topTier && prefs.getInt(RATING_AR, -1) == overview.arPercent
+                    && prefs.getInt(RATING_AR_POINTS, -1) == overview.arPoints
+                    && prefs.getInt(RATING_AR_MAX, -1) == overview.arMaxPoints;
+            List<int[]> pairs = pairs(prefs.getString(RATING_PAIRS, ""));
+            List<int[]> next = new ArrayList<>();
+            next.add(new int[] {overview.arPercent, overview.arPoints});
+            for (int[] pair : pairs) {
+                if (pair[0] != overview.arPercent && next.size() < RATING_PAIRS_KEPT) next.add(pair);
+            }
+            prefs.edit().putLong(RATING_AT, wallNow).putInt(RATING_OVERALL, overview.overall)
+                    .putInt(RATING_TOP, overview.topTier).putInt(RATING_AR, overview.arPercent)
+                    .putInt(RATING_AR_POINTS, overview.arPoints).putInt(RATING_AR_MAX, overview.arMaxPoints)
+                    .putString(RATING_PAIRS, encodePairs(next)).apply();
+            version++;
+            return !same;
+        }
+    }
+
+    /** Keeps the acceptance-rate bands Dasher's page showed; whether they differ from the kept ones. */
+    static boolean recordBands(Context context, List<DasherRatings.Band> bands) {
+        if (bands == null) return false;
+        String encoded = DasherRatings.encode(bands);
+        synchronized (AutopilotStore.class) {
+            SharedPreferences prefs = prefs(context);
+            if (encoded.equals(prefs.getString(RATING_BANDS, null))) return false;
+            prefs.edit().putString(RATING_BANDS, encoded).apply();
+            version++;
+            return true;
+        }
+    }
+
+    /** The latest Ratings reading; null without one or past {@link #RATINGS_MAX_AGE_MS} (then discarded). */
+    static Ratings ratings(Context context, long wallNow) {
+        synchronized (AutopilotStore.class) {
+            SharedPreferences prefs = prefs(context);
+            if (!prefs.contains(RATING_AT)) return null;
+            long at = prefs.getLong(RATING_AT, 0);
+            if (at <= 0 || wallNow - at > RATINGS_MAX_AGE_MS) {
+                prefs.edit().remove(RATING_AT).remove(RATING_OVERALL).remove(RATING_TOP).remove(RATING_AR)
+                        .remove(RATING_AR_POINTS).remove(RATING_AR_MAX).apply();
+                version++;
+                return null;
+            }
+            DasherRatings.Overview overview = new DasherRatings.Overview(prefs.getInt(RATING_OVERALL, 0),
+                    prefs.getInt(RATING_TOP, -1), prefs.getInt(RATING_AR, 0), prefs.getInt(RATING_AR_POINTS, 0),
+                    prefs.getInt(RATING_AR_MAX, 0));
+            return new Ratings(overview, at, DasherRatings.decode(prefs.getString(RATING_BANDS, null)),
+                    pairs(prefs.getString(RATING_PAIRS, "")));
+        }
+    }
+
+    private static List<int[]> pairs(String text) {
+        List<int[]> out = new ArrayList<>();
+        if (text == null || text.isEmpty()) return out;
+        for (String part : text.split(",")) {
+            String[] two = part.split(":");
+            if (two.length != 2) continue;
+            try {
+                int percent = Integer.parseInt(two[0]);
+                int points = Integer.parseInt(two[1]);
+                if (percent >= 0 && percent <= 100 && points >= 0 && points <= 100) out.add(new int[] {percent, points});
+            } catch (NumberFormatException ignored) {
+                // A malformed pair is left out.
+            }
+        }
+        return out;
+    }
+
+    private static String encodePairs(List<int[]> pairs) {
+        StringBuilder out = new StringBuilder();
+        for (int[] pair : pairs) {
+            if (out.length() > 0) out.append(',');
+            out.append(pair[0]).append(':').append(pair[1]);
+        }
+        return out.toString();
     }
 
     // ---- The planner's acceptance-rate state ----

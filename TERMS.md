@@ -1,6 +1,6 @@
 # Offer Filter terms of use
 
-Beta terms, effective 20 November 2026 · for Offer Filter 0.6.59
+Beta terms, effective 20 November 2026 · for Offer Filter 0.6.60
 
 ## What Offer Filter is
 
@@ -12,7 +12,7 @@ By tapping I understand and accept on the app's first screen, you confirm that y
 
 ## Acceptance-rate risk
 
-Automatic declines may dramatically lower your DoorDash acceptance rate. This can affect DoorDash programs that depend on it. You must acknowledge this risk before filtering begins, including after an update that changes the notice. Continuing is your choice, at your own risk; the app makes no promise to preserve your acceptance rate. Autopilot's default goal, pay first, does not try to keep your acceptance rate up. An acceptance-rate goal you choose instead is a best effort, not a promise: Autopilot cannot accept offers for you, and your acceptance rate rises only when you accept offers. An offer you accept yourself can set higher Autopilot working minimums and hold its bar above what the goal allows for the next 24 offers; a newer acceptance replaces those levels and that hold. From 0.6.37, an offer you decline yourself can also raise the bar to just above that offer for the next 24 offers, even during an acceptance's hold, so more offers are declined automatically.
+Automatic declines may dramatically lower your DoorDash acceptance rate. This can affect DoorDash programs that depend on it. You must acknowledge this risk before filtering begins, including after an update that changes the notice. Continuing is your choice, at your own risk; the app makes no promise to preserve your acceptance rate. Autopilot's default goal, pay first, does not try to keep your acceptance rate up. An acceptance-rate goal you choose instead is a best effort, not a promise: Autopilot cannot accept offers for you, and your acceptance rate rises only when you accept offers. Reach Platinum (from 0.6.60) aims for the acceptance rate the app works out from the numbers on Dasher's Ratings page, plus 2 points; that working-out is an estimate of how DoorDash scores ratings, which DoorDash can change at any time, and it never promises a tier. An offer you accept yourself can set higher Autopilot working minimums and hold its bar above what the goal allows for the next 24 offers; a newer acceptance replaces those levels and that hold. From 0.6.37, an offer you decline yourself can also raise the bar to just above that offer for the next 24 offers, even during an acceptance's hold, so more offers are declined automatically.
 
 ## What it does
 

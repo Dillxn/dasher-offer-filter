@@ -1,3 +1,14 @@
+## 0.6.60 — Autopilot can aim for Platinum
+
+Version 0.6.60 (code 152) answers the owner's ask of 20 November 2026: "at 76% acceptance rate I am just below platinum. i want to be able to keep my rating when I get back to it ... weighs rating tier wiggle room". On a card the owner chose "Reach Platinum" with a 2-point margin.
+
+- **Reach Platinum, a new Autopilot goal.** Dasher's overall rating is the sum of its factor points, and Platinum starts at the rating bar's top mark (85). So acceptance rate must give 85 − (overall − its own points) points. With the owner's page (Gold 84; acceptance rate 77% = 26 of 30; the other factors 58), that is 27 points. In the "Very high" band (75–100% = 26–30 pts) that is 75 + ⌈1 × 25 ÷ 4⌉ = 82%, rounded up. Every (rate, points) pair Dasher has shown narrows it further. The goal is that rate + 2: 84%. Autopilot's planner then works as for any goal: the share of the last 100 counted offers that must pass is the goal + 10 while recovering and the goal + 5 at it. Until the page is read the goal is 70%, and the details say how to have it read. If Platinum is out of reach by acceptance rate alone, it aims for 95% and says so.
+- **What is read.** When a whole read of Dasher's screen shows "Overall rating" and an "Acceptance rate … N of M points" card, the app reads the overall rating, the rating bar's marks, and the acceptance rate and its points. On the acceptance-rate page ("About acceptance rate", "Last 100 offers") it reads the bands. The page's acceptance rate also counts as a Dasher reading, as the decline question's does. Only numbers are kept, in Autopilot's store; Clear history removes them, and a reading older than 30 days is dropped. The details show the arithmetic ("Platinum needs 85: your other ratings give 58, so acceptance rate needs 27 points, about 82% … Autopilot aims for 84%, 2 points to spare."). The report line and logs carry it.
+- **Notice 46.** Terms and Privacy for 0.6.60 say so.
+- **Kept suites.** ConsentGateTest expects notice 46 and LegalTextsTest the 0.6.60 texts, its pinned Clear history sentence now naming the Ratings reading. No tests were added. A throwaway probe (deleted, never committed) ran the screenshot's labels, split and merged, through the parser, the target, the store, the details and the logs.
+
+No phone has run this build.
+
 ## 0.6.59 — Accepts made while paused set your minimums
 
 Version 0.6.59 (code 151) answers the owner's report of 20 November 2026: an offer accepted at 9:37 PM scored 120% although "the order before it scored higher and should have set the min". Both were accepted with auto-decline paused, and a paused app learned nothing from accepts: neither acceptance learning nor Autopilot's working minimums and bar (0.6.57 made one exception, the first accept with no minimum set). So the minimums were still the first accept's.

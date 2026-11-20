@@ -12,6 +12,10 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.60 (20 November 2026): Reach Platinum
+
+- The owner asked for Autopilot to weigh "rating tier wiggle room" and chose Reach Platinum with a 2-point margin. FilterSettings.GOAL_PLATINUM (101) is a stored choice, never a percent: Autopilot.goalPercent resolves it before each plan from AutopilotStore.ratings (DasherRatings.target: top mark − (overall − AR points) → the rate from the bands, corrected by seen pairs, + 2, at most 95; 70 until read). Inputs.ratingGoal carries it, and Plan.goal and Status.goal are the resolved percent. Status.storedGoal is used for labels. OfferFilterService passes each judged read's labels to AutopilotRuntime.screenRead. Next: task #4, learned minimums from history.
+
 # 0.6.59 (20 November 2026): accepts made while paused teach
 
 - The owner, of accepts made with auto-decline paused that set nothing: it "should have set the min". FilterStore.captureAutopilotAcceptance, queueAutopilotAcceptance, captureLearning and recordConfirmedManualAcceptance no longer require rules.enabled. Next (asked on a card: "Reach Platinum"): read Dasher's Ratings page (overall rating, factor points, the acceptance-rate bands), derive the acceptance rate the next tier needs with a 2-point margin, and plan a decline budget over the last 100 offers from history.

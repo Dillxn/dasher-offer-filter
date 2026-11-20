@@ -135,7 +135,18 @@ final class Autopilot {
      * that protect the acceptance rate, 70% and 50%.
      */
     static final List<Integer> GOALS = Collections.unmodifiableList(Arrays.asList(
-            FilterSettings.GOAL_PAY_FIRST, FilterSettings.GOAL_TOP_TIER, FilterSettings.GOAL_TIER));
+            FilterSettings.GOAL_PAY_FIRST, FilterSettings.GOAL_PLATINUM, FilterSettings.GOAL_TOP_TIER,
+            FilterSettings.GOAL_TIER));
+
+    /**
+     * The goal in whole percent that a plan works to: the stored one, except Reach Platinum
+     * ({@link FilterSettings#GOAL_PLATINUM}), which is {@code ratingGoal} (Dasher's Ratings page, {@link DasherRatings})
+     * when known (1–95) and 70% until then.
+     */
+    static int goalPercent(int stored, int ratingGoal) {
+        if (stored != FilterSettings.GOAL_PLATINUM) return stored;
+        return ratingGoal >= 1 && ratingGoal <= DasherRatings.GOAL_CAP ? ratingGoal : FilterSettings.GOAL_TOP_TIER;
+    }
     /**
      * Typical minimums: $2.00 a stop, $1.00 a mile, 25¢ a minute ($15 an hour), no max stops. Pay per stop counts the
      * pickup from 0.6.14, so a single order (2 stops) asks $4.00, the typical minimum pay of Cincinnati offers.
@@ -459,6 +470,8 @@ final class Autopilot {
          * counted as decided lines. Empty: the history's only.
          */
         final List<OfferRecord> keptAccepts;
+        /** Reach Platinum's goal from Dasher's Ratings page (0.6.60), 1–95; -1 when not read ({@link #goalPercent}). */
+        final int ratingGoal;
 
         /** Inputs with no "minimums since" ({@link Long#MAX_VALUE}) and UTC. */
         Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
@@ -491,6 +504,13 @@ final class Autopilot {
         Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
                Reading reading, State state, long wallNow, long generation, long minimumsSince, TimeZone zone,
                int costPerMileCents, long floorSince, List<OfferRecord> keptAccepts) {
+            this(rules, newestFirst, waits, reading, state, wallNow, generation, minimumsSince, zone, costPerMileCents,
+                    floorSince, keptAccepts, -1);
+        }
+
+        Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
+               Reading reading, State state, long wallNow, long generation, long minimumsSince, TimeZone zone,
+               int costPerMileCents, long floorSince, List<OfferRecord> keptAccepts, int ratingGoal) {
             if (rules == null) throw new IllegalArgumentException("rules");
             this.costPerMileCents = Math.max(0, Math.min(CostPerMile.MOST_CENTS, costPerMileCents));
             this.rules = rules;
@@ -507,6 +527,7 @@ final class Autopilot {
             this.floorSince = floorSince;
             this.keptAccepts = keptAccepts == null ? Collections.<OfferRecord>emptyList()
                     : Collections.unmodifiableList(new ArrayList<>(keptAccepts));
+            this.ratingGoal = ratingGoal;
         }
     }
 
@@ -818,7 +839,7 @@ final class Autopilot {
             this.acceptedHold = reconciledAxes != null && d.acceptedHold && floor >= 0;
             this.target = acceptedHold ? floor : Math.max(target, floor);
             this.current = d.state.current;
-            this.goal = d.rules.autopilotGoalPercent;
+            this.goal = d.goal;
             this.rulesKey = d.sourceRulesKey;
             this.computedAt = d.wallNow;
             this.generation = d.generation;
@@ -891,6 +912,8 @@ final class Autopilot {
     /** What {@link #plan} has worked out so far; it becomes the {@link Plan}. */
     private static final class Draft {
         final FilterSettings rules;
+        /** The goal worked to ({@link #goalPercent}). */
+        final int goal;
         final State state;
         final long wallNow;
         final long generation;
@@ -928,6 +951,7 @@ final class Autopilot {
         Draft(Inputs in, List<OfferRecord> window, int[] thetas, List<MixLine> mix, ArNow ar, Rate rate,
               boolean exemptionsIgnored) {
             rules = in.rules;
+            goal = goalPercent(rules.autopilotGoalPercent, in.ratingGoal);
             sourceRulesKey = rules.rulesKey();
             state = in.state;
             wallNow = in.wallNow;
@@ -999,9 +1023,10 @@ final class Autopilot {
         AutopilotAxes anchor = acceptedAxes(original, in.newestFirst, in.floorSince, in.wallNow);
         FilterSettings rules = anchor == null ? original : original.withAutopilotAxes(anchor);
         Inputs effective = new Inputs(rules, in.newestFirst, in.waits, in.reading, in.state, in.wallNow,
-                in.generation, in.minimumsSince, in.zone, in.costPerMileCents, in.floorSince, in.keptAccepts);
+                in.generation, in.minimumsSince, in.zone, in.costPerMileCents, in.floorSince, in.keptAccepts,
+                in.ratingGoal);
         State state = in.state;
-        int goal = rules.autopilotGoalPercent;
+        int goal = goalPercent(rules.autopilotGoalPercent, in.ratingGoal);
         List<OfferRecord> counted = countedLines(in.newestFirst);
         List<OfferRecord> window = firstOf(counted, WINDOW);
         int[] thetas = new int[window.size()];
