@@ -946,6 +946,26 @@ final class AutopilotText {
                 + (barPercent != Autopilot.BAR_OFF ? " · bar " + barPercent + "%" : "");
     }
 
+    /**
+     * An offer's score against your minimums now (0.6.64; the owner, 20 November 2026, of an add-on whose whole route
+     * set the minimums and still showed 180%): a standalone offer's own figures, an add-on's whole route after
+     * accepting it; -1 when they or the rules lack what a score needs. The chart's trees stand at this.
+     */
+    static int scoreNow(DecisionLog.Entry entry, FilterSettings current) {
+        if (entry == null || current == null || !current.hasMonetaryRule()) return -1;
+        OfferSnapshot facts = entry.addOn ? entry.routeAfter : entry.facts;
+        if (facts == null || facts.payCents == null) return -1;
+        return AreaScore.scorePercent(current, facts);
+    }
+
+    /** The ticket's score line, and its score against your minimums now when that differs ("· now 100%"). */
+    static String ticketScoreLine(DecisionLog.Entry entry, FilterSettings current) {
+        String line = ticketScoreLine(entry);
+        int now = scoreNow(entry, current);
+        if (line == null || now < 0 || now == entry.scorePercent) return line;
+        return line + " · now " + now + "% of your minimums";
+    }
+
     static String ticketScoreLine(DecisionLog.Entry entry) {
         if (entry.scorePercent < 0) return null;
         // An add-on's score is its whole route's after accepting, against the strict minimums (0.6.51).

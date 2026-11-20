@@ -1,3 +1,13 @@
+## 0.6.65 — Add-ons on the chart use your minimums now too
+
+Version 0.6.65 (code 157) answers the owner's screenshot of 20 November 2026. An add-on whose whole route ($8.10, 2.6 mi, 17 min, 2 stops) is exactly the current minimums ($4.05/stop, $3.11/mi, $28.20/hr) "is the exact shape of the minimums but it's tree and score are larger than the 100% line". 0.6.64 rescored standalone trees against the current minimums but left add-ons at their decided whole-route score (180%).
+
+- AutopilotText.scoreNow scores a line against the current minimums: a standalone offer's facts, or an add-on's whole route after accepting it (routeAfter). DecisionChartView.treeScore uses it for every tree, so that add-on stands at 100%.
+- The ticket keeps the decided score and adds "· now N% of your minimums" when it differs (ticketScoreLine(entry, current)).
+- No Terms or Privacy change: display only. No tests added; a throwaway probe confirmed the route scores 100% now (247% against the typical minimums).
+
+No phone has run this build.
+
 ## 0.6.64 — Accepts raise minimums per measure; a low accept lowers the bar
 
 Version 0.6.64 (code 156) replaces 0.6.63's move-everything-together rule with the owner's model of 20 November 2026: "mins are tracked and raised per axis. a higher scoring offer shouldn't lower your mins"; "an accept of a lower score doesn't change your mins but instead lowers the score bar"; "the bar resetting to 100% if we are below platinum on that goal"; no "arbitrary floor or ceiling"; "mins should be raised to the raw value"; and "I just want the graph to accurately reflect min score".

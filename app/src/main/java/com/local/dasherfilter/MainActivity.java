@@ -2617,7 +2617,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // The score as decided (a line decided under the retired rules says so); a reason by area score already says
         // it.
         String scoreLine = entry.model < 2 && entry.reason.startsWith("score ") ? null
-                : AutopilotText.ticketScoreLine(entry);
+                : AutopilotText.ticketScoreLine(entry, FilterStore.load(this));
         if (scoreLine != null) {
             TextView score = ui.text(scoreLine, 14, ui.inkSecondary, true);
             score.setPadding(0, ui.dp(8), 0, 0);

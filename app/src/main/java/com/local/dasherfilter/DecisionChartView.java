@@ -291,12 +291,7 @@ final class DecisionChartView extends View {
      * below would not. The ticket keeps the score it was decided by. An add-on, or a line without pay, keeps its own.
      */
     int treeScore(DecisionLog.Entry entry) {
-        FilterSettings rules = currentRules;
-        if (rules == null || entry.addOn || entry.facts == null || entry.facts.payCents == null
-                || !rules.hasMonetaryRule()) {
-            return entry.scorePercent;
-        }
-        int now = AreaScore.scorePercent(rules, entry.facts);
+        int now = AutopilotText.scoreNow(entry, currentRules);
         return now >= 0 ? now : entry.scorePercent;
     }
 

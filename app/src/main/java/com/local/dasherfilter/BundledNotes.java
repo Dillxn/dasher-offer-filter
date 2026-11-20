@@ -567,6 +567,10 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.65 (the owner, 20 November 2026: an add-on "is the exact shape of the minimums but it's tree and score are
+        // larger than the 100% line").
+        release("0.6.65", "Add-ons on the chart stand at their whole route's score against your minimums now, like "
+                + "every other offer, and a ticket shows that score beside the one it was decided at.");
         // 0.6.64 (the owner, 20 November 2026).
         release("0.6.64", "Accepts raise each minimum the offer beat, never lower one. An accept below your minimums "
                 + "lowers the bar instead, back to 100% at your next accept above them (unless you're below your "
