@@ -1,3 +1,17 @@
+## 0.6.64 — Accepts raise minimums per measure; a low accept lowers the bar
+
+Version 0.6.64 (code 156) replaces 0.6.63's move-everything-together rule with the owner's model of 20 November 2026: "mins are tracked and raised per axis. a higher scoring offer shouldn't lower your mins"; "an accept of a lower score doesn't change your mins but instead lowers the score bar"; "the bar resetting to 100% if we are below platinum on that goal"; no "arbitrary floor or ceiling"; "mins should be raised to the raw value"; and "I just want the graph to accurately reflect min score".
+
+- **Accept at 100% or more** (its score against your minimums, at a bar of 100): each active minimum it beat rises to its raw rate, rounded down to the cent (FilterStore.acceptedRates). The others stay, and none is lowered. In area mode that offer can then score under 100% itself; the owner chose raw values over a partial raise. The accept bar returns to 100 unless AutopilotRuntime.belowGoal.
+- **Accept under 100%:** the minimums stay and the accept bar (FilterStore.ACCEPT_BAR, 10–100) becomes its score. Autopilot.plan's target is min(share bar, accept bar, 100). Mode ACCEPT_BAR, with commit reason "you accepted an offer at this score", also applies while learning (fewer than 20 counted offers).
+- **Undo** (the Adoption record) restores minimums and the accept bar. The homepage note says "Your accept lowered the bar" for a bar change. Clear history resets the accept bar.
+- **Scores** are against your minimums again (AreaScore.scorePercent without the bar; 0.6.62 and 0.6.63 divided by it). A ticket shows its score with its bar.
+- **Chart:** trees are scored against the current minimums (DecisionChartView.treeScore), so trees from different times line up. The ticket still shows the decided score. The dashed line is today's bar, flat across the chart.
+- **Notice 50.** Terms and Privacy for 0.6.64 say so.
+- **Kept suites.** ConsentGateTest expects notice 50 and the new "On by default." sentences. Its and LegalTextsTest's pinned sentences now state the 0.6.64 rules. No tests were added. A throwaway probe (deleted) checked the raw per-axis raise, the accept bar to 49% and the plan following it, Undo, and a later 100%+ accept resetting the bar.
+
+No phone has run this build.
+
 ## 0.6.63 — Accepts move your minimums together; every accept reports its fate
 
 Version 0.6.63 (code 155) answers the owner's reports of 20 November 2026. 065800a5: "says 159% but is less than order before it?" 0c44b868 sent the order before it. Then: diagnostics "should be more automatic and more robust this is to manual".

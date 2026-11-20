@@ -155,6 +155,12 @@ final class FilterStore {
     private static final String LEARNING_EPOCH = "learner_v3_epoch";
     private static final String MINIMA_REVISION = "learner_v3_minima_revision";
     private static final String ADOPTION = "learner_v3_adoption";
+    /**
+     * The bar your own accepts set (0.6.64): an accept under 100% of your minimums lowers it to that offer's score; an
+     * accept at 100% or more puts it back at 100, unless you are below your acceptance-rate goal. Autopilot's bar is at
+     * most this. 100 when none.
+     */
+    private static final String ACCEPT_BAR = "accept_bar";
     /** The id of the accept whose minimums the homepage's note shows (0.6.62). */
     private static final String ACCEPT_NOTE = "accept_note";
     /** The homepage's note of the last learned raise ({@link LearnedRaise}). */
@@ -1386,6 +1392,8 @@ final class FilterStore {
     /** Only the existing outcome detector's confirmed manual standalone branch may consume this permit. */
     static AcceptedLesson recordConfirmedManualAcceptance(Context context, LearningPermit permit, OfferSnapshot offer) {
         AcceptedLesson result;
+        // Outside this class's lock: Autopilot's runtime lock comes first (see AutopilotRuntime's LOCK).
+        boolean belowGoal = AutopilotRuntime.belowGoal(context);
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
             FilterSettings before = read(prefs);
@@ -1411,27 +1419,52 @@ final class FilterStore {
             // measure it read: "one is accepting the lower paying offer and bypassing the filter for a reason and the
             // minimums should be responsive to that". With none set, it sets all three; an axis you turned off
             // stays off. Undo is on the homepage's note and in Learned minimums.
+            // 0.6.64 (the owner, 20 November 2026): minimums are tracked and raised per axis, and "a higher scoring
+            // offer shouldn't lower your mins"; "an accept of a lower score doesn't change your mins but instead lowers
+            // the score bar", qualified: "the bar resetting to 100% if we are below platinum on that goal".
             int[] was = {before.flatCents, before.perMileCents, before.perMinuteCents};
             boolean none = was[0] == 0 && was[1] == 0 && was[2] == 0;
-            int[] next = none ? acceptedRates(offer) : scaledTo(before, offer);
-            boolean up = false;
-            boolean down = false;
-            for (int axis = 0; axis < 3; axis++) {
-                up |= next[axis] > was[axis];
-                down |= next[axis] < was[axis];
+            int[] rates = acceptedRates(offer);
+            int barWas = acceptBar(prefs);
+            int score = none ? -1 : AreaScore.scorePercent(before.withAutopilot(false, before.autopilotGoalPercent),
+                    offer);
+            int[] next = was.clone();
+            int bar = barWas;
+            if (none) {
+                next = rates;
+            } else if (score < 0) {
+                edit.apply();
+                return AcceptedLesson.UNKNOWN;
+            } else if (score >= FilterSettings.BAR_AT_MINIMUMS) {
+                // Each measure the offer beat rises to that offer's own rate (the owner: "mins should be raised to
+                // the raw value"); the rest stay.
+                for (int axis = 0; axis < 3; axis++) {
+                    if (was[axis] > 0 && rates[axis] > was[axis]) next[axis] = rates[axis];
+                }
+                if (!belowGoal) bar = FilterSettings.BAR_AT_MINIMUMS;
+            } else {
+                bar = Math.max(BAR_MIN, score);
             }
-            if (!up && !down) {
+            boolean up = false;
+            for (int axis = 0; axis < 3; axis++) up |= next[axis] != was[axis];
+            if (!up && bar == barWas) {
                 edit.apply();
                 return AcceptedLesson.UNCHANGED;
             }
-            result = up && down ? AcceptedLesson.SET : up ? AcceptedLesson.RAISED : AcceptedLesson.LOWERED;
+            result = up ? AcceptedLesson.RAISED : bar < barWas ? AcceptedLesson.LOWERED : AcceptedLesson.SET;
             long wall = wallClock.getAsLong();
-            edit.putInt(FLAT, next[0]).putInt(PER_MILE, next[1]).putInt(PER_MINUTE, next[2])
-                    .putLong(MINIMUMS_SINCE, wall);
-            long revision = minimaChanged(prefs, edit);
-            Adoption change = new Adoption(lesson, wall, revision, before, next[0], next[1], next[2]);
+            long revision;
+            if (up) {
+                edit.putInt(FLAT, next[0]).putInt(PER_MILE, next[1]).putInt(PER_MINUTE, next[2])
+                        .putLong(MINIMUMS_SINCE, wall);
+                revision = minimaChanged(prefs, edit);
+                policyChangedSince(prefs, edit);
+            } else {
+                revision = minimaRevised(prefs, edit);
+            }
+            edit.putInt(ACCEPT_BAR, bar);
+            Adoption change = new Adoption(lesson, wall, revision, before, next[0], next[1], next[2], barWas, bar);
             edit.putString(ADOPTION, change.encode()).putLong(ACCEPT_NOTE, lesson);
-            policyChangedSince(prefs, edit);
             edit.apply();
         }
         // A lesson's jump is its own, not the user's (0.6.11).
@@ -1462,7 +1495,8 @@ final class FilterStore {
         initializeLearning(prefs);
         synchronized (FilterStore.class) {
             SharedPreferences.Editor edit = prefs.edit().remove(ADOPTION).remove(LEARNED_RAISE)
-                    .remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR);
+                    .remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(AUTOPILOT_RESUME_BAR)
+                    .remove(ACCEPT_BAR);
             endAutopilotHistory(prefs, edit, wallClock.getAsLong());
             policyChangedSince(prefs, edit);
             writeAccepted(edit, AcceptedFloors.NONE);
@@ -1478,29 +1512,43 @@ final class FilterStore {
     static final class Adoption {
         final long id, at, revision;
         final int flatBefore, mileBefore, minuteBefore, flatAfter, mileAfter, minuteAfter;
+        /** The accept bar before and after (0.6.64); 100 and 100 for a change of minimums alone. */
+        final int barBefore, barAfter;
         Adoption(long id, long at, long revision, FilterSettings before, int flat, int mile, int minute) {
+            this(id, at, revision, before, flat, mile, minute, FilterSettings.BAR_AT_MINIMUMS,
+                    FilterSettings.BAR_AT_MINIMUMS);
+        }
+        Adoption(long id, long at, long revision, FilterSettings before, int flat, int mile, int minute,
+                 int barBefore, int barAfter) {
             this.id = id; this.at = at; this.revision = revision;
             flatBefore = before.flatCents; mileBefore = before.perMileCents; minuteBefore = before.perMinuteCents;
             flatAfter = flat; mileAfter = mile; minuteAfter = minute;
+            this.barBefore = barBefore; this.barAfter = barAfter;
         }
         private Adoption(JSONObject json) throws JSONException {
             id = json.getLong("id"); at = json.getLong("at"); revision = json.getLong("revision");
             flatBefore = json.getInt("flatBefore"); mileBefore = json.getInt("mileBefore");
             minuteBefore = json.getInt("minuteBefore"); flatAfter = json.getInt("flatAfter");
             mileAfter = json.getInt("mileAfter"); minuteAfter = json.getInt("minuteAfter");
+            barBefore = json.optInt("barBefore", FilterSettings.BAR_AT_MINIMUMS);
+            barAfter = json.optInt("barAfter", FilterSettings.BAR_AT_MINIMUMS);
         }
         String encode() {
             try {
                 return new JSONObject().put("id", id).put("at", at).put("revision", revision)
                         .put("flatBefore", flatBefore).put("mileBefore", mileBefore).put("minuteBefore", minuteBefore)
-                        .put("flatAfter", flatAfter).put("mileAfter", mileAfter).put("minuteAfter", minuteAfter).toString();
+                        .put("flatAfter", flatAfter).put("mileAfter", mileAfter).put("minuteAfter", minuteAfter)
+                        .put("barBefore", barBefore).put("barAfter", barAfter).toString();
             } catch (JSONException impossible) { throw new IllegalStateException(impossible); }
         }
         boolean matches(SharedPreferences prefs, FilterSettings current) {
             return id > 0 && revision > 0 && validRange(flatBefore, flatAfter) && validRange(mileBefore, mileAfter)
                     && validRange(minuteBefore, minuteAfter) && revision == prefs.getLong(MINIMA_REVISION, 0)
                     && current.flatCents == flatAfter && current.perMileCents == mileAfter
-                    && current.perMinuteCents == minuteAfter;
+                    && current.perMinuteCents == minuteAfter && acceptBar(prefs) == barAfter;
+        }
+        boolean minimumsChanged() {
+            return flatBefore != flatAfter || mileBefore != mileAfter || minuteBefore != minuteAfter;
         }
         private static boolean validRange(int before, int after) {
             // An accept can lower a minimum too (0.6.62).
@@ -1592,6 +1640,7 @@ final class FilterStore {
             if (a.flatBefore != a.flatAfter) edit.putInt(FLAT, a.flatBefore);
             if (a.mileBefore != a.mileAfter) edit.putInt(PER_MILE, a.mileBefore);
             if (a.minuteBefore != a.minuteAfter) edit.putInt(PER_MINUTE, a.minuteBefore);
+            edit.putInt(ACCEPT_BAR, a.barBefore);
             minimaChanged(prefs, edit);
             edit.apply();
         }
@@ -1696,25 +1745,17 @@ final class FilterStore {
         return rates;
     }
 
-    /**
-     * Your minimums moved together so this offer scores exactly 100% of them (0.6.63; the owner's report of a
-     * 0.5-mile accept that set $10.50 a mile): each active minimum × its score ÷ 100, rounded down so the offer meets
-     * them. One measure the offer is odd on (a very short or long trip) cannot throw the rest off. Inactive measures stay
-     * off; no score (a figure unread), no change.
-     */
-    static int[] scaledTo(FilterSettings rules, OfferSnapshot offer) {
-        int[] was = {rules.flatCents, rules.perMileCents, rules.perMinuteCents};
-        int score = AreaScore.baselineScorePercent(rules.withAutopilot(false, rules.autopilotGoalPercent), offer);
-        if (score <= 0) return was;
-        int[] next = new int[3];
-        for (int axis = 0; axis < 3; axis++) {
-            next[axis] = was[axis] <= 0 ? 0 : Math.max(1, rate((long) was[axis] * score / 100));
-        }
-        return next;
-    }
-
     private static int rate(long cents) {
         return (int) Math.max(0, Math.min(FilterSettings.MOST_CENTS, cents));
+    }
+
+    /** The bar your own accepts set (0.6.64), {@link #BAR_MIN}–100; 100 when none. */
+    static int acceptBar(Context context) {
+        return acceptBar(prefs(context));
+    }
+
+    private static int acceptBar(SharedPreferences prefs) {
+        return clamp(prefs.getInt(ACCEPT_BAR, FilterSettings.BAR_AT_MINIMUMS), BAR_MIN, FilterSettings.BAR_AT_MINIMUMS);
     }
 
     /** The homepage note of the last accept that set the minimums: its Undo record, or null once closed or stale. */

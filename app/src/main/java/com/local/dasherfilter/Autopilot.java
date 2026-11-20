@@ -186,6 +186,8 @@ final class Autopilot {
         /** Pay first's one-in-five floor binds. */
         PASS_FLOOR,
         /** No value data, and the limit allows exactly the minimums. */
+        /** 0.6.64: the bar your own accept under your minimums set binds. */
+        ACCEPT_BAR,
         AT_MINIMUMS,
         /** Pay decides, within the acceptance-rate limit. */
         VALUE
@@ -223,7 +225,7 @@ final class Autopilot {
          * A lesson raised the learned minimums (0.6.11): a jump, but not the user's own, so it never restarts the
          * accepted floor.
          */
-        LEARNED(true, "your learned minimums rose"),
+        LEARNED(true, "your accept set your minimums or bar"),
         /**
          * The bar rose to, or stays held at, the score of an offer the user accepted by hand (0.6.11; for the 24 offers
          * after it from 0.6.21, the last 7 days from 0.6.18).
@@ -476,6 +478,14 @@ final class Autopilot {
         final List<OfferRecord> keptAccepts;
         /** Reach Platinum's goal from Dasher's Ratings page (0.6.60), 1–95; -1 when not read ({@link #goalPercent}). */
         final int ratingGoal;
+        /** The bar your own accepts set (0.6.64, FilterStore.acceptBar): the plan's bar is at most this. */
+        int acceptBar = BAR_OFF;
+
+        /** These inputs with the bar your own accepts set. */
+        Inputs withAcceptBar(int bar) {
+            acceptBar = Math.max(BAR_MIN, Math.min(BAR_OFF, bar));
+            return this;
+        }
 
         /** Inputs with no "minimums since" ({@link Long#MAX_VALUE}) and UTC. */
         Inputs(FilterSettings rules, List<OfferRecord> newestFirst, List<QualifyingWait.Sample> waits,
@@ -1029,7 +1039,7 @@ final class Autopilot {
         FilterSettings rules = anchor == null ? original : original.withAutopilotAxes(anchor);
         Inputs effective = new Inputs(rules, in.newestFirst, in.waits, in.reading, in.state, in.wallNow,
                 in.generation, in.minimumsSince, in.zone, in.costPerMileCents, in.floorSince, in.keptAccepts,
-                in.ratingGoal);
+                in.ratingGoal).withAcceptBar(in.acceptBar);
         State state = in.state;
         int goal = goalPercent(rules.autopilotGoalPercent, in.ratingGoal);
         List<OfferRecord> counted = countedLines(in.newestFirst);
@@ -1055,7 +1065,9 @@ final class Autopilot {
 
         if (!rules.autopilot) return draft.gated(Mode.OFF);
         if (!rules.hasMonetaryRule()) return draft.gated(Mode.NO_RULES);
-        if (thetas.length < MIN_WINDOW) return draft.gated(Mode.LEARNING);
+        if (thetas.length < MIN_WINDOW) {
+            return in.acceptBar < BAR_OFF ? draft.decided(Mode.ACCEPT_BAR, in.acceptBar) : draft.gated(Mode.LEARNING);
+        }
 
         Correction correction = correction(goal, state, ar, accounting(counted, ignoreExempt), in.wallNow);
         Need need = need(goal, ar.hundredths, state.recovering, correction.extra);
@@ -1071,8 +1083,10 @@ final class Autopilot {
 
         Mode limited = need.recovering ? Mode.RECOVERY : goal > 0 ? Mode.GOAL : Mode.PASS_FLOOR;
         // 0.6.62: the highest bar, at most the minimums, that passes enough of the last 100 offers; no value moves.
-        int target = Math.min(share.bar, BAR_OFF);
-        return draft.decided(target < BAR_OFF ? limited : Mode.AT_MINIMUMS, target);
+        // 0.6.64: never above the bar your own accepts set (an accept under your minimums lowers it).
+        int target = Math.min(share.bar, Math.min(BAR_OFF, in.acceptBar));
+        return draft.decided(target < BAR_OFF ? (target < share.bar ? Mode.ACCEPT_BAR : limited) : Mode.AT_MINIMUMS,
+                target);
     }
 
     // ---- (a) The counted window ----
@@ -1795,6 +1809,7 @@ final class Autopilot {
             case RECOVERY: return plan.belowGoal() ? Reason.RECOVERY : Reason.GOAL;
             case GOAL: return Reason.GOAL;
             case PASS_FLOOR: return Reason.PASS_FLOOR;
+            case ACCEPT_BAR: return Reason.ACCEPTED;
             case LEARNING: return Reason.LEARNING;
             case VALUE: return to > from ? Reason.VALUE_UP : Reason.VALUE_DOWN;
             default: return Reason.AT_MINIMUMS;

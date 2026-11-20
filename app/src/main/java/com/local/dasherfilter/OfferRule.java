@@ -174,7 +174,7 @@ final class OfferRule {
                 ? below ? "below your minimums; passes Autopilot's current minimums"
                         : "meets Autopilot's current minimums"
                 : bar > FilterSettings.BAR_AT_MINIMUMS ? "meets the " + bar + "% bar"
-                : below ? "below your minimums; passes Autopilot's " + bar + "% bar for your acceptance-rate goal"
+                : below ? "below your minimums; passes the " + bar + "% bar"
                 : settings.scoreByArea ? "meets your area requirement" : MEETS_MINIMUMS;
         return new Decision(Result.KEEP, required, reason, offer, score, bar, below, autopilot);
     }

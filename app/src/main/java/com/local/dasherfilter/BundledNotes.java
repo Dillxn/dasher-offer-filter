@@ -305,6 +305,10 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        // 0.6.64 (the owner, 20 November 2026: "an accept of a lower score doesn't change your mins but instead lowers
+        // the score bar").
+        notice(50, "An offer you accept that beats your minimums raises each one it beat to what it paid. One below "
+                + "them leaves your minimums and lowers the bar to its score instead.");
         // 0.6.63 (the owner, 20 November 2026: diagnostics "should be more automatic and more robust").
         notice(49, "An offer you accept now moves all your minimums together, so it scores exactly 100%; a short or "
                 + "long trip can't throw one measure off. Each accept's history line says whether it set them.");
@@ -563,6 +567,10 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.64 (the owner, 20 November 2026).
+        release("0.6.64", "Accepts raise each minimum the offer beat, never lower one. An accept below your minimums "
+                + "lowers the bar instead, back to 100% at your next accept above them (unless you're below your "
+                + "acceptance-rate goal). The chart scores every offer against your minimums now, with the bar as its line.");
         // 0.6.63 (the owner, 20 November 2026).
         release("0.6.63", "Accepts move all your minimums together by the offer's score, so a 0.5-mile trip can't set "
                 + "$10.50 a mile. A pause or resume before you accept no longer stops an accept from setting them, and "

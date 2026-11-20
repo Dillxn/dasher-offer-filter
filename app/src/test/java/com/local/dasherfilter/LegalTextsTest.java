@@ -43,7 +43,7 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "20 November 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.63";
+    static final String TERMS_VERSION = "0.6.64";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -64,6 +64,7 @@ public final class LegalTextsTest {
      * 0.6.61 both (a learned raise becomes the saved minimums at once; no Adopt step);
      * 0.6.62 both (one set of minimums set by your accepts, with Undo; the bar at most 100%);
      * 0.6.63 both (an accept moves all minimums together by its score; each accept's line says whether it set them);
+     * 0.6.64 both (an accept at 100%+ raises each minimum it beat; one under 100% lowers the bar instead);
      * 0.6.58 the privacy text only (a line keeps the masked text read of its offer; figures are worked out from it);
      * 0.6.57 both (with learning on and no rule set, offers are read and an accept teaches whatever the switch);
      * 0.6.56 the privacy text only (diagnostics also go soon after an unread offer, at most twelve a day);
@@ -73,7 +74,7 @@ public final class LegalTextsTest {
      * decided nothing first; the summary's log lines around a problem are kept with the dash's counts).
      */
     static final String PRIVACY_EFFECTIVE = "20 November 2026";
-    static final String PRIVACY_VERSION = "0.6.63";
+    static final String PRIVACY_VERSION = "0.6.64";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -150,8 +151,8 @@ public final class LegalTextsTest {
                         + "auto-decline pauses until you resume it.",
                 // 0.6.62: one set of minimums, set by your accepts with Undo; the bar at most 100%, lowered only for
                 // an acceptance-rate goal; no working minimums or holds (0.6.29 to 0.6.61).
-                "sets your minimums so that offer scores exactly 100% of them, up or down",
-                "Accepting an offer the filter would decline lowers them, and accepting a better one raises them",
+                "each active minimum it beat (pay per stop, the pickup included, pay per mile or pay per hour) rises to that offer's own rate",
+                "If it scores under 100%, your minimums stay and that bar drops to its score",
                 "A note on the homepage says what changed, with Undo",
                 "Merely passing, timing out or disappearing is not an acceptance",
                 "From 0.6.29 to 0.6.61 Autopilot also kept separate working minimums set by your accepts",

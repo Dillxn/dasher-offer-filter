@@ -104,7 +104,10 @@ final class Consent {
     // November 2026: "okay what's the clean model?"). The Terms and Privacy say it.
     // 49 (0.6.63): an accept moves all your minimums together by its score; each accept's line says whether it set
     // them, and one that should have and did not sends a summary (the owner, 20 November 2026).
-    static final int VERSION = 49;
+    // 50 (0.6.64): an accept at 100%+ raises each minimum it beat to its rate; one under 100% lowers the bar instead,
+    // which goes back to 100% at the next 100%+ accept unless below the acceptance-rate goal (the owner, 20 November
+    // 2026). The Terms and Privacy say it.
+    static final int VERSION = 50;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -131,9 +134,9 @@ final class Consent {
                 + "turn offer sound down and keep your unlocked screen on during a dash. Auto-accept is off unless you "
                 + "turn it on in Settings. Your touch stops it."},
         {"On by default.", "Autopilot puts pay first. Its bar moves from " + FilterStore.BAR_MIN + "% to "
-                + FilterStore.BAR_MAX + "% of your minimums, going lower only to keep enough offers for an "
-                + "acceptance-rate goal. Each offer you accept yourself sets your minimums up or down to what it "
-                + "paid; Undo is on the homepage. This can allow offers below your minimums. Peek can briefly open "
+                + FilterStore.BAR_MAX + "% of your minimums, lower for an acceptance-rate goal or after you accept an "
+                + "offer below them. An offer you accept that beats them raises each one it beat to what it paid; "
+                + "Undo is on the homepage. This can allow offers below your minimums. Peek can briefly open "
                 + "Dasher to read a background offer. An anonymous daily count tells the developer how many people "
                 + "use the app. Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the "
                 + "count in Settings."},

@@ -166,7 +166,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         int words = 0;
         for (String[] point : Consent.POINTS) words += (point[0] + " " + point[1]).split("\\s+").length;
         assertTrue(words + " words", words <= 420);
-        assertEquals("49 (0.6.63): an accept moves your minimums together by its score", 49,
+        assertEquals("50 (0.6.64): accepts raise minimums per measure; one under them lowers the bar", 50,
                 Consent.VERSION);
         // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
         String account = point("Your Dasher account.");
@@ -190,9 +190,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         for (String fact : new String[] {
                 // 0.6.62 (notice 48): one set of minimums; the bar is at most 100% of them.
                 "Autopilot puts pay first. Its bar moves from " + FilterStore.BAR_MIN + "% to "
-                        + FilterStore.BAR_MAX + "% of your minimums, going lower only to keep enough offers for an "
-                        + "acceptance-rate goal.",
-                "Each offer you accept yourself sets your minimums up or down to what it paid; Undo is on the "
+                        + FilterStore.BAR_MAX + "% of your minimums, lower for an acceptance-rate goal or after you "
+                        + "accept an offer below them.",
+                "An offer you accept that beats them raises each one it beat to what it paid; Undo is on the "
                         + "homepage.",
                 "This can allow offers below your minimums.",
                 "Peek can briefly open Dasher to read a background offer.",
@@ -226,9 +226,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "It also declines a standalone offer from a store you put on your skip list",
                 // 0.6.62 (notice 48): one set of minimums, set by your accepts; the bar at most 100%.
                 "It never asks more than your minimums, and it never changes them.",
-                "sets your minimums so that offer scores exactly 100% of them, up or down",
+                "each active minimum it beat (pay per stop, the pickup included, pay per mile or pay per hour) rises to that offer's own rate",
                 "A note on the homepage says what changed, with Undo",
-                "offer's score is its pay as a share of what it needs now",
+                "offer's score is its pay as a share of what your minimums ask of it",
                 "Merely passing, timing out or disappearing is not an acceptance", "Auto-accept starts off.",
                 "it can press Back and retry the same offer, at most twice",
                 "Peek is on by default after you accept the current notice", "Peek may tap Dasher's ⚙ button once",
@@ -398,9 +398,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // history sets the minimums back to the typical ones; 42, diagnostics also go soon after an unread offer; 43, with
         // Learn on and no minimums, an accept sets them; 44, a line keeps its offer's masked text; 45, accepts made while paused teach;
         // 46, Dasher's Ratings page read for Reach Platinum; 47, learned raises adopted at once; 48, one set of minimums;
-        // 49, an accept moves them together by its score.
+        // 49, an accept moves them together by its score; 50, per-measure raises and an accept bar.
         // A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(49, Consent.VERSION);
+        assertEquals(50, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

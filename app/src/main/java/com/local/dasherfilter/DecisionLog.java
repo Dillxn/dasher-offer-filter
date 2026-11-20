@@ -128,9 +128,9 @@ final class DecisionLog {
         LEARNER_MINIMUM_RAISED("Learned minimum raised"),
         LEARNER_UNCHANGED("Learned minimum unchanged"),
         /** 0.6.62 on: this accept set your minimums (raised, lowered or both). */
-        LEARNER_MINIMUMS_SET("Your minimums set from this accept"),
+        LEARNER_MINIMUMS_SET("Your minimums or bar set from this accept"),
         /** 0.6.63 on: this accept did not set your minimums, and why (fixed words). */
-        LEARNER_NOT_SET("Your minimums not set from this accept"),
+        LEARNER_NOT_SET("Your minimums and bar not set from this accept"),
         NOT_ACCEPTED("Not accepted"),
         /**
          * What followed the offer did not count it as accepted, and why (the evidence was not enough). Not a verdict on

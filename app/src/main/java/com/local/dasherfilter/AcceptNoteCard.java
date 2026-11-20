@@ -14,6 +14,8 @@ import java.util.List;
  */
 final class AcceptNoteCard {
     static final String TITLE = "Your accept set your minimums";
+    /** An accept under your minimums lowered the bar instead (0.6.64). */
+    static final String TITLE_BAR = "Your accept lowered the bar";
     static final String UNDO = "Undo";
     static final String OK = "OK";
 
@@ -45,7 +47,7 @@ final class AcceptNoteCard {
             return;
         }
         shownId = change.id;
-        card.setWords(OnboardingCard.titled(TITLE, line(change)));
+        card.setWords(OnboardingCard.titled(change.minimumsChanged() ? TITLE : TITLE_BAR, line(change)));
         card.setSaid(said(change));
         card.show(true);
     }
@@ -66,11 +68,15 @@ final class AcceptNoteCard {
             now.add(DecisionLog.shortMoney(c.minuteAfter * 60L) + "/hr");
             was.add(c.minuteBefore > 0 ? DecisionLog.shortMoney(c.minuteBefore * 60L) + "/hr" : "no $/hr");
         }
+        if (c.barAfter != c.barBefore) {
+            now.add("bar " + c.barAfter + "%");
+            was.add("bar " + c.barBefore + "%");
+        }
         return String.join(" · ", now) + " · was " + String.join(" · ", was);
     }
 
     static String said(FilterStore.Adoption c) {
-        return TITLE + ": " + line(c).replace(" · was ", ", before: ").replace(" · ", ", ")
-                + ". Undo puts back your minimums from before.";
+        return (c.minimumsChanged() ? TITLE : TITLE_BAR) + ": " + line(c).replace(" · was ", ", before: ").replace(" · ", ", ")
+                + ". Undo puts back what it was before.";
     }
 }

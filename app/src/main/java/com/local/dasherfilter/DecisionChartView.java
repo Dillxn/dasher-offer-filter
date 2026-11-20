@@ -233,7 +233,9 @@ final class DecisionChartView extends View {
         long total = AreaScore.totalPayCents(rules, rules.minimumScalePercent);
         long payout = total >= 0 ? total : Math.max(0, AreaScore.floors(rules, SINGLE_ORDER)
                 .axisRequiredCents(AreaScore.PAY, rules.minimumScalePercent));
-        if (minimumScalePercent == rules.minimumScalePercent && areaMode == rules.scoreByArea
+        boolean sameFrame = currentRules != null && currentRules.scoringKey().equals(rules.scoringKey());
+        currentRules = rules;
+        if (sameFrame && minimumScalePercent == rules.minimumScalePercent && areaMode == rules.scoreByArea
                 && payoutMinimumCents == payout && independentAutopilot == rules.hasAutopilotAxes()
                 && totalPayLine == total >= 0 && autopilotNow == rules.autopilot) {
             return;
@@ -275,9 +277,27 @@ final class DecisionChartView extends View {
     /** The pay line is Autopilot's total pay, the latest acceptance's at the bar (0.6.31). */
     private boolean totalPayLine;
 
+    /** Your current rules (0.6.64): every tree is scored against them, so trees from different times line up. */
+    private FilterSettings currentRules;
+
     /** A tree stands only for a score this version's rules worked out: never a retired one. */
-    private static boolean tree(DecisionLog.Entry entry) {
-        return entry.scorePercent >= 0 && entry.model >= 2;
+    private boolean tree(DecisionLog.Entry entry) {
+        return entry.model >= 2 && treeScore(entry) >= 0;
+    }
+
+    /**
+     * How tall an offer's tree stands (0.6.64; the owner, 20 November 2026: "I just want the graph to accurately
+     * reflect min score"): its score against your minimums now, so a tree above the bar's line would pass now and one
+     * below would not. The ticket keeps the score it was decided by. An add-on, or a line without pay, keeps its own.
+     */
+    int treeScore(DecisionLog.Entry entry) {
+        FilterSettings rules = currentRules;
+        if (rules == null || entry.addOn || entry.facts == null || entry.facts.payCents == null
+                || !rules.hasMonetaryRule()) {
+            return entry.scorePercent;
+        }
+        int now = AreaScore.scorePercent(rules, entry.facts);
+        return now >= 0 ? now : entry.scorePercent;
     }
 
     /** @param newestFirst recent entries, newest first; only the latest {@link #SLOTS} are drawn */
@@ -395,9 +415,9 @@ final class DecisionChartView extends View {
                 drawUnread(canvas, center - barWidth / 2f, roof, center + barWidth / 2f, bottom);
             }
             if (tree(entry)) {
-                float tip = bottom - (bottom - y(entry.scorePercent, maxScore, top, bottom)) * rise;
+                float tip = bottom - (bottom - y(treeScore(entry), maxScore, top, bottom)) * rise;
                 drawTree(canvas, treeCenter, tip, bottom, treeWidth);
-                if (entry.scorePercent > SCORE_DISPLAY_CAP) {
+                if (treeScore(entry) > SCORE_DISPLAY_CAP) {
                     line.setColor(treeColor());
                     line.setStrokeWidth(Math.max(1, ui.dp(1)));
                     float half = treeWidth * 0.4f;
@@ -652,26 +672,10 @@ final class DecisionChartView extends View {
      * judged with Autopilot off has none: the line has a gap there.
      */
     private List<BarRun> barRuns() {
+        // 0.6.64: the trees are scored against your minimums now, so the line is today's bar alone, across the chart.
         List<BarRun> runs = new ArrayList<>();
-        int n = entries.size();
-        if (n == 0) return runs;
-        float slot = slotWidth();
-        float start = ui.dp(SIDE_DP);
-        float end = getWidth() - ui.dp(SIDE_DP);
-        for (int i = 0; i < n; i++) {
-            DecisionLog.Entry entry = entries.get(i);
-            if (!entry.autopilot) continue;
-            float from = start + slot * (SLOTS - n + i);
-            runs.add(new BarRun(from, Math.min(end, from + slot), entry.barPercent, entry.at));
-        }
-        if (!autopilotNow) return runs;
-        BarRun last = runs.isEmpty() ? null : runs.get(runs.size() - 1);
-        boolean newestJudged = last != null && last.at == entries.get(n - 1).at;
-        if (newestJudged && last.bar == minimumScalePercent) return runs;
-        // Today's level runs on into the chart's margin, so it shows beside the newest offer.
-        float split = Math.min(end - ui.dp(2), treeCenter(n - 1, slot) + treeWidth(slot) / 2f + ui.dp(2));
-        if (newestJudged) runs.set(runs.size() - 1, new BarRun(last.from, split, last.bar, last.at));
-        runs.add(new BarRun(split, getWidth(), minimumScalePercent, Long.MAX_VALUE));
+        if (entries.isEmpty() || !autopilotNow) return runs;
+        runs.add(new BarRun(ui.dp(SIDE_DP), getWidth(), minimumScalePercent, Long.MAX_VALUE));
         return runs;
     }
 
@@ -959,7 +963,7 @@ final class DecisionChartView extends View {
     float[] treeAt(int index) {
         if (index < 0 || index >= entries.size() || getWidth() <= 0 || !tree(entries.get(index))) return null;
         float slot = slotWidth();
-        return new float[] {treeCenter(index, slot), y(entries.get(index).scorePercent, scoreScaleMax(), plotTop(),
+        return new float[] {treeCenter(index, slot), y(treeScore(entries.get(index)), scoreScaleMax(), plotTop(),
                 plotBottom()), plotBottom(), treeWidth(slot)};
     }
 
@@ -974,7 +978,7 @@ final class DecisionChartView extends View {
 
     boolean treeClippedAt(int index) {
         return index >= 0 && index < entries.size() && tree(entries.get(index))
-                && entries.get(index).scorePercent > SCORE_DISPLAY_CAP;
+                && treeScore(entries.get(index)) > SCORE_DISPLAY_CAP;
     }
 
     /** The colour of the offer's building (for tests); 0 where its pay was not read. */
@@ -1074,7 +1078,7 @@ final class DecisionChartView extends View {
     private long scoreScaleMax() {
         int max = Math.max(100, lineLevel(minimumScalePercent));
         for (DecisionLog.Entry entry : entries) {
-            if (tree(entry)) max = Math.max(max, Math.min(SCORE_DISPLAY_CAP, entry.scorePercent));
+            if (tree(entry)) max = Math.max(max, Math.min(SCORE_DISPLAY_CAP, treeScore(entry)));
             if (entry.autopilot) max = Math.max(max, Math.min(SCORE_DISPLAY_CAP, lineLevel(entry.barPercent)));
         }
         for (int ceiling : new int[] {150, 200, 250, 300, SCORE_DISPLAY_CAP}) {
@@ -1084,11 +1088,11 @@ final class DecisionChartView extends View {
     }
 
     /**
-     * Where the dashed purple line sits (0.6.62): scores are measured against what is needed now (the minimums at the
-     * bar), so 100% is the bar; this line is the minimums themselves, at 100 × 100 ÷ bar (84% bar: 119%).
+     * Where the dashed purple line sits: at the bar itself (0.6.64; 0.6.62 and 0.6.63 measured scores against the bar
+     * and drew this line at the minimums' level instead).
      */
     static int lineLevel(int bar) {
-        return bar <= 0 ? 100 : (int) Math.round(10_000.0 / bar);
+        return bar <= 0 ? 100 : bar;
     }
 
     private static float y(long cents, long maxCents, float top, float bottom) {

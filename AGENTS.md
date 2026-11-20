@@ -12,6 +12,10 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.64 (20 November 2026): per-axis raises and the accept bar
+
+- The owner's model, final for now: an accept at 100%+ raises each beaten minimum to the raw rate and never lowers one. An accept under 100% sets FilterStore.ACCEPT_BAR to its score. A 100%+ accept resets that bar to 100 unless AutopilotRuntime.belowGoal. Autopilot's bar = min(share bar, accept bar, 100). Scores are against the minimums (bar shown separately). The chart scores trees against the current minimums, with the bar as a flat line. Add no floors, ceilings or partial raises unless the owner asks.
+
 # 0.6.63 (20 November 2026): accepts move minimums together; every accept reports its fate
 
 - An accept scales all active minimums by its score (FilterStore.scaledTo); per-rate copying (0.6.62) broke on short trips. A lesson is checked at the accept only: notice, plus figures matching the first read. Every accepted line gets LEARNER_MINIMUMS_SET or LEARNER_NOT_SET with the reason, and STALE/UNKNOWN sends DashSummary.problemSoon. Keep diagnostics automatic: a failure the owner would otherwise have to report by hand should put its own reason on the line and send the summary.

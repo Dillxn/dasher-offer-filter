@@ -423,7 +423,8 @@ final class AutopilotRuntime {
             AutopilotStore.Ratings ratings = AutopilotStore.ratings(app, wall);
             int ratingGoal = ratings == null ? -1 : ratings.target().goal;
             Autopilot.Plan plan = Autopilot.plan(new Autopilot.Inputs(rules, lines, waits, reading(stored), state, wall,
-                    planned, since, TimeZone.getDefault(), CostPerMile.cents(app), floorSince, kept, ratingGoal));
+                    planned, since, TimeZone.getDefault(), CostPerMile.cents(app), floorSince, kept, ratingGoal)
+                    .withAcceptBar(FilterStore.acceptBar(app)));
             String dropped = publish(app, plan, state, epoch, stored, wall, guard, historyVersion, floorSince);
             if (dropped != null) {
                 log(app, dropped);
@@ -1075,6 +1076,23 @@ final class AutopilotRuntime {
         } catch (RuntimeException failure) {
             log(app, AutopilotText.logPlanFailed(failure));
         }
+    }
+
+    /**
+     * Whether you are below your acceptance-rate goal now (0.6.64): the latest plan's view, else Dasher's latest
+     * reading against the goal; false with pay first or when the rate is unknown.
+     */
+    static boolean belowGoal(Context context) {
+        Autopilot.Plan plan = latest.get();
+        if (plan != null && plan.generation == generation.get()) return plan.belowGoal();
+        Context app = app(context);
+        FilterSettings rules = FilterStore.load(app);
+        if (!rules.autopilot) return false;
+        long wall = wallClock.getAsLong();
+        AutopilotStore.Ratings ratings = AutopilotStore.ratings(app, wall);
+        int goal = Autopilot.goalPercent(rules.autopilotGoalPercent, ratings == null ? -1 : ratings.target().goal);
+        AutopilotStore.Reading reading = AutopilotStore.reading(app, wall);
+        return goal > 0 && reading != null && reading.percent < goal;
     }
 
     // ---- Dasher's Ratings page (0.6.60) ----

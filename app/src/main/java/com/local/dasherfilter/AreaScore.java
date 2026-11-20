@@ -269,27 +269,17 @@ final class AreaScore {
     }
 
     /**
-     * The offer's score: its pay as a share of what it needs now, the minimums at the bar (0.6.62; the owner, 20
-     * November 2026: "127% of what?"), {@code ⌊100 × pay ÷ (R × bar ÷ 100)⌋}. 100% just passes, at any bar.
+     * The offer's score: its pay as a share of what your minimums ask of it ({@code ⌊100 × pay ÷ R⌋}); the bar is
+     * shown beside it (0.6.64; 0.6.62 and 0.6.63 divided by the bar too). It passes at the bar or above.
      */
     static int scorePercent(FilterSettings rules, OfferSnapshot offer) {
         Need need = floors(rules, offer).required(rules.scoreByArea, false);
-        return offer.payCents == null || need == null ? -1 : percentAt(offer.payCents, need, rules.minimumScalePercent);
+        return offer.payCents == null || need == null ? -1 : percent(offer.payCents, need);
     }
     /** The score against the minimums themselves (a bar of 100): whether an offer is below them. */
     static int baselineScorePercent(FilterSettings rules, OfferSnapshot offer) {
         return scorePercent(rules.withoutAutopilotAxes().withoutTimeAdjustment()
                 .withMinimumScalePercent(FilterSettings.BAR_AT_MINIMUMS), offer);
-    }
-    /** ⌊100 × pay ÷ (R × bar ÷ 100)⌋ exactly; the bar is a whole percent above 0. */
-    private static int percentAt(long pay, Need need, int bar) {
-        if (bar <= 0 || bar == 100) return percent(pay, need);
-        if (need.zero()) return -1;
-        BigInteger numerator = BigInteger.valueOf(pay).multiply(BigInteger.valueOf(10_000)).pow(need.root)
-                .multiply(need.power.d);
-        BigInteger denominator = need.power.n.multiply(BigInteger.valueOf(bar).pow(need.root));
-        BigInteger score = rootFloor(numerator.divide(denominator), need.root);
-        return score.min(BigInteger.valueOf(Integer.MAX_VALUE)).intValue();
     }
     private static int percent(long pay, Fraction square) { return percent(pay, new Need(square, 2)); }
     /** ⌊100 × pay ÷ R⌋ exactly: the root of 100^root × pay^root ÷ R^root, floored. */
