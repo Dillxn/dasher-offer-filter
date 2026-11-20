@@ -12,6 +12,10 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.66 (20 November 2026): below the goal, protect it at once
+
+- With an acceptance-rate goal and Dasher's rate known below it, Autopilot.plan never waits for 20 counted offers (none: BAR_MIN), and Autopilot.step drops a bar above the share limit to the target in one commit. An acceptance-rate goal must never be left unprotected by a warm-up.
+
 # 0.6.64 (20 November 2026): per-axis raises and the accept bar
 
 - The owner's model, final for now: an accept at 100%+ raises each beaten minimum to the raw rate and never lowers one. An accept under 100% sets FilterStore.ACCEPT_BAR to its score. A 100%+ accept resets that bar to 100 unless AutopilotRuntime.belowGoal. Autopilot's bar = min(share bar, accept bar, 100). Scores are against the minimums (bar shown separately). The chart scores trees against the current minimums, with the bar as a flat line. Add no floors, ceilings or partial raises unless the owner asks.

@@ -567,6 +567,9 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.66 (the owner, 20 November 2026: "it declined an order that brought me down into gold").
+        release("0.6.66", "Below your acceptance-rate goal, Autopilot now protects it at once, even with little "
+                + "history, and drops the bar straight to what the goal needs instead of a step a minute.");
         // 0.6.65 (the owner, 20 November 2026: an add-on "is the exact shape of the minimums but it's tree and score are
         // larger than the 100% line").
         release("0.6.65", "Add-ons on the chart stand at their whole route's score against your minimums now, like "

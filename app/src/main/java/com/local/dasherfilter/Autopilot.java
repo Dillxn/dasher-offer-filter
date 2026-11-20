@@ -1065,7 +1065,11 @@ final class Autopilot {
 
         if (!rules.autopilot) return draft.gated(Mode.OFF);
         if (!rules.hasMonetaryRule()) return draft.gated(Mode.NO_RULES);
-        if (thetas.length < MIN_WINDOW) {
+        // Below an acceptance-rate goal (Dasher's rate known), the goal is protected at once with the offers there are
+        // (0.6.66): before, fewer than 20 counted offers held the bar at 100% and declined freely while the rate fell.
+        boolean protect = goal > 0 && ar.hundredths >= 0 && ar.hundredths < 100 * goal;
+        if (protect && thetas.length == 0) return draft.decided(Mode.RECOVERY, BAR_MIN);
+        if (thetas.length < MIN_WINDOW && !protect) {
             return in.acceptBar < BAR_OFF ? draft.decided(Mode.ACCEPT_BAR, in.acceptBar) : draft.gated(Mode.LEARNING);
         }
 
@@ -1742,6 +1746,11 @@ final class Autopilot {
         if (jump) {
             next = target;
             kind = StepKind.JUMP;
+        } else if (overLimit) {
+            // 0.6.66: above what the acceptance-rate goal allows, straight down at once, past the spacing (the
+            // owner, 20 November 2026: "it declined an order that brought me down into gold").
+            next = target;
+            kind = StepKind.LOWER;
         } else if (target == current) {
             next = current;
             kind = StepKind.HOLD;

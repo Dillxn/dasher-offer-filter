@@ -1,3 +1,13 @@
+## 0.6.66 — Below the goal, protect it at once
+
+Version 0.6.66 (code 158) answers the owner, 20 November 2026: "it declined an order that brought me down into gold". In the two dashes on 0.6.65 the bar stayed at 100% ("History: 10 of 20 eligible offers"; autopilotMode LEARNING). Autopilot.plan held the bar at 100 until 20 counted offers, whatever the goal, so with Dasher's rate at 79.6% and Reach Platinum's goal at 84% it declined 8 of 11 offers. The $6.55 accept (1.2 mi) had raised pay per mile to its raw rate, so the last two needed $11.08 and $15.00.
+
+- **At once.** With an acceptance-rate goal and Dasher's rate known below it, the plan uses the counted offers there are, however few: the recovering need (goal + 10) over them, and with none, the lowest bar. The 20-offer wait still applies at or above the goal and with pay first. With those 10 offers and 79% against 84%, the bar is 31%, and every offer of the two dashes passes.
+- **Straight down.** Autopilot.step lowers a bar above the acceptance-rate limit (the plan's share bar) to the target in one commit, past the minute's spacing and the 20-point step.
+- No Terms or Privacy change: they never described the 20-offer wait. No tests added; a throwaway probe (deleted) checked no offers (10%), the 10 offers (31%, RECOVERY), at goal (100%) and the one-step drop.
+
+No phone has run this build.
+
 ## 0.6.65 — Add-ons on the chart use your minimums now too
 
 Version 0.6.65 (code 157) answers the owner's screenshot of 20 November 2026. An add-on whose whole route ($8.10, 2.6 mi, 17 min, 2 stops) is exactly the current minimums ($4.05/stop, $3.11/mi, $28.20/hr) "is the exact shape of the minimums but it's tree and score are larger than the 100% line". 0.6.64 rescored standalone trees against the current minimums but left add-ons at their decided whole-route score (180%).
