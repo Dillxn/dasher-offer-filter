@@ -89,7 +89,7 @@ final class MinimumsDetails {
     /** On-demand local bests; exact numeric pairs avoid pretending a rounded rate is the learned rule. */
     static String learningSummary(FilterSettings rules) {
         AcceptedFloors best = rules.accepted;
-        if (best.isEmpty()) return "No learned bests yet. Saved minimums are unchanged.";
+        if (best.isEmpty()) return "Your accepts set your minimums directly; there are no separate learned bests.";
         List<String> values = new ArrayList<>();
         if (best.highestPayCents > 0) values.add(best.payUnits == 1
                 ? "Best pay per stop " + DecisionLog.money(best.highestPayCents) + " (learned pay asks one cent more)"
@@ -163,11 +163,8 @@ final class MinimumsDetails {
                 + "minimum is a hard floor in area mode. Max stops stays hard.");
         else lines.add(rules.hasAutopilotAxes() ? "Every active working minimum must be met at the bar."
                 : "Every active resolved minimum must be met at the bar.");
-        lines.add("Permitted by the filter does not mean accepted. Automatic acceptance separately requires strict "
-                + "saved and enabled learned minimums at 100% or any higher bar"
-                + (rules.hasAutopilotAxes() ? ", and Autopilot's working minimums whenever stricter" : "")
-                + ". Add-ons use strict saved minimums at the current bar; a learned raise becomes a saved minimum "
-                + "at once.");
+        lines.add("Permitted by the filter does not mean accepted. Automatic acceptance separately requires every "
+                + "active minimum at 100%, never a lowered bar. Add-ons use your minimums strictly at the current bar.");
         if (rules.maxStops > 0) lines.add("Max stops " + rules.maxStops + " (never scaled).");
         if (approximate[0]) lines.add(ROUNDED);
         return String.join("\n", lines);

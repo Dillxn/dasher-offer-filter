@@ -792,8 +792,7 @@ final class MinimumsStarView extends View {
                         + "latest acceptance's, a quarter of its score; no spoke shows it." : "")
                 : "Strict mode checks every active minimum.")
                 + " Farther out means higher pay or pay rates. Solid blue is saved minimums; "
-                + (shownRules.acceptanceLearning ? "dashed green is your calculated learned minimums, the higher saved "
-                        + "or learned value on every active axis" : "gray is learned bests stored but off")
+                + (shownRules.acceptanceLearning ? "offers you accept set them" : "learning is off")
                 + (shownRules.hasAutopilotAxes() ? "; dashed purple is Autopilot's independent working requirement, "
                         + "including at a 100% bar. Learned bests do "
                         : "; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. Learned bests do ")
@@ -2696,7 +2695,7 @@ final class MinimumsStarView extends View {
 
     /** What screen readers hear of the learner button. */
     static String learnSaid(boolean on) {
-        return on ? "Learning from your accepts, on: new highs you accept raise the learned minimums"
+        return on ? "Learning from your accepts, on: offers you accept set your minimums"
                 : "Learning from your accepts, off";
     }
 

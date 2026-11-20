@@ -52,7 +52,11 @@ final class Autopilot {
      * the {@value #FLOOR_OFFERS} offers after it.
      */
     static final int BAR_MIN = 10;
-    static final int BAR_MAX = 150;
+    /**
+     * The highest bar: 100%, exactly the minimums (0.6.62; 150% before). The minimums carry "nothing worse than what I
+     * accepted"; Autopilot only lowers the bar, when the acceptance-rate goal needs more offers to pass.
+     */
+    static final int BAR_MAX = 100;
     /**
      * How long a hand accept holds the bar (0.6.18; the owner chose "Earnings first", 14 October 2026): for the next
      * 24 offers after it, across dashes, however long they take, so a one-off great offer lets go once that many
@@ -1020,7 +1024,8 @@ final class Autopilot {
      */
     static Plan plan(Inputs in) {
         FilterSettings original = in.rules;
-        AutopilotAxes anchor = acceptedAxes(original, in.newestFirst, in.floorSince, in.wallNow);
+        // 0.6.62: no working minimums; an accept sets the minimums themselves (FilterStore).
+        AutopilotAxes anchor = null;
         FilterSettings rules = anchor == null ? original : original.withAutopilotAxes(anchor);
         Inputs effective = new Inputs(rules, in.newestFirst, in.waits, in.reading, in.state, in.wallNow,
                 in.generation, in.minimumsSince, in.zone, in.costPerMileCents, in.floorSince, in.keptAccepts,
@@ -1040,34 +1045,13 @@ final class Autopilot {
         List<MixLine> mix = mix(rules, window, thetas, in.costPerMileCents);
         Draft draft = new Draft(effective, window, thetas, mix, ar, rate, ignoreExempt);
         draft.sourceRulesKey = original.rulesKey();
-        draft.reconciledAxes = anchor;
-        draft.acceptedHold = anchor != null && anchorOffersLeft(anchor, counted) > 0;
-        if (rules.hasAutopilotAxes()) {
-            // A prospective personal acceptance sets a new independent working shape. Its own reference bar holds
-            // that shape for the next 24 offers; no older, higher accepted score may override a newer lower choice.
-            // Re-scoring history would also lose partial-axis accepts and reintroduce the learner's pay +1 cent.
-            draft.floorOffersLeft = anchorOffersLeft(rules.autopilotAxes, counted);
-            draft.floor = draft.floorOffersLeft > 0 ? rules.autopilotAxes.referenceBar : -1;
-            draft.floorHealed = anchor != null && !anchor.equals(original.autopilotAxes);
-        } else {
-            List<HandAccept> accepts = handAccepts(rules, in.newestFirst, in.keptAccepts);
-            draft.floor = acceptedFloor(accepts, in.floorSince, counted);
-            draft.floorOffersLeft = floorOffersLeft(accepts, in.floorSince, counted, draft.floor);
-        }
-        // A decline of the user's own since their latest accept raises the floor to just above that offer, for the 24
-        // offers after it, and never lowers it (0.6.37; the owner, 23 October 2026: "if i decline an offer then
-        // autopilot should raise my mins to its"). The latest accept still decides alone what came before it.
-        List<HandDecline> declines = handDeclines(rules, in.newestFirst,
-                Math.max(in.floorSince, anchor == null ? latestAccept(rules, in.newestFirst, in.keptAccepts)
-                        : anchor.acceptedAt));
-        int declined = declinedFloor(declines, counted);
-        if (declined >= BAR_MIN && declined >= draft.floor) {
-            draft.floor = declined;
-            draft.floorOffersLeft = declinedOffersLeft(declines, counted, declined);
-            draft.floorDeclined = true;
-            draft.floorHealed = false;
-        }
-        draft.releasedFloor = releasedFloor(rules, in, counted, declines);
+        // 0.6.62 (the owner, 20 November 2026, the clean model): no accept or decline holds. An offer accepted by hand
+        // sets the minimums; the bar only drops, for the acceptance-rate goal.
+        draft.reconciledAxes = null;
+        draft.acceptedHold = false;
+        draft.floor = -1;
+        draft.floorOffersLeft = 0;
+        draft.releasedFloor = -1;
 
         if (!rules.autopilot) return draft.gated(Mode.OFF);
         if (!rules.hasMonetaryRule()) return draft.gated(Mode.NO_RULES);
@@ -1086,17 +1070,9 @@ final class Autopilot {
         if (share.pinned) return draft.decided(Mode.PINNED, BAR_MIN);
 
         Mode limited = need.recovering ? Mode.RECOVERY : goal > 0 ? Mode.GOAL : Mode.PASS_FLOOR;
-        if (mix.size() < MIN_MIX) {
-            int target = Math.min(share.bar, BAR_OFF);
-            return draft.decided(target < BAR_OFF ? limited : Mode.AT_MINIMUMS, target);
-        }
-        Acceptable ok = acceptable(values(mix, rate.numerator, rate.denominator, share.bar));
-        draft.bestBar = ok.best;
-        draft.acceptableLow = ok.lo;
-        draft.acceptableHigh = ok.hi;
-        int target = ok.closestTo(state.current);
-        // The acceptance-rate limit binds when the bar it allows is both the best Autopilot may pick and the pick.
-        return draft.decided(target == share.bar && ok.hi == share.bar ? limited : Mode.VALUE, target);
+        // 0.6.62: the highest bar, at most the minimums, that passes enough of the last 100 offers; no value moves.
+        int target = Math.min(share.bar, BAR_OFF);
+        return draft.decided(target < BAR_OFF ? limited : Mode.AT_MINIMUMS, target);
     }
 
     // ---- (a) The counted window ----

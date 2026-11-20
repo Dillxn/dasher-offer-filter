@@ -305,6 +305,9 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        // 0.6.62 (the owner, 20 November 2026: "okay what's the clean model?").
+        notice(48, "One set of minimums: an offer you accept sets them, up or down, with Undo. Autopilot's bar never "
+                + "goes above them, and scores show the share of what an offer needs, so 100% passes.");
         // 0.6.61 (the owner, 20 November 2026: "remove the manual adoption step").
         notice(47, "When an offer you accept raises your learned minimums, they now become your minimums at once, "
                 + "add-ons included. No Adopt step; Undo last raise is in Learned minimums.");
@@ -557,6 +560,11 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.62 (the owner, 20 November 2026).
+        release("0.6.62", "One set of minimums. An offer you accept sets them to what it paid, even below them; the "
+                + "homepage offers Undo. Autopilot only lowers the bar, for an acceptance-rate goal, and a score of "
+                + "100% now always means the offer passes. Fixes offers under a \"Very busy +$2\" banner reading as "
+                + "pay not found.");
         // 0.6.61 (the owner, 20 November 2026).
         release("0.6.61", "No more Adopt: when an accept raises your learned minimums they become your minimums at once, "
                 + "add-ons included. Undo last raise is in Learned minimums.");

@@ -37,8 +37,8 @@ final class AutopilotText {
      * the starter's "Use these" and the first resume, when no one asked for Autopilot by name; from 0.6.2 that is with
      * Autopilot already on by default, {@link #CHOOSER_ON_BY_DEFAULT}).
      */
-    static final String CHOOSER_TURNS_ON = "Choosing one turns on Autopilot, which adjusts the working minimums "
-            + "offers must meet. Not now leaves it off.";
+    static final String CHOOSER_TURNS_ON = "Choosing one turns on Autopilot, which can lower the bar below your "
+            + "minimums for an acceptance-rate goal. Not now leaves it off.";
     /**
      * Under the choices while Autopilot is on by default and no goal was chosen yet (0.6.2): it is already on, with the
      * suggested goal checked, and Not now keeps it so.
@@ -550,7 +550,7 @@ final class AutopilotText {
      * beside the status line ({@link AutopilotChip.Row#widestChips}). A longer word added to the chip must be added
      * here (AutopilotTextTest holds it).
      */
-    static final String[] CHIP_WIDEST = {"Auto off", "Auto waits", "Auto 150% ▲", "Auto"};
+    static final String[] CHIP_WIDEST = {"Auto off", "Auto waits", "Auto 100% ▲", "Auto"};
 
     /**
      * The one-line chip at the status line's start: "Auto off", the actual bar even with sparse history,

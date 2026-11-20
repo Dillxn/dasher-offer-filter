@@ -689,11 +689,11 @@ final class DecisionChartView extends View {
         line.setPathEffect(scoreDash);
         for (int i = 0; i < runs.size(); i++) {
             BarRun run = runs.get(i);
-            float y = y(run.bar, maxScore, top, bottom);
+            float y = y(lineLevel(run.bar), maxScore, top, bottom);
             if (run.bar != 100) canvas.drawLine(run.from, y, run.to, y, line);
             BarRun next = i + 1 < runs.size() ? runs.get(i + 1) : null;
             if (next != null && next.bar != run.bar && Math.abs(next.from - run.to) < 1f) {
-                canvas.drawLine(run.to, y, run.to, y(next.bar, maxScore, top, bottom), line);
+                canvas.drawLine(run.to, y, run.to, y(lineLevel(next.bar), maxScore, top, bottom), line);
             }
         }
         line.setPathEffect(null);
@@ -728,7 +728,7 @@ final class DecisionChartView extends View {
             if (word == null) continue;
             float wide = label.measureText(word);
             boolean down = after.bar < before.bar;
-            float levelY = y(after.bar, maxScore, top, bottom);
+            float levelY = y(lineLevel(after.bar), maxScore, top, bottom);
             float baseline = down ? levelY + ui.dp(3) - label.ascent() : levelY - ui.dp(3) - label.descent();
             float x = after.from + ui.dp(3);
             if (x + wide > end - ui.dp(2)) x = after.from - ui.dp(3) - wide;
@@ -1031,7 +1031,7 @@ final class DecisionChartView extends View {
         long maxScore = scoreScaleMax();
         for (BarRun run : barRuns()) {
             if (run.to >= from && run.from <= to) {
-                highest = Math.min(highest, y(run.bar, maxScore, plotTop(), plotBottom()) - ui.dp(1));
+                highest = Math.min(highest, y(lineLevel(run.bar), maxScore, plotTop(), plotBottom()) - ui.dp(1));
             }
         }
         for (RectF box : barWordBoxes) if (box.right >= from && box.left <= to) highest = Math.min(highest, box.top);
@@ -1072,15 +1072,23 @@ final class DecisionChartView extends View {
 
     /** Percent scale does not depend on payouts or dollar requirements. Unknowns contribute nothing. */
     private long scoreScaleMax() {
-        int max = Math.max(100, minimumScalePercent);
+        int max = Math.max(100, lineLevel(minimumScalePercent));
         for (DecisionLog.Entry entry : entries) {
             if (tree(entry)) max = Math.max(max, Math.min(SCORE_DISPLAY_CAP, entry.scorePercent));
-            if (entry.autopilot) max = Math.max(max, entry.barPercent);
+            if (entry.autopilot) max = Math.max(max, Math.min(SCORE_DISPLAY_CAP, lineLevel(entry.barPercent)));
         }
         for (int ceiling : new int[] {150, 200, 250, 300, SCORE_DISPLAY_CAP}) {
             if (ceiling >= max) return ceiling;
         }
         return SCORE_DISPLAY_CAP;
+    }
+
+    /**
+     * Where the dashed purple line sits (0.6.62): scores are measured against what is needed now (the minimums at the
+     * bar), so 100% is the bar; this line is the minimums themselves, at 100 × 100 ÷ bar (84% bar: 119%).
+     */
+    static int lineLevel(int bar) {
+        return bar <= 0 ? 100 : (int) Math.round(10_000.0 / bar);
     }
 
     private static float y(long cents, long maxCents, float top, float bottom) {

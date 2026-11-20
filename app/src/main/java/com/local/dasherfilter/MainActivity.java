@@ -104,8 +104,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static final String DECLINE_WAIT_SWITCH = "Decline after 10 seconds";
     static final String DECLINE_WAIT_LINE = "Time to take an offer yourself; a touch keeps it yours";
     /** The learner button's toasts. */
-    static final String LEARN_ON_TOAST = "Learning on: new highs you accept raise the learned minimums.";
-    static final String LEARN_OFF_TOAST = "Learning off: only your own minimums count.";
+    static final String LEARN_ON_TOAST = "Learning on: offers you accept set your minimums, with Undo.";
+    static final String LEARN_OFF_TOAST = "Learning off: your accepts leave your minimums alone.";
     static final String FIRST_RULE = "Rule saved. Tap the mascot to turn on auto-decline.";
     /** The one-time 0.5.0 notice (FilterStore's model notice). */
     static final String NOTICE_TITLE = "Your 0.5.0 rule changes";
@@ -130,8 +130,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     static final String CLEAR_HISTORY = "Removes the offer decisions, waiting estimates, captured screen text, offer "
             + "areas, cached place names, unsent automatic diagnostics, and Autopilot's acceptance-rate reading and "
-            + "recent bar changes from this phone, with its note that your minimums grew, learned bests and adoption "
-            + "Undo. "
+            + "recent bar changes from this phone, with its note that your minimums grew and the Undo of your last "
+            + "accept. "
             + "Your minimums go back to the typical $2.00 a stop, $1.00 a mile and $15 an hour (0.6.54); your other "
             + "rules and Autopilot settings stay.";
     /** The view of Autopilot's details' words ({@link #showAutopilotDetails}). */
@@ -327,6 +327,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private PeekIntroCard peekIntro;
     /** The one-time note that the minimums grew, with Undo and OK (0.5.1). */
     private GrowthCard growthCard;
+    /** The note that an offer you accepted set your minimums (0.6.62), with Undo and OK. */
+    private AcceptNoteCard acceptNote;
     private WhatsNewCard whatsNew;
     /** This screen was made fresh (not recreated by day and night): its first resume checks at once. */
     private boolean freshScreen;
@@ -1081,6 +1083,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
         peekIntro = new PeekIntroCard(this, ui, problems, () -> showSettings(true));
         whatsNew = new WhatsNewCard(this, ui, problems);
         growthCard = new GrowthCard(this, ui, problems, this::undoGrowth);
+        acceptNote = new AcceptNoteCard(this, ui, problems, () -> {
+            rulesChanged();
+            refresh();
+            toast("Your minimums from before are back.");
+        });
         addFeeNotice(problems);
         // The stored route's own line, only for an offer older than the skyline's (refreshRoute).
         routeRow = ui.row();
@@ -1348,8 +1355,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         body.addView(state, Ui.matchWidth());
         body.addView(ui.text(TimeScore.EXPLANATION + "\n\nAutopilot applies its bar once. Max stops stays a hard "
                 + "limit and missing required facts stay for review. A passing offer is left for you to decide. "
-                + "Automatic acceptance is a separate opt-in and still checks every saved and enabled learned "
-                + "minimum at 100% or a higher bar, plus any stricter Autopilot working minimums.",
+                + "Automatic acceptance is a separate opt-in and still checks every active minimum at 100%.",
                 15, ui.inkSecondary, false), Ui.matchWidth());
         ScrollView scroll = new ScrollView(this);
         scroll.addView(body);
@@ -1392,48 +1398,26 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // A single fixed dialog button keeps its full target at large fonts in a short window. The two learning
         // actions remain separate native buttons, scrolling with their explanation instead of stacking off screen.
         LinearLayout actions = ui.row();
-        Button undo = ui.button("Undo last raise", false, () -> {
+        Button undo = ui.button("Undo last change", false, () -> {
             boolean changed = adoption != null && FilterStore.undoAdoption(this, adoption.id);
             dialog.dismiss();
             if (changed) rulesChanged();
             refresh();
-            toast(changed ? "Your minimums before the last raise are back." : "No minimums changed.");
+            toast(changed ? "Your minimums from before your last accept are back." : "No minimums changed.");
         });
         undo.setPadding(ui.dp(8), 0, ui.dp(8), 0);
         undo.setEnabled(adoption != null);
         actions.addView(undo, Ui.weighted());
-        actions.addView(ui.button("Reset", false, () -> {
-            dialog.dismiss();
-            confirmResetLearning();
-        }), Ui.weighted());
         body.addView(actions, 1, Ui.matchWidth());
     }
 
     private static String learningDetailWords(FilterSettings rules) {
-        return "On by default. When you accept an offer yourself and it beats your best pay per stop, pay per mile or "
-                + "pay per hour, your minimums rise to match it, add-ons included. Automatic accepts, add-ons, declines and unclear acceptances do "
-                + "not teach it. Readable rates on short trips can teach it too; unknown or implausible facts cannot. "
-                + "Off keeps the bests without using them or learning.\n\n"
-                + MinimumsDetails.learningSummary(rules) + "\n\n"
-                + "The dashed green triangle is your calculated learned minimums: the higher saved or learned value "
-                + "on every active axis. Undo last raise puts back your minimums from before the last raise, until a "
-                + "later minimum change, Reset or Clear history. Reset clears learned "
-                + "bests, not your minimums or Autopilot settings. Autopilot's working minimums are separate.";
-    }
-
-    private void confirmResetLearning() {
-        OwnWindowTouches.show(new AlertDialog.Builder(this)
-                .setTitle("Reset learned minimums?")
-                .setMessage("Forgets learned bests and the last raise's Undo. Your saved minimums, scoring mode, learning "
-                        + "switch and Autopilot settings stay. Earlier decision snapshots remain until Clear history.")
-                .setPositiveButton("Reset", (dialog, which) -> {
-                    FilterStore.resetAccepted(this);
-                    rulesChanged();
-                    refresh();
-                    toast("Learned minimums reset.");
-                })
-                .setNegativeButton("Cancel", null));
-
+        return "On by default. When you accept an offer yourself, your minimums become what it paid on each measure "
+                + "it shows: pay per stop, pay per mile and pay per hour. Higher or lower: accepting an offer the "
+                + "filter would decline says it was worth it. A measure you turned off stays off. Automatic accepts, "
+                + "add-ons, declines and unclear acceptances do not change them. Off leaves your minimums alone.\n\n"
+                + "After each change a note on the homepage says what changed, with Undo. Undo last change here puts "
+                + "back your minimums from before your last accept, until you change them yourself or Clear history.";
     }
 
     /** What Autopilot is doing now (finalSpec explainability), as the button, the chip and the status line say it. */
@@ -1523,7 +1507,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // A little room of their own at the sides (0.6.21: in line with the switch's words before).
         words.setPaddingRelative(ui.dp(4), 0, ui.dp(4), ui.dp(4));
         body.addView(words, Ui.matchWidth());
-        addCostPerMile(body);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(body);
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
@@ -1583,41 +1566,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         OwnWindowTouches.show(builder);
     }
 
-    /**
-     * Autopilot's details: the driver's own cost per mile (0.6.10, {@link CostPerMile}), off by default, a stepper of
-     * {@link CostPerMile#STEP_CENTS} cents with its words beside it; never a suggested rate.
-     */
-    private void addCostPerMile(LinearLayout body) {
-        LinearLayout row = ui.row();
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(ui.dp(48));
-        row.setPaddingRelative(ui.dp(4), ui.dp(8), 0, 0);
-        TextView label = ui.text("", 15, ui.ink, false);
-        row.addView(label, Ui.weighted());
-        Runnable show = () -> {
-            int cents = CostPerMile.cents(this);
-            label.setText(ui.twoLines(CostPerMile.TITLE + ": " + CostPerMile.words(cents), CostPerMile.ABOUT));
-            label.setContentDescription(CostPerMile.TITLE + ", " + CostPerMile.words(cents) + ". "
-                    + CostPerMile.ABOUT);
-        };
-        Button less = ui.button("−", false, () -> {
-            CostPerMile.set(this, CostPerMile.cents(this) - CostPerMile.STEP_CENTS);
-            show.run();
-        });
-        less.setContentDescription("Lower your cost per mile");
-        Button more = ui.button("+", false, () -> {
-            CostPerMile.set(this, CostPerMile.cents(this) + CostPerMile.STEP_CENTS);
-            show.run();
-        });
-        more.setContentDescription("Raise your cost per mile");
-        for (Button step : new Button[] {less, more}) {
-            LinearLayout.LayoutParams at = new LinearLayout.LayoutParams(ui.dp(48), ui.dp(48));
-            at.setMarginStart(ui.dp(6));
-            row.addView(step, at);
-        }
-        show.run();
-        body.addView(row, Ui.matchWidth());
-    }
 
     private String autopilotDetailWords(AutopilotText.Status status) {
         return String.join("\n\n", AutopilotText.detailsLines(status));
@@ -2075,8 +2023,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         peekIntro.refresh(saved.enabled);
         whatsNew.refresh();
         growthCard.refresh();
-        // A learned raise's note from 0.6.60 or earlier is adopted, as every raise is from 0.6.61.
-        if (FilterStore.adoptWaitingRaise(this)) rulesChanged();
+        acceptNote.refresh();
         refreshFeeNotice();
         // The status line beside the chip: the start with no rule; with Autopilot on, its status in every state of
         // the spec's (auto-decline paused among them: the sleeping mascot resumes); with Autopilot off, paused, that

@@ -46,6 +46,7 @@ final class AddOnOffer {
      */
     static boolean isLikely(List<String> labels) {
         if (!OfferEvidence.bounded(labels)) return false;
+        labels = OfferParser.withoutBusyBonus(labels);
         int amounts = 0;
         boolean addedPay = false;
         boolean addedStops = false;
@@ -76,6 +77,7 @@ final class AddOnOffer {
     static AddOnOffer parse(OfferSnapshot route, List<String> labels) {
         OfferSnapshot active = route == null ? OfferSnapshot.UNKNOWN : route;
         if (!OfferEvidence.bounded(labels)) return new AddOnOffer(active, OfferSnapshot.UNKNOWN, OfferSnapshot.UNKNOWN);
+        labels = OfferParser.withoutBusyBonus(labels);
         List<String> travelLabels = OfferParser.routeMetricLabels(labels);
         List<String> payLabels = new ArrayList<>();
         for (String label : labels) {

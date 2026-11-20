@@ -83,6 +83,7 @@ final class OfferParser {
         if (!OfferEvidence.bounded(visibleText) || !OfferEvidence.bounded(metricParts)) {
             return OfferSnapshot.UNKNOWN;
         }
+        visibleText = withoutBusyBonus(visibleText);
         List<String> lines = distinctNormalized(visibleText, new ArrayList<>());
         List<String> routeLabels = routeMetricLabels(visibleText);
         List<String> routeLines = distinctNormalized(routeLabels, new ArrayList<>());
@@ -124,6 +125,32 @@ final class OfferParser {
      * A hotspot label owns immediately following bare travel components until distinct nonmetric wording or
      * explicit offer evidence (such as a compact stops line) establishes a different context.
      */
+    private static final java.util.regex.Pattern BUSY = java.util.regex.Pattern.compile("^(?:very\\s+)?busy[.!]?$");
+    private static final java.util.regex.Pattern BARE_BONUS =
+            java.util.regex.Pattern.compile("^\\+\\s*\\$\\s*[0-9]{1,3}(?:\\.[0-9]{2})?$");
+
+    /**
+     * The labels without Dasher's zone bonus banner's amount: a bare "+$2" directly after "Very busy" (or "Busy") is
+     * what the busy zone adds, shown above the offer, never its pay or an add-on's added pay (0.6.62; the owner's
+     * 20 November 2026 report: "Very busy", "+$2" above a "+$5.15" add-on, and "Very busy", "+$1" above an $8.25
+     * offer, both read as "pay not found"). "Very busy" itself stays.
+     */
+    static List<String> withoutBusyBonus(List<String> labels) {
+        if (labels == null || labels.size() < 2) return labels;
+        List<String> kept = null;
+        for (int i = 0; i < labels.size(); i++) {
+            String label = labels.get(i);
+            if (i > 0 && label != null && labels.get(i - 1) != null
+                    && BARE_BONUS.matcher(OfferEvidence.normalize(label).toLowerCase(Locale.US)).matches()
+                    && BUSY.matcher(OfferEvidence.normalize(labels.get(i - 1)).toLowerCase(Locale.US)).matches()) {
+                if (kept == null) kept = new ArrayList<>(labels.subList(0, i));
+                continue;
+            }
+            if (kept != null) kept.add(label);
+        }
+        return kept == null ? labels : kept;
+    }
+
     static List<String> routeMetricLabels(List<String> labels) {
         List<String> safe = new ArrayList<>();
         boolean hotspot = false;

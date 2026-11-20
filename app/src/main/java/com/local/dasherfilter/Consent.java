@@ -99,7 +99,10 @@ final class Consent {
     // 2026: "weighs rating tier wiggle room"). The Terms and Privacy say it.
     // 47 (0.6.61): a learned raise becomes the saved minimums at once, with Undo; no Adopt step (the owner, 20
     // November 2026: "remove the manual adoption step"). The Terms and Privacy say it.
-    static final int VERSION = 47;
+    // 48 (0.6.62): one set of minimums. An offer you accept yourself sets them up or down, with Undo; Autopilot's bar is
+    // at most 100% and only drops for an acceptance-rate goal; scores are against what is needed now (the owner, 20
+    // November 2026: "okay what's the clean model?"). The Terms and Privacy say it.
+    static final int VERSION = 48;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -126,14 +129,12 @@ final class Consent {
                 + "turn offer sound down and keep your unlocked screen on during a dash. Auto-accept is off unless you "
                 + "turn it on in Settings. Your touch stops it."},
         {"On by default.", "Autopilot puts pay first. Its bar moves from " + FilterStore.BAR_MIN + "% to "
-                + FilterStore.BAR_MAX + "% of its working references. Each offer you accept yourself sets its "
-                + "readable active minimums up or down to that offer's values; the latest acceptance replaces earlier "
-                + "levels. Each offer you decline yourself raises its bar just above that offer. In Area mode, its "
-                + "scores also weigh total pay. This can allow offers below your saved or learned minimums, or "
-                + "decline offers that meet them. Learning separately raises learned minimums when you accept an "
-                + "offer that beats your best. Peek can briefly open Dasher to read a background offer. An anonymous "
-                + "daily count tells the developer how many people use the app. Turn any of them off: Autopilot from "
-                + "its chip, learning with Learn, Peek and the count in Settings."},
+                + FilterStore.BAR_MAX + "% of your minimums, going lower only to keep enough offers for an "
+                + "acceptance-rate goal. Each offer you accept yourself sets your minimums up or down to what it "
+                + "paid; Undo is on the homepage. This can allow offers below your minimums. Peek can briefly open "
+                + "Dasher to read a background offer. An anonymous daily count tells the developer how many people "
+                + "use the app. Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the "
+                + "count in Settings."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},
         {"Your data.", "Your offers, rules and history stay on this phone. Feedback and reports leave only when you "

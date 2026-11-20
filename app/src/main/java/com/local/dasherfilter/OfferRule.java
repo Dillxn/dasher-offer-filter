@@ -163,7 +163,8 @@ final class OfferRule {
         if (asks.missing || (settings.maxStops > 0 && offer.stops == null)) {
             return new Decision(Result.REVIEW, required, VALUE_NOT_FOUND, offer, score, bar, false, autopilot);
         }
-        int baselineScore = settings.hasAutopilotAxes() || settings.timeAware
+        // The score is measured against the minimums at the bar (0.6.62); below them is at a bar of 100.
+        int baselineScore = settings.hasAutopilotAxes() || settings.timeAware || bar != FilterSettings.BAR_AT_MINIMUMS
                 ? AreaScore.baselineScorePercent(settings, offer) : score;
         boolean below = (bar < FilterSettings.BAR_AT_MINIMUMS || settings.hasAutopilotAxes() || settings.timeAware)
                 && baselineScore >= 0 && baselineScore < FilterSettings.BAR_AT_MINIMUMS;
@@ -173,7 +174,7 @@ final class OfferRule {
                 ? below ? "below your minimums; passes Autopilot's current minimums"
                         : "meets Autopilot's current minimums"
                 : bar > FilterSettings.BAR_AT_MINIMUMS ? "meets the " + bar + "% bar"
-                : below ? "below your minimums; passes the " + bar + "% bar"
+                : below ? "below your minimums; passes Autopilot's " + bar + "% bar for your acceptance-rate goal"
                 : settings.scoreByArea ? "meets your area requirement" : MEETS_MINIMUMS;
         return new Decision(Result.KEEP, required, reason, offer, score, bar, below, autopilot);
     }

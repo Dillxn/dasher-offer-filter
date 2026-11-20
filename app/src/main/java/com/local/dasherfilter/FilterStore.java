@@ -73,7 +73,8 @@ final class FilterStore {
     private static long lastAutopilotAcceptanceSequence;
     /** The lowest and highest bar Autopilot may set: {@link Autopilot#BAR_MIN}'s 10 (50 before 0.6.32) and 150. */
     static final int BAR_MIN = 10;
-    static final int BAR_MAX = 150;
+    /** The bar never asks more than the minimums (0.6.62; 150 before). */
+    static final int BAR_MAX = 100;
     /** Which rules model the stored values are in: absent (1) before 0.5.0, {@link #MODEL} after. */
     private static final String RULES_MODEL = "rules_model";
     static final int MODEL = 2;
@@ -154,6 +155,8 @@ final class FilterStore {
     private static final String LEARNING_EPOCH = "learner_v3_epoch";
     private static final String MINIMA_REVISION = "learner_v3_minima_revision";
     private static final String ADOPTION = "learner_v3_adoption";
+    /** The id of the accept whose minimums the homepage's note shows (0.6.62). */
+    private static final String ACCEPT_NOTE = "accept_note";
     /** The homepage's note of the last learned raise ({@link LearnedRaise}). */
     private static final String LEARNED_RAISE = "learner_v3_raise_note";
 
@@ -232,8 +235,44 @@ final class FilterStore {
         initializeAutopilot(context, prefs);
         initializeLearning(prefs);
         initializeAreaDefault(context, prefs);
+        initializeOneMinimums(context, prefs);
         stampMinimumsSince(prefs);
         return read(prefs);
+    }
+
+    /** 1 once {@link #initializeOneMinimums} ran (0.6.62). */
+    private static final String ONE_MINIMUMS_SCHEMA = "one_minimums_schema";
+
+    /**
+     * 0.6.62's one set of minimums, once: learned bests that asked more than a saved minimum (with learning on) become
+     * the saved minimums, as Adopt did, so nothing asks less than the moment before; then the learned bests, Autopilot's
+     * working minimums, any pending one, the learned raise's note and Adopt's record go. The bar is held to 100% at most
+     * when read.
+     */
+    private static void initializeOneMinimums(Context context, SharedPreferences prefs) {
+        if (prefs.getInt(ONE_MINIMUMS_SCHEMA, 0) >= 1) return;
+        synchronized (FilterStore.class) {
+            if (prefs.getInt(ONE_MINIMUMS_SCHEMA, 0) >= 1) return;
+            SharedPreferences.Editor edit = prefs.edit().putInt(ONE_MINIMUMS_SCHEMA, 1);
+            AcceptedFloors learned = accepted(prefs);
+            if (prefs.getBoolean(ACCEPTANCE_LEARNING, true) && !learned.isEmpty()) {
+                int[] asks = adoptedAsks(learned);
+                int[] saved = {prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0), prefs.getInt(PER_MINUTE, 0)};
+                boolean none = saved[0] == 0 && saved[1] == 0 && saved[2] == 0;
+                String[] keys = {FLAT, PER_MILE, PER_MINUTE};
+                for (int axis = 0; axis < 3; axis++) {
+                    if (asks[axis] > saved[axis] && (none || saved[axis] > 0)) edit.putInt(keys[axis], asks[axis]);
+                }
+            }
+            writeAccepted(edit, AcceptedFloors.NONE);
+            edit.remove(AUTOPILOT_AXES).remove(AUTOPILOT_AXES_PENDING).remove(LEARNED_RAISE).remove(ADOPTION);
+            if (prefs.getInt(AUTOPILOT_RESUME_BAR, FilterSettings.BAR_AT_MINIMUMS) > BAR_MAX) {
+                edit.putInt(AUTOPILOT_RESUME_BAR, BAR_MAX);
+            }
+            edit.commit();
+        }
+        // Cost per mile only weighed Autopilot's pay-first value moves, which 0.6.62 removes: it goes too.
+        if (context != null) context.getSharedPreferences("cost_per_mile", Context.MODE_PRIVATE).edit().clear().apply();
     }
 
     /**
@@ -358,8 +397,9 @@ final class FilterStore {
         FilterSettings rules = new FilterSettings(prefs.getBoolean(ENABLED, false), prefs.getInt(FLAT, 0), prefs.getInt(PER_MILE, 0),
                 prefs.getInt(PER_MINUTE, 0), prefs.getInt(MAX_STOPS, 0), autopilot,
                 FilterSettings.sanitizedGoal(prefs.getInt(AUTOPILOT_GOAL, FilterSettings.GOAL_DEFAULT)), bar,
-                prefs.getBoolean(AREA_MODE, false), prefs.getBoolean(ACCEPTANCE_LEARNING, true), accepted(prefs),
-                AutopilotAxes.decode(prefs.getString(AUTOPILOT_AXES, "")))
+                prefs.getBoolean(AREA_MODE, false), prefs.getBoolean(ACCEPTANCE_LEARNING, true),
+                // 0.6.62, the clean model: one set of minimums. No learned layer and no Autopilot working minimums.
+                AcceptedFloors.NONE, AutopilotAxes.NONE)
                 .withTimeAware(prefs.getBoolean(TIME_AWARE, false));
         return rules.withTimeWeight(TimeScoreRuntime.weight(rules));
     }
@@ -1086,7 +1126,8 @@ final class FilterStore {
      * auto-decline is paused (0.6.35: a paused offer's score shows, and taking it by hand moves no minimum).
      */
     static AutopilotPermit captureAutopilotAcceptance(Context context, OfferSnapshot observed, boolean skipped) {
-        if (observed == null || skipped) return null;
+        // 0.6.62: an accept sets the minimums themselves (recordConfirmedManualAcceptance); no working minimums.
+        if (observed != null) return null;
         load(context);
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
@@ -1340,7 +1381,7 @@ final class FilterStore {
         }
     }
 
-    enum AcceptedLesson { RAISED, SAVED, UNCHANGED, OFF, STALE, UNKNOWN }
+    enum AcceptedLesson { RAISED, LOWERED, SET, SAVED, UNCHANGED, OFF, STALE, UNKNOWN }
 
     /** Only the existing outcome detector's confirmed manual standalone branch may consume this permit. */
     static AcceptedLesson recordConfirmedManualAcceptance(Context context, LearningPermit permit, OfferSnapshot offer) {
@@ -1365,21 +1406,38 @@ final class FilterStore {
                 edit.apply();
                 return AcceptedLesson.UNKNOWN;
             }
-            AcceptedFloors next = before.accepted.raisedBy(offer);
-            result = next.equals(before.accepted) ? AcceptedLesson.UNCHANGED
-                    : AreaScore.effectiveFloorsRaised(before, before.withAccepted(next), offer)
-                    ? AcceptedLesson.RAISED : AcceptedLesson.SAVED;
-            if (result != AcceptedLesson.UNCHANGED) {
-                writeAccepted(edit, next);
-                policyChangedSince(prefs, edit);
+            // 0.6.62 (the owner, 20 November 2026): the offer you accepted sets your minimums, up or down, on each
+            // measure it read: "one is accepting the lower paying offer and bypassing the filter for a reason and the
+            // minimums should be responsive to that". With none set, it sets all three; an axis you turned off
+            // stays off. Undo is on the homepage's note and in Learned minimums.
+            int[] was = {before.flatCents, before.perMileCents, before.perMinuteCents};
+            int[] rates = acceptedRates(offer);
+            boolean none = was[0] == 0 && was[1] == 0 && was[2] == 0;
+            int[] next = was.clone();
+            boolean up = false;
+            boolean down = false;
+            for (int axis = 0; axis < 3; axis++) {
+                if (rates[axis] <= 0 || (!none && was[axis] == 0)) continue;
+                next[axis] = rates[axis];
+                up |= next[axis] > was[axis];
+                down |= next[axis] < was[axis];
             }
+            if (!up && !down) {
+                edit.apply();
+                return AcceptedLesson.UNCHANGED;
+            }
+            result = up && down ? AcceptedLesson.SET : up ? AcceptedLesson.RAISED : AcceptedLesson.LOWERED;
+            long wall = wallClock.getAsLong();
+            edit.putInt(FLAT, next[0]).putInt(PER_MILE, next[1]).putInt(PER_MINUTE, next[2])
+                    .putLong(MINIMUMS_SINCE, wall);
+            long revision = minimaChanged(prefs, edit);
+            Adoption change = new Adoption(lesson, wall, revision, before, next[0], next[1], next[2]);
+            edit.putString(ADOPTION, change.encode()).putLong(ACCEPT_NOTE, lesson);
+            policyChangedSince(prefs, edit);
             edit.apply();
         }
-        // A new high raised the learned minimums in use: they become the saved minimums at once (0.6.61; the owner,
-        // 20 November 2026: "remove the manual adoption step"), with Undo in Learned minimums.
-        if (result == AcceptedLesson.RAISED) adopt(context, false);
-        // A lesson's jump is its own, not the user's: it keeps Autopilot's accepted floor and recovery state (0.6.11).
-        if (result == AcceptedLesson.RAISED || result == AcceptedLesson.SAVED) AutopilotRuntime.learned(context);
+        // A lesson's jump is its own, not the user's (0.6.11).
+        AutopilotRuntime.learned(context);
         return result;
     }
 
@@ -1447,7 +1505,8 @@ final class FilterStore {
                     && current.perMinuteCents == minuteAfter;
         }
         private static boolean validRange(int before, int after) {
-            return before >= 0 && after >= before && after <= FilterSettings.MOST_CENTS;
+            // An accept can lower a minimum too (0.6.62).
+            return before >= 0 && after >= 0 && before <= FilterSettings.MOST_CENTS && after <= FilterSettings.MOST_CENTS;
         }
     }
 
@@ -1621,6 +1680,40 @@ final class FilterStore {
      * What {@code bests} ask in the knobs' units, Adopt's arithmetic: {⌈(pay + 1¢) ÷ its stops, the pickup
      * included⌉, ⌈pay ÷ miles⌉, ⌈pay ÷ minutes⌉}.
      */
+    /**
+     * What an accepted offer pays on each measure, rounded down to whole cents so it meets them exactly: {⌊pay ÷ its
+     * stops, the pickup included⌋, ⌊pay ÷ miles⌋, ⌊pay ÷ minutes⌋}; 0 where it read no such figure.
+     */
+    static int[] acceptedRates(OfferSnapshot offer) {
+        int[] rates = new int[3];
+        if (offer == null || offer.payCents == null || offer.payCents <= 0) return rates;
+        long pay = offer.payCents;
+        Integer units = AreaScore.payUnits(offer.stops);
+        if (units != null) rates[0] = rate(pay / units);
+        if (offer.miles != null && offer.miles > 0) {
+            rates[1] = rate(BigDecimal.valueOf(pay).divide(BigDecimal.valueOf(offer.miles), 0, RoundingMode.FLOOR)
+                    .longValue());
+        }
+        if (offer.minutes != null && offer.minutes > 0) rates[2] = rate(pay / offer.minutes);
+        return rates;
+    }
+
+    private static int rate(long cents) {
+        return (int) Math.max(0, Math.min(FilterSettings.MOST_CENTS, cents));
+    }
+
+    /** The homepage note of the last accept that set the minimums: its Undo record, or null once closed or stale. */
+    static Adoption acceptNote(Context context) {
+        Adoption change = pendingAdoption(context);
+        if (change == null) return null;
+        return prefs(context).getLong(ACCEPT_NOTE, 0) == change.id ? change : null;
+    }
+
+    /** OK on that note: it goes; Undo stays in Learned minimums. */
+    static void closeAcceptNote(Context context) {
+        prefs(context).edit().remove(ACCEPT_NOTE).apply();
+    }
+
     private static int[] adoptedAsks(AcceptedFloors a) {
         return new int[] {
                 (int) Math.min(FilterSettings.MOST_CENTS,

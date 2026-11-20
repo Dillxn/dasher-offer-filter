@@ -18,13 +18,13 @@ public final class LegalTextsTest {
         String terms = LegalTexts.Doc.TERMS.text();
         for (String fact : new String[] {"Area mode is the default (from 0.6.27", "Strict mode checks every active minimum; choose it in How offers are judged",
                 "An offer permitted by the filter is not an accepted delivery", "confirmed manual standalone",
-                "Unknown facts do not teach their axes", "strictly meets every active saved and enabled learned",
-                "Add-on filtering stays strict against saved minimums", "it is conditional and cannot overwrite later changes",
-                "Autopilot never changes your saved minimums or learned bests"})
+                "offers whose pay was not read do not change them", "strictly meets every active minimum at 100% or more",
+                "Add-ons are judged strictly", "Undo is conditional and cannot overwrite a later change",
+                "It never asks more than your minimums, and it never changes them"})
             assertTrue(fact, terms.contains(fact));
         String privacy = LegalTexts.Doc.PRIVACY.text();
-        for (String fact : new String[] {"Learned evidence starts empty", "Raw learned-best snapshots and raise (adoption) receipts are not sent",
-                "Earlier decision snapshots keep their original numeric saved/learned requirements", "Clear history and uninstall remove both",
+        for (String fact : new String[] {"nothing else is kept of it here", "Undo records of your minimums are not sent",
+                "Earlier decision snapshots keep their original numeric requirements", "Clear history and uninstall remove the decision history and the Undo",
                 "no new recipient or automatic-sharing choice", "scoring mode, learning on/off and the recorded score kind",
                 "study continues to exclude minimum amounts and learner evidence"}) assertTrue(fact, privacy.contains(fact));
     }
@@ -43,7 +43,7 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "20 November 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.61";
+    static final String TERMS_VERSION = "0.6.62";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -62,6 +62,7 @@ public final class LegalTextsTest {
      * 0.6.59 both (offers you accept while paused teach learning and set Autopilot's working minimums);
      * 0.6.60 both (Dasher's Ratings page read as numbers for Autopilot's Reach Platinum goal);
      * 0.6.61 both (a learned raise becomes the saved minimums at once; no Adopt step);
+     * 0.6.62 both (one set of minimums set by your accepts, with Undo; the bar at most 100%);
      * 0.6.58 the privacy text only (a line keeps the masked text read of its offer; figures are worked out from it);
      * 0.6.57 both (with learning on and no rule set, offers are read and an accept teaches whatever the switch);
      * 0.6.56 the privacy text only (diagnostics also go soon after an unread offer, at most twelve a day);
@@ -71,7 +72,7 @@ public final class LegalTextsTest {
      * decided nothing first; the summary's log lines around a problem are kept with the dash's counts).
      */
     static final String PRIVACY_EFFECTIVE = "20 November 2026";
-    static final String PRIVACY_VERSION = "0.6.61";
+    static final String PRIVACY_VERSION = "0.6.62";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -139,36 +140,25 @@ public final class LegalTextsTest {
                 "Autopilot is on by default (from 0.6.2, and turned on once then for earlier installs), with pay first "
                         + "as its goal (from 0.6.18, when it replaced the suggested acceptance-rate goal of 70%: once, a "
                         + "70% goal moved to pay first, since it could not be told from the suggested one, and a 50% "
-                        + "goal stayed) until you choose a goal that protects your acceptance rate (70% or 50%); you can "
-                        + "turn it off from its chip on the homepage.", "between 10% and 150%",
+                        + "goal stayed) until you choose a goal that protects your acceptance rate (Reach Platinum, 70% or 50%); you can "
+                        + "turn it off from its chip on the homepage.", "between 10% and 100%",
                 // 0.6.18: only Dasher's usual decline question is confirmed; any other pauses auto-decline.
                 "it confirms only a decline question worded as Dasher's usual one (\"Are you sure you want to "
                         + "decline this offer?\"), seen in the developer's own reports; any other question, or one "
                         + "saying declines are limited or that another decline would end your dash, is left to you and "
                         + "auto-decline pauses until you resume it.",
-                // 0.6.29: a latest acceptance replaces the old score hold with its own working shape and bar.
-                "each readable active working minimum to that offer's own pay per stop, pay per mile or pay per "
-                        + "hour, independently up or down",
-                // 0.6.40: the bar moves to the accepted offer's own score and holds there.
-                "From 0.6.40 the shared bar moves at the same time to that offer's own Autopilot score",
-                "The newest acceptance replaces earlier accepted levels",
-                "holds the bar at its original recorded score for the next 24 counted offers, across dashes",
-                "The history can repair a missed update or an older incorrectly normalized adjustment",
+                // 0.6.62: one set of minimums, set by your accepts with Undo; the bar at most 100%, lowered only for
+                // an acceptance-rate goal; no working minimums or holds (0.6.29 to 0.6.61).
+                "sets your minimums to what that offer paid on each measure it shows",
+                "accepting an offer the filter would decline lowers them, and accepting a better one raises them",
+                "A note on the homepage says what changed, with Undo",
                 "Merely passing, timing out or disappearing is not an acceptance",
-                "Records from before a goal or rules reset cannot restore the old adjustment",
-                "ordinary goal and offer-rate planning cannot move the bar away from the accepted score",
-                "add-ons and automatic acceptance, which ask your saved and enabled learned minimums at the bar, "
-                        + "follow the bar to its new level",
-                "A change of your goal (turning Autopilot on with another goal included), minimums, max stops, "
-                        + "mode or learning ends that hold and clears the working adjustments",
-                "a pause, turning Autopilot off and on again with the same goal, and a learned raise of your "
-                        + "minimums keep them, including "
-                        + "an already confirmed pending update",
-                "a newer acceptance replaces those levels and that hold",
-                "using your recent offers, how often they come and the acceptance rate Dasher shows when you decline",
-                "Autopilot can permit offers below your saved or learned minimums, or decline offers that meet them",
-                "Offers it permits only below your saved or learned minimums are left to you and never auto-accepted",
-                "a complete standalone offer that strictly meets every active saved and enabled learned minimum at 100% or any higher Autopilot bar",
+                "From 0.6.29 to 0.6.61 Autopilot also kept separate working minimums set by your accepts",
+                "0.6.62 removes those working minimums and holds",
+                "using your recent offers, how often they come and the acceptance rate Dasher shows",
+                "an offer below your minimums that passes a lowered bar says so",
+                "a complete standalone offer that strictly meets every active minimum at 100% or more",
+                "never one that passes only a lowered bar",
                 "Autopilot's default goal, pay first, does not try to keep your acceptance rate up.",
                 "An acceptance-rate goal you choose instead is a best effort, not a promise: Autopilot cannot accept "
                         + "offers for you, and your acceptance rate rises only when you accept offers.",
@@ -182,12 +172,10 @@ public final class LegalTextsTest {
                 "It never wakes or unlocks the phone; the power button still turns the screen off. This uses more "
                         + "battery.",
                 "if nothing of a dash is seen for 8 hours while Dasher is not in front and the screen is off",
-                // Saved minimums still do not grow automatically; Autopilot has separate working requirements.
-                "Autopilot never changes your saved minimums or learned bests; it changes only its separate "
-                        + "working requirements",
+                // Autopilot never changes the minimums (0.6.62).
+                "It never asks more than your minimums, and it never changes them.",
                 "From 0.5.1 to 0.6.20 Autopilot also raised saved minimums, at most 10% at a time, with Let my "
                         + "minimums grow to turn that off; that growth and its switch were removed in 0.6.21",
-                "Acceptance learning keeps its separate best-ever rates",
                 "A growth made before 0.6.21 keeps its note on the homepage, with Undo, until you tap it or your "
                         + "minimums change another way."}) {
             assertTrue(fact, terms.contains(fact));
@@ -306,35 +294,26 @@ public final class LegalTextsTest {
                 "The fingerprint kept with a reading never leaves the phone.",
                 "feedback about a selected offer leaves it out.",
                 "Clear history removes the reading, the Ratings reading and its bands and pairs, Autopilot's working "
-                        + "figures, the accepted offers it keeps, its "
-                        + "independent working minimums and any pending adjustment, its last-change note and its kept "
+                        + "figures, its last-change note and its kept "
                         + "changes, the note of its last growth (and with it the Undo) and its other notes above.",
                 // 0.6.40: the bar's last 40 changes, for the chart's bar line.
                 "from 0.6.40 its last 40 changes of the bar for the chart's bar line",
-                // 0.6.19: the hand accepts kept for the accepted floor (AutopilotStore.keepAccepts).
-                "The offers you accept yourself while Autopilot is on (from 0.6.19): for each, its pay in cents, "
-                        + "miles, minutes, stops and item count, and when you accepted it",
-                "At most " + AutopilotStore.KEPT_ACCEPTS_MAX + ", each for 7 days and "
-                        + "only since you last changed your goal or rules; that change removes them. They never leave "
-                        + "the phone, not even in a report.",
-                "when you last changed your goal or rules (an accepted offer holds its bar only after that; before "
-                        + "0.6.19, turning it on or off counted too)",
+                // 0.6.19 to 0.6.61: hand accepts kept for the accepted floor; 0.6.62 deletes them and keeps none.
+                "Before 0.6.62, the offers you accepted yourself while Autopilot was on (from 0.6.19): for each, its "
+                        + "pay in cents, miles, minutes, stops and item count, and when you accepted it, at most "
+                        + AutopilotStore.KEPT_ACCEPTS_MAX + ", each for 7 days",
+                "0.6.62 deletes them and keeps none. They never left the phone, not even in a report.",
+                "and when you last changed your goal or rules,",
                 // The rules, the history's new fields and the 0.5.0 migration.
                 // 0.6.18: pay first by default, and whether the user picked the goal (FilterStore.goalChosen).
                 "Autopilot's settings: whether it is on, your goal (pay first, the default from 0.6.18, or an "
                         + "acceptance rate of 70% or 50%) and whether you picked it yourself in its goal question, its "
                         + "current bar",
-                "The latest acceptance replaces earlier accepted levels and starts the bar's next-24-offers hold again",
-                "Each old score can hold the legacy bar until 24 offers have come after it",
-                "its newest acceptance and anchor bar then replace their highest-score hold",
-                "at most three exact numeric rate pairs", "one pending copy with numeric consent and policy markers",
-                "The latest 200 decision snapshots retain the exact adjustments used for their original decision",
-                "This includes eligible records already on the phone at the update and repairs after a restart",
-                "Rebuilding does not start that hold again",
-                "Clear history removes the evidence, so it cannot rebuild cleared adjustments",
-                "No new observations are collected for this repair",
+                // 0.6.29 to 0.6.61: Autopilot's working minimums; 0.6.62 deletes them.
+                "at most three exact numeric rate pairs",
+                "The latest 200 decision snapshots still retain the exact adjustments used for their original decision",
                 "not included in reports, automatic summaries or the timing study",
-                "fixed category Autopilot, without exporting the working rates",
+                "It never writes your minimums.",
                 "the bar it was judged at and whether Autopilot set that bar",
                 "whether Dasher said declining it does not lower your acceptance rate",
                 "used for the wait estimate and by Autopilot to estimate how often offers arrive",
@@ -357,14 +336,14 @@ public final class LegalTextsTest {
         for (String fact : new String[] {"and when your current minimums took effect",
                 "(until 0.6.21, also whether Let my minimums grow was on; that choice is removed from the phone with "
                         + "the growth it switched)",
-                "Autopilot never changes saved minimums or the learner's independent bests",
+                "It never writes your minimums.",
                 "Its earlier growth of saved minimums ended in 0.6.21",
                 "If Autopilot raised your minimums before 0.6.21, the app keeps a note of that last growth: when, by "
                         + "how much, how many offers on how many days it rested on, your minimums and Autopilot's bar "
                         + "before and after, and whether its note on the homepage (with Undo) is still waiting",
                 "and the Undo of such a growth (your minimums before and after)",
                 "the note of its last growth (and with it the Undo)",
-                "Autopilot never writes the saved minimums or learned bests"}) {
+                "Autopilot never writes your minimums; with acceptance learning on, an offer you accept yourself sets them, with Undo."}) {
             assertTrue(fact, privacy.contains(fact));
         }
         for (String retired : new String[] {"whether Let my minimums grow is on", "Turn off Let my minimums grow",
@@ -502,9 +481,9 @@ public final class LegalTextsTest {
         assertEquals(300, AreaMap.MAX_CELLS);
         assertTrue(privacy.contains("up to 300 historical squares"));
         assertEquals(10, FilterStore.BAR_MIN);
-        assertEquals(150, FilterStore.BAR_MAX);
-        assertTrue(terms.contains("between 10% and 150%"));
-        assertTrue(privacy.contains("between 10% and 150%"));
+        assertEquals(100, FilterStore.BAR_MAX);
+        assertTrue(terms.contains("between 10% and 100%"));
+        assertTrue(privacy.contains("between 10% and 100%"));
         assertEquals(10, AutopilotStore.EXTRA_MAX);
         assertTrue(privacy.contains("a correction of at most 10 points"));
         assertEquals(25, Autopilot.CHECK_EVERY);

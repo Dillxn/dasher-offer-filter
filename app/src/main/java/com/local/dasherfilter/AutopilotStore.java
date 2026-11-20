@@ -431,38 +431,14 @@ final class AutopilotStore {
      */
     static List<Autopilot.OfferRecord> keepAccepts(Context context, List<Autopilot.OfferRecord> newestFirst,
                                                    long since) {
+        // 0.6.62: no accept hold reads them any more; what earlier versions kept is deleted, and nothing new is kept.
         synchronized (AutopilotStore.class) {
             SharedPreferences prefs = prefs(context);
-            long from = Math.max(since, prefs.getLong(FLOOR_SINCE, 0));
-            String stored = prefs.getString(KEPT_ACCEPTS, null);
-            TreeMap<Long, OfferSnapshot> kept = new TreeMap<>(Collections.reverseOrder());
-            for (Map.Entry<Long, OfferSnapshot> accept : readAccepts(stored).entrySet()) {
-                if (accept.getKey() >= from) kept.put(accept.getKey(), accept.getValue());
-            }
-            if (newestFirst != null) {
-                for (Autopilot.OfferRecord line : newestFirst) {
-                    if (line == null || line.acceptedByHandAt == Autopilot.NEVER || line.acceptedByHandAt < from
-                            || line.addOn || line.replay || line.skipped || line.facts.payCents == null
-                            || OfferSanity.looksMisread(line.facts)) continue;
-                    if (!kept.containsKey(line.acceptedByHandAt)) kept.put(line.acceptedByHandAt, line.facts);
-                }
-            }
-            while (kept.size() > KEPT_ACCEPTS_MAX) kept.pollLastEntry();
-            String next = writeAccepts(kept);
-            String was = stored == null ? "[]" : stored;
-            if (!next.equals(was)) {
-                SharedPreferences.Editor edit = prefs.edit();
-                if (kept.isEmpty()) edit.remove(KEPT_ACCEPTS); else edit.putString(KEPT_ACCEPTS, next);
-                edit.apply();
+            if (prefs.contains(KEPT_ACCEPTS)) {
+                prefs.edit().remove(KEPT_ACCEPTS).apply();
                 version++;
             }
-            List<Autopilot.OfferRecord> records = new ArrayList<>();
-            for (Map.Entry<Long, OfferSnapshot> accept : kept.entrySet()) {
-                long at = accept.getKey();
-                records.add(new Autopilot.OfferRecord(accept.getValue(), at, false, false, true, false, false,
-                        FilterSettings.BAR_AT_MINIMUMS, false, DecisionLog.MODEL, null, false, at));
-            }
-            return Collections.unmodifiableList(records);
+            return Collections.emptyList();
         }
     }
 
