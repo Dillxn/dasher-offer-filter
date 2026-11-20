@@ -8928,7 +8928,7 @@ public final class OfferFilterService extends AccessibilityService {
     /** A lesson's fate in fixed words ("[learner]" lines): never an amount, a best or a minimum. */
     static String lessonWords(FilterStore.AcceptedLesson lesson, boolean permitted) {
         switch (lesson) {
-            case RAISED: return "learned; the learned minimums rose (Adopt on the homepage)";
+            case RAISED: return "learned; the learned minimums rose and are now your minimums";
             case SAVED: return "learned a new best; your saved minimums are still higher";
             case UNCHANGED: return "nothing new: no best beaten or no eligible readable rate";
             case OFF: return "not taught: learning or filtering is off, or the notice is not accepted";

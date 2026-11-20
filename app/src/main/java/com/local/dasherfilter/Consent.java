@@ -97,7 +97,9 @@ final class Consent {
     // minimums (the owner, 20 November 2026). The Terms and Privacy say it.
     // 46 (0.6.60): Dasher's Ratings page is read as numbers for Autopilot's Reach Platinum goal (the owner, 20 November
     // 2026: "weighs rating tier wiggle room"). The Terms and Privacy say it.
-    static final int VERSION = 46;
+    // 47 (0.6.61): a learned raise becomes the saved minimums at once, with Undo; no Adopt step (the owner, 20
+    // November 2026: "remove the manual adoption step"). The Terms and Privacy say it.
+    static final int VERSION = 47;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

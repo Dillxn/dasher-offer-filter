@@ -106,8 +106,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** The learner button's toasts. */
     static final String LEARN_ON_TOAST = "Learning on: new highs you accept raise the learned minimums.";
     static final String LEARN_OFF_TOAST = "Learning off: only your own minimums count.";
-    /** Adopt's toast, from Learned minimums or the homepage's note of a learned raise. */
-    static final String ADOPTED_TOAST = "Learned minimums adopted. Undo is in Learned minimums.";
     static final String FIRST_RULE = "Rule saved. Tap the mascot to turn on auto-decline.";
     /** The one-time 0.5.0 notice (FilterStore's model notice). */
     static final String NOTICE_TITLE = "Your 0.5.0 rule changes";
@@ -329,8 +327,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private PeekIntroCard peekIntro;
     /** The one-time note that the minimums grew, with Undo and OK (0.5.1). */
     private GrowthCard growthCard;
-    /** The note that a new high the user accepted raised the learned minimums (0.6.1), with Adopt and OK. */
-    private LearnedRaiseCard learnedRaiseCard;
     private WhatsNewCard whatsNew;
     /** This screen was made fresh (not recreated by day and night): its first resume checks at once. */
     private boolean freshScreen;
@@ -1085,11 +1081,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         peekIntro = new PeekIntroCard(this, ui, problems, () -> showSettings(true));
         whatsNew = new WhatsNewCard(this, ui, problems);
         growthCard = new GrowthCard(this, ui, problems, this::undoGrowth);
-        learnedRaiseCard = new LearnedRaiseCard(this, ui, problems, () -> {
-            rulesChanged();
-            refresh();
-            toast(ADOPTED_TOAST);
-        });
         addFeeNotice(problems);
         // The stored route's own line, only for an offer older than the skyline's (refreshRoute).
         routeRow = ui.row();
@@ -1401,18 +1392,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
         // A single fixed dialog button keeps its full target at large fonts in a short window. The two learning
         // actions remain separate native buttons, scrolling with their explanation instead of stacking off screen.
         LinearLayout actions = ui.row();
-        Button adopt = ui.button(adoption == null ? "Adopt" : "Undo adoption", false, () -> {
-            boolean changed = adoption == null ? FilterStore.adoptAccepted(this)
-                    : FilterStore.undoAdoption(this, adoption.id);
+        Button undo = ui.button("Undo last raise", false, () -> {
+            boolean changed = adoption != null && FilterStore.undoAdoption(this, adoption.id);
             dialog.dismiss();
             if (changed) rulesChanged();
             refresh();
-            toast(changed ? adoption == null ? ADOPTED_TOAST
-                    : "Adopted minimums put back." : "No minimums changed.");
+            toast(changed ? "Your minimums before the last raise are back." : "No minimums changed.");
         });
-        adopt.setPadding(ui.dp(8), 0, ui.dp(8), 0);
-        adopt.setEnabled(adoption != null || !rules.accepted.isEmpty());
-        actions.addView(adopt, Ui.weighted());
+        undo.setPadding(ui.dp(8), 0, ui.dp(8), 0);
+        undo.setEnabled(adoption != null);
+        actions.addView(undo, Ui.weighted());
         actions.addView(ui.button("Reset", false, () -> {
             dialog.dismiss();
             confirmResetLearning();
@@ -1422,21 +1411,20 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
     private static String learningDetailWords(FilterSettings rules) {
         return "On by default. When you accept an offer yourself and it beats your best pay per stop, pay per mile or "
-                + "pay per hour, the learned minimums rise to match it, and offers must meet them as well as your own. Your "
-                + "own minimums stay as you set them. Automatic accepts, add-ons, declines and unclear acceptances do "
+                + "pay per hour, your minimums rise to match it, add-ons included. Automatic accepts, add-ons, declines and unclear acceptances do "
                 + "not teach it. Readable rates on short trips can teach it too; unknown or implausible facts cannot. "
                 + "Off keeps the bests without using them or learning.\n\n"
                 + MinimumsDetails.learningSummary(rules) + "\n\n"
                 + "The dashed green triangle is your calculated learned minimums: the higher saved or learned value "
-                + "on every active axis. Adopt raises any lower minimum of yours to the learned bests. Undo puts "
-                + "back the last adoption until a later minimum change, Reset or Clear history. Reset clears learned "
+                + "on every active axis. Undo last raise puts back your minimums from before the last raise, until a "
+                + "later minimum change, Reset or Clear history. Reset clears learned "
                 + "bests, not your minimums or Autopilot settings. Autopilot's working minimums are separate.";
     }
 
     private void confirmResetLearning() {
         OwnWindowTouches.show(new AlertDialog.Builder(this)
                 .setTitle("Reset learned minimums?")
-                .setMessage("Forgets learned bests and adoption Undo. Your saved minimums, scoring mode, learning "
+                .setMessage("Forgets learned bests and the last raise's Undo. Your saved minimums, scoring mode, learning "
                         + "switch and Autopilot settings stay. Earlier decision snapshots remain until Clear history.")
                 .setPositiveButton("Reset", (dialog, which) -> {
                     FilterStore.resetAccepted(this);
@@ -2087,7 +2075,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         peekIntro.refresh(saved.enabled);
         whatsNew.refresh();
         growthCard.refresh();
-        learnedRaiseCard.refresh();
+        // A learned raise's note from 0.6.60 or earlier is adopted, as every raise is from 0.6.61.
+        if (FilterStore.adoptWaitingRaise(this)) rulesChanged();
         refreshFeeNotice();
         // The status line beside the chip: the start with no rule; with Autopilot on, its status in every state of
         // the spec's (auto-decline paused among them: the sleeping mascot resumes); with Autopilot off, paused, that

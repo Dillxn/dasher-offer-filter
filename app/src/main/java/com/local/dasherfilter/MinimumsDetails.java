@@ -166,8 +166,8 @@ final class MinimumsDetails {
         lines.add("Permitted by the filter does not mean accepted. Automatic acceptance separately requires strict "
                 + "saved and enabled learned minimums at 100% or any higher bar"
                 + (rules.hasAutopilotAxes() ? ", and Autopilot's working minimums whenever stricter" : "")
-                + ". Add-ons use strict saved minimums at the current bar; learned standalone bests do not apply "
-                + "until adopted as saved minimums.");
+                + ". Add-ons use strict saved minimums at the current bar; a learned raise becomes a saved minimum "
+                + "at once.");
         if (rules.maxStops > 0) lines.add("Max stops " + rules.maxStops + " (never scaled).");
         if (approximate[0]) lines.add(ROUNDED);
         return String.join("\n", lines);

@@ -305,6 +305,9 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        // 0.6.61 (the owner, 20 November 2026: "remove the manual adoption step").
+        notice(47, "When an offer you accept raises your learned minimums, they now become your minimums at once, "
+                + "add-ons included. No Adopt step; Undo last raise is in Learned minimums.");
         // 0.6.60 (the owner, 20 November 2026: Autopilot "weighs rating tier wiggle room").
         notice(46, "Autopilot can aim for Platinum: it reads the numbers on Dasher's Ratings page and keeps the "
                 + "acceptance rate your other ratings need, plus 2.");
@@ -554,6 +557,9 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.61 (the owner, 20 November 2026).
+        release("0.6.61", "No more Adopt: when an accept raises your learned minimums they become your minimums at once, "
+                + "add-ons included. Undo last raise is in Learned minimums.");
         // 0.6.60 (the owner, 20 November 2026).
         release("0.6.60", "New Autopilot goal, Reach Platinum: open Dasher's Ratings page once and Autopilot works out the "
                 + "acceptance rate Platinum needs from your other ratings, then keeps 2 points above it.");

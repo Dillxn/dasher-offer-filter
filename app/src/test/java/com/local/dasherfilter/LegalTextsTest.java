@@ -23,7 +23,7 @@ public final class LegalTextsTest {
                 "Autopilot never changes your saved minimums or learned bests"})
             assertTrue(fact, terms.contains(fact));
         String privacy = LegalTexts.Doc.PRIVACY.text();
-        for (String fact : new String[] {"Learned evidence starts empty", "Raw learned-best snapshots and adoption receipts are not sent",
+        for (String fact : new String[] {"Learned evidence starts empty", "Raw learned-best snapshots and raise (adoption) receipts are not sent",
                 "Earlier decision snapshots keep their original numeric saved/learned requirements", "Clear history and uninstall remove both",
                 "no new recipient or automatic-sharing choice", "scoring mode, learning on/off and the recorded score kind",
                 "study continues to exclude minimum amounts and learner evidence"}) assertTrue(fact, privacy.contains(fact));
@@ -43,7 +43,7 @@ public final class LegalTextsTest {
      */
     static final String TERMS_EFFECTIVE = "20 November 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.60";
+    static final String TERMS_VERSION = "0.6.61";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -61,6 +61,7 @@ public final class LegalTextsTest {
      * 0.6.45 updates the Feedback/Export diagnostics navigation, with the same collection and consent scopes;
      * 0.6.59 both (offers you accept while paused teach learning and set Autopilot's working minimums);
      * 0.6.60 both (Dasher's Ratings page read as numbers for Autopilot's Reach Platinum goal);
+     * 0.6.61 both (a learned raise becomes the saved minimums at once; no Adopt step);
      * 0.6.58 the privacy text only (a line keeps the masked text read of its offer; figures are worked out from it);
      * 0.6.57 both (with learning on and no rule set, offers are read and an accept teaches whatever the switch);
      * 0.6.56 the privacy text only (diagnostics also go soon after an unread offer, at most twelve a day);
@@ -70,7 +71,7 @@ public final class LegalTextsTest {
      * decided nothing first; the summary's log lines around a problem are kept with the dash's counts).
      */
     static final String PRIVACY_EFFECTIVE = "20 November 2026";
-    static final String PRIVACY_VERSION = "0.6.60";
+    static final String PRIVACY_VERSION = "0.6.61";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -160,7 +161,8 @@ public final class LegalTextsTest {
                         + "follow the bar to its new level",
                 "A change of your goal (turning Autopilot on with another goal included), minimums, max stops, "
                         + "mode or learning ends that hold and clears the working adjustments",
-                "a pause, turning Autopilot off and on again with the same goal, and Adopt keep them, including "
+                "a pause, turning Autopilot off and on again with the same goal, and a learned raise of your "
+                        + "minimums keep them, including "
                         + "an already confirmed pending update",
                 "a newer acceptance replaces those levels and that hold",
                 "using your recent offers, how often they come and the acceptance rate Dasher shows when you decline",

@@ -1,3 +1,13 @@
+## 0.6.61 — Learned raises apply at once
+
+Version 0.6.61 (code 153) answers the owner, 20 November 2026: "let's also remove the manual adoption step".
+
+- **Now.** When an offer you accept yourself raises a learned minimum above your saved one, the saved minimums rise to the learned bests at once. This uses Adopt's own arithmetic and record (FilterStore.adopt, called from recordConfirmedManualAcceptance on RAISED), so the raise also applies to add-ons, and Autopilot's working rates and accepted hold stay as Adopt kept them. The lesson's own Autopilot jump (LEARNED) follows. The homepage's "Learned minimums rose" note (LearnedRaiseCard) is gone. In Learned minimums, Adopt is gone and "Undo last raise" puts back the minimums from before the last raise, under Adopt's existing conditions. A note left waiting by 0.6.60 or earlier is applied once when the app opens (FilterStore.adoptWaitingRaise).
+- **Notice 47.** Terms and Privacy for 0.6.61 say so.
+- **Kept suites.** ConsentGateTest expects notice 47. LegalTextsTest expects the 0.6.61 texts and two pinned sentences reworded: Autopilot's adjustments are kept through "a learned raise of your minimums" (was "Adopt"), and "raise (adoption) receipts" are not sent. No tests were added. Unverified on a phone.
+
+No phone has run this build.
+
 ## 0.6.60 — Autopilot can aim for Platinum
 
 Version 0.6.60 (code 152) answers the owner's ask of 20 November 2026: "at 76% acceptance rate I am just below platinum. i want to be able to keep my rating when I get back to it ... weighs rating tier wiggle room". On a card the owner chose "Reach Platinum" with a 2-point margin.

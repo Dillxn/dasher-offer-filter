@@ -1373,11 +1373,11 @@ final class FilterStore {
                 writeAccepted(edit, next);
                 policyChangedSince(prefs, edit);
             }
-            // A new high raised the learned minimums in use: the homepage notes it (with Adopt). The saved minimums
-            // stay as the user set them (the owner, 12 October 2026).
-            if (result == AcceptedLesson.RAISED) edit.putString(LEARNED_RAISE, LearnedRaise.encode(lesson, next));
             edit.apply();
         }
+        // A new high raised the learned minimums in use: they become the saved minimums at once (0.6.61; the owner,
+        // 20 November 2026: "remove the manual adoption step"), with Undo in Learned minimums.
+        if (result == AcceptedLesson.RAISED) adopt(context, false);
         // A lesson's jump is its own, not the user's: it keeps Autopilot's accepted floor and recovery state (0.6.11).
         if (result == AcceptedLesson.RAISED || result == AcceptedLesson.SAVED) AutopilotRuntime.learned(context);
         return result;
@@ -1451,7 +1451,19 @@ final class FilterStore {
         }
     }
 
-    static boolean adoptAccepted(Context context) {
+    /**
+     * A learned raise's note left waiting by 0.6.60 or earlier: adopted now, as a new raise is from 0.6.61, and the note
+     * goes. Whether minimums changed.
+     */
+    static boolean adoptWaitingRaise(Context context) {
+        LearnedRaise raise = learnedRaise(context);
+        if (raise == null) return false;
+        closeLearnedRaise(context, raise.id);
+        return adopt(context, true);
+    }
+
+    /** Raises any lower saved minimum to the learned bests; {@code notify}: as the user's change for Autopilot. */
+    private static boolean adopt(Context context, boolean notify) {
         load(context);
         synchronized (FilterStore.class) {
             SharedPreferences prefs = prefs(context);
@@ -1486,8 +1498,9 @@ final class FilterStore {
             // The learned minimums are now the user's own: no learned raise is left to note.
             edit.putString(ADOPTION, adoption.encode()).remove(LEARNED_RAISE).apply();
         }
-        // Adopt only raises the minimums: Autopilot's accepted floor stays (0.6.11).
-        AutopilotRuntime.adopted(context);
+        // Adopt only raises the minimums: Autopilot's accepted floor stays (0.6.11). A lesson's own adoption is
+        // followed by the lesson's jump (AutopilotRuntime.learned).
+        if (notify) AutopilotRuntime.adopted(context);
         return true;
     }
 
@@ -1564,14 +1577,6 @@ final class FilterStore {
             return flat > 0 || mile > 0 || minute > 0;
         }
 
-        private static String encode(long id, AcceptedFloors bests) {
-            try {
-                return new JSONObject().put("id", id).put("pay", bests.highestPayCents)
-                        .put("payUnits", bests.payUnits).put("milePay", bests.milePay)
-                        .put("miles", bests.miles).put("minutePay", bests.minutePay).put("minutes", bests.minutes)
-                        .toString();
-            } catch (JSONException impossible) { throw new IllegalStateException(impossible); }
-        }
     }
 
     /** The learned raise whose note waits, or null (and a note that can no longer show is forgotten). */
