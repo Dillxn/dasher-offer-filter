@@ -1,3 +1,15 @@
+## 0.6.58 — Your history keeps what was read; figures are worked out when you look
+
+Version 0.6.58 (code 150) answers the owner's message of 20 November 2026: "if we aren't recording enough info then the data parsing we do on the screen read data needs to happen on view render not before storage of the screen read data."
+
+- **Before.** A history line kept only the figures worked out at the moment of the decision (pay, miles, minutes, stops) and a few masked lines. A figure the reading missed was missing for good, and a better reading later could not fix it.
+- **Now.** Each new line also keeps the masked text read of its offer: Dasher's screen down to the offer's Accept (the split route figures too), or Dasher's notification, at most 40 labels and 1,500 characters, never a payment, account or earnings screen. When the history is read, each line's figures are worked out again from that text (an add-on's own and whole-route figures too); a figure the text doesn't hold keeps the one recorded. Scores follow, as they are already worked out from the figures and the line's rules. What happened stays as recorded: the decision, what was tapped, accepts and declines.
+- **Older lines** kept no text, so they keep their recorded figures.
+- **Notice 44.** Privacy (for 0.6.58) says so. Accept it once more to keep filtering.
+- **Kept suites.** ConsentGateTest expects notice 44 and LegalTextsTest the 0.6.58 Privacy. No tests were added; a throwaway probe checked that masked text parses as the screen did on four real card shapes, and that a line saved with its pay missed shows $8.60 and its score when read again.
+
+No phone has run this build.
+
 ## 0.6.57 — With no minimums, your first accept sets them
 
 Version 0.6.57 (code 149) answers the owner's question of 20 November 2026: "when I accept an order it should raise my mins to that if I have no mins set, right?" It could not: with no minimum set, the app read nothing of Dasher's screen (only its notification, which has no pay), and learning ran only while auto-decline was on, which no minimum turns off.

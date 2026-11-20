@@ -321,7 +321,7 @@ final class LegalTexts {
     private static final String PRIVACY_TEXT = """
             # {app} privacy
 
-            Beta privacy policy, effective 20 November 2026 · for {app} 0.6.57
+            Beta privacy policy, effective 20 November 2026 · for {app} 0.6.58
 
             {app} does not require an {app} account and has no ads or mandatory analytics. It does not sell or rent \
             your data. Offer reading and decisions happen on your phone. Update requests, feedback you send, the \
@@ -495,8 +495,11 @@ final class LegalTexts {
             items of your route before it and of the whole route after accepting it, and its score is worked out \
             from those each time, not stored), the bar it was judged at and whether Autopilot set that bar, whether \
             Dasher said declining it does not lower your acceptance rate, what was seen of it afterward (accepted, \
-            declined by hand, or not counted and why), and a few masked lines read from the offer. This history has \
-            no age-based expiry: entries remain until newer decisions replace them or you clear history or \
+            declined by hand, or not counted and why), and a few masked lines read from the offer. From 0.6.58 each \
+            line also keeps the masked text read of the offer (Dasher's screen down to the offer's Accept, never a \
+            payment, account or earnings screen, or Dasher's notification), at most 40 labels and 1,500 characters, \
+            and the line's figures are worked out from that text again each time the history is read. This history \
+            has no age-based expiry: entries remain until newer decisions replace them or you clear history or \
             uninstall. From 0.6.48, when it is full, the oldest offer whose pay was never read and that decided \
             nothing (not accepted, not declined by the app or by you, with no acceptance-rate outcome), at least 30 \
             minutes older than the newest, is replaced first, so offers the app could not read do not push the \

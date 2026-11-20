@@ -91,7 +91,9 @@ final class Consent {
     // consolidated"), at most twelve a day. The Privacy says it; the short points stay unchanged.
     // 43 (0.6.57): with Learn on and no minimum set, offers are read (nothing tapped) and an accept sets the learned
     // minimums whether or not auto-decline is on (the owner, 20 November 2026). The Terms and Privacy say it.
-    static final int VERSION = 43;
+    // 44 (0.6.58): a history line keeps the masked text read of its offer, and its figures are worked out from it each
+    // time the history is read (the owner, 20 November 2026). The Privacy says it.
+    static final int VERSION = 44;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

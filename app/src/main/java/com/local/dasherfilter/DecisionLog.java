@@ -35,6 +35,11 @@ final class DecisionLog {
     private static final long MERGE_WINDOW_MS = 120_000;
     private static final int MAX_EVIDENCE_LINES = 10;
     private static final int MAX_EVIDENCE_CHARS = 120;
+    /** What a line keeps of what was read (0.6.58): at most these labels, characters each and characters in all. */
+    private static final int MAX_SCREEN_LABELS = 40;
+    private static final int MAX_SCREEN_PARTS = 12;
+    private static final int MAX_SCREEN_LABEL_CHARS = 160;
+    private static final int MAX_SCREEN_CHARS = 1_500;
     private static final String FILE = "decision-log.json";
     /** Lines the parser can read a figure from, or a pay/add-on label; "+" only before "$" (not phone numbers). */
     private static final Pattern EVIDENCE = Pattern.compile("(?i)\\$|\\d\\s*(?:mi|miles?|mins?|minutes?"
@@ -233,21 +238,34 @@ final class DecisionLog {
          */
         final OfferSnapshot routeBefore;
         final OfferSnapshot routeAfter;
+        /**
+         * What was read of the offer, masked ({@link PersonalText#mask}) and, on Dasher's screen, cut at its Accept as
+         * {@link PersonalText#offerPart} allows (0.6.58): the labels and the route figures Dasher splits across nodes
+         * ({@link #screenParts}). The line's figures are worked out from them again whenever the history is read, so a
+         * better reading applies to it too (the owner, 20 November 2026: "the data parsing we do on the screen read data
+         * needs to happen on view render not before storage"); empty for lines written before.
+         */
+        final List<String> screen;
+        final List<String> screenParts;
 
         Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents, OfferRule.Result result,
               String reason, Action action, boolean autoDecline, List<String> evidence) {
             this(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence, null, null,
                     false, Collections.<Step>emptyList(), -1, false, FilterSettings.BAR_AT_MINIMUMS, false, MODEL, "strict", null,
-                    null, null);
+                    null, null, Collections.<String>emptyList(), Collections.<String>emptyList());
         }
 
         private Entry(long at, Source source, boolean addOn, OfferSnapshot facts, long requiredCents,
                       OfferRule.Result result, String reason, Action action, boolean autoDecline, List<String> evidence,
                       Entry notification, String alertTag, boolean replay, List<Step> steps, int scorePercent,
                       boolean peeked, int barPercent, boolean autopilot, int model, String scoreKind, FilterSettings scoringRules,
-                      OfferSnapshot routeBefore, OfferSnapshot routeAfter) {
+                      OfferSnapshot routeBefore, OfferSnapshot routeAfter, List<String> screen, List<String> screenParts) {
             this.routeBefore = addOn ? routeBefore : null;
             this.routeAfter = addOn ? routeAfter : null;
+            this.screen = screen == null ? Collections.<String>emptyList()
+                    : Collections.unmodifiableList(new ArrayList<>(screen));
+            this.screenParts = screenParts == null ? Collections.<String>emptyList()
+                    : Collections.unmodifiableList(new ArrayList<>(screenParts));
             this.at = at;
             this.source = source;
             this.addOn = addOn;
@@ -284,7 +302,8 @@ final class DecisionLog {
                     decision.result, decision.reason, action, autoDecline,
                     source == Source.SCREEN ? offerEvidence(labels) : evidence(labels)).withScore(
                     decision.scorePercent).withBar(decision.minimumScalePercent, decision.autopilot)
-                    .withScoringRules(decision.scoringRules).withRoute(decision.routeBefore, decision.routeAfter);
+                    .withScoringRules(decision.scoringRules).withRoute(decision.routeBefore, decision.routeAfter)
+                    .withScreen(source == Source.NOTIFICATION ? labels : null, null);
         }
 
         /**
@@ -327,7 +346,36 @@ final class DecisionLog {
         Entry withRoute(OfferSnapshot before, OfferSnapshot after) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
                     notification, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind,
-                    scoringRules, before, after);
+                    scoringRules, before, after, screen, screenParts);
+        }
+
+        /**
+         * This line with what was read of the offer (0.6.58): masked, Dasher's screen cut at its Accept, bounded. Nothing
+         * of a payment, account or earnings screen is kept.
+         */
+        Entry withScreen(List<String> labels, List<String> parts) {
+            List<String> part = source == Source.SCREEN ? PersonalText.offerPart(labels)
+                    : labels == null || PersonalText.accountScreen(labels) ? null : labels;
+            return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
+                    notification, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind,
+                    scoringRules, routeBefore, routeAfter, kept(part, MAX_SCREEN_LABELS),
+                    part == null ? Collections.<String>emptyList() : kept(parts, MAX_SCREEN_PARTS));
+        }
+
+        private static List<String> kept(List<String> labels, int most) {
+            List<String> out = new ArrayList<>();
+            if (labels == null) return out;
+            int chars = 0;
+            for (String label : labels) {
+                if (label == null) continue;
+                String clean = PersonalText.mask(OfferEvidence.normalize(label));
+                if (clean.isEmpty()) continue;
+                if (clean.length() > MAX_SCREEN_LABEL_CHARS) clean = clean.substring(0, MAX_SCREEN_LABEL_CHARS);
+                if (out.size() == most || chars + clean.length() > MAX_SCREEN_CHARS) break;
+                out.add(clean);
+                chars += clean.length();
+            }
+            return out;
         }
 
         /** This line, read because Peek brought Dasher up for it, or not. */
@@ -335,27 +383,27 @@ final class DecisionLog {
             if (on == peeked) return this;
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
                     notification, alertTag, replay, steps, scorePercent, on, barPercent, autopilot, model, scoreKind, scoringRules,
-                    routeBefore, routeAfter);
+                    routeBefore, routeAfter, screen, screenParts);
         }
 
         /** This line with the offer's score as a whole percent (-1 for none). */
         Entry withScore(int percent) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
                     notification, alertTag, replay, steps, percent, peeked, barPercent, autopilot, model, scoreKind, scoringRules,
-                    routeBefore, routeAfter);
+                    routeBefore, routeAfter, screen, screenParts);
         }
 
         /** This line decided at {@code bar} percent of the minimums, with Autopilot {@code auto} (on: it set the bar). */
         Entry withBar(int bar, boolean auto) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
                     notification, alertTag, replay, steps, scorePercent, peeked, bar, auto, model, scoreKind, scoringRules,
-                    routeBefore, routeAfter);
+                    routeBefore, routeAfter, screen, screenParts);
         }
 
         Entry withScoringRules(FilterSettings rules) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
                     notification, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model,
-                    rules != null && rules.scoreByArea ? "area" : "strict", rules, routeBefore, routeAfter);
+                    rules != null && rules.scoreByArea ? "area" : "strict", rules, routeBefore, routeAfter, screen, screenParts);
         }
 
         private boolean sameOffer(Entry other) {
@@ -376,21 +424,21 @@ final class DecisionLog {
         Entry withAction(Action next, boolean autoDecline) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, next, autoDecline, evidence,
                     notification, alertTag, false, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules,
-                    routeBefore, routeAfter);
+                    routeBefore, routeAfter, screen, screenParts);
         }
 
         /** This line as of {@code time}: a screen reading is stamped as the history takes it. */
         Entry withTime(long time) {
             return new Entry(time, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
                     notification, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules,
-                    routeBefore, routeAfter);
+                    routeBefore, routeAfter, screen, screenParts);
         }
 
         /** This line for the notification incarnation whose card has {@code tag}. */
         Entry withAlertTag(String tag, boolean replay) {
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
                     notification, tag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules,
-                    routeBefore, routeAfter);
+                    routeBefore, routeAfter, screen, screenParts);
         }
 
         /**
@@ -401,10 +449,10 @@ final class DecisionLog {
             Entry nested = new Entry(n.at, n.source, n.addOn, n.facts, n.requiredCents, n.result, n.reason, n.action,
                     n.autoDecline, Collections.<String>emptyList(), null, null, false, Collections.<Step>emptyList(),
                     n.scorePercent, false, n.barPercent, n.autopilot, n.model, n.scoreKind, n.scoringRules,
-                    n.routeBefore, n.routeAfter);
+                    n.routeBefore, n.routeAfter, n.screen, n.screenParts);
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
                     nested, alertTag, replay, steps, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules,
-                    routeBefore, routeAfter);
+                    routeBefore, routeAfter, screen, screenParts);
         }
 
         /** This line with one more step; an exact repeat of the last step is not added again. */
@@ -418,7 +466,7 @@ final class DecisionLog {
             while (next.size() > MAX_STEPS) next.remove(0);
             return new Entry(at, source, addOn, facts, requiredCents, result, reason, action, autoDecline, evidence,
                     notification, alertTag, replay, next, scorePercent, peeked, barPercent, autopilot, model, scoreKind, scoringRules,
-                    routeBefore, routeAfter);
+                    routeBefore, routeAfter, screen, screenParts);
         }
 
         /**
@@ -441,6 +489,8 @@ final class DecisionLog {
             if (scorePercent >= 0 && !addOn) json.put("score", scorePercent);
             if (routeBefore != null) json.put("routeBefore", snapshotJson(routeBefore));
             if (routeAfter != null) json.put("routeAfter", snapshotJson(routeAfter));
+            if (!screen.isEmpty()) json.put("screen", new JSONArray(screen));
+            if (!screenParts.isEmpty()) json.put("screenParts", new JSONArray(screenParts));
             if (model >= STRICT_MODEL) json.put("bar", barPercent).put("auto", autopilot).put("model", model);
             if (model >= MODEL) {
                 json.put("scoreKind", scoreKind);
@@ -502,14 +552,58 @@ final class DecisionLog {
             int model = json.has("model") ? json.optInt("model", LEGACY_MODEL) : LEGACY_MODEL;
             int bar = json.has("bar") ? json.optInt("bar", FilterSettings.BAR_AT_MINIMUMS)
                     : FilterSettings.BAR_AT_MINIMUMS;
-            return new Entry(json.getLong("at"), Source.valueOf(json.getString("source")), json.optBoolean("addOn"),
+            Source source = Source.valueOf(json.getString("source"));
+            boolean addOn = json.optBoolean("addOn");
+            List<String> screen = strings(json.optJSONArray("screen"));
+            List<String> parts = strings(json.optJSONArray("screenParts"));
+            OfferSnapshot before = readSnapshot(json.optJSONObject("routeBefore"));
+            OfferSnapshot after = readSnapshot(json.optJSONObject("routeAfter"));
+            // The figures, worked out again from what was read (0.6.58); a figure the reading no longer finds keeps
+            // the one recorded at the decision.
+            if (!screen.isEmpty()) {
+                if (addOn && source == Source.SCREEN) {
+                    AddOnOffer read = AddOnOffer.parse(before, withParts(screen, parts));
+                    boolean whole = after != null && facts.fingerprint().equals(after.fingerprint());
+                    if (after != null) after = merged(read.combined, after);
+                    facts = merged(whole ? read.combined : read.incremental, facts);
+                } else if (!addOn) {
+                    facts = merged(source == Source.NOTIFICATION ? OfferParser.parseNotification(screen)
+                            : OfferParser.parse(screen, parts), facts);
+                }
+            }
+            return new Entry(json.getLong("at"), source, addOn,
                     facts, json.optLong("required"), OfferRule.Result.valueOf(json.getString("result")),
                     json.optString("reason"), Action.named(json.optString("action")),
                     json.optBoolean("autoDecline"), evidence, null, null, false, Collections.<Step>emptyList(),
                     json.optInt("score", -1), false, bar, json.optBoolean("auto", false), model,
                     json.optString("scoreKind", "strict"), readRules(json.optJSONObject("rules"), bar,
-                            json.optBoolean("auto", false)), readSnapshot(json.optJSONObject("routeBefore")),
-                    readSnapshot(json.optJSONObject("routeAfter")));
+                            json.optBoolean("auto", false)), before, after, screen, parts);
+        }
+
+        private static List<String> strings(JSONArray array) {
+            List<String> out = new ArrayList<>();
+            for (int i = 0; array != null && i < array.length(); i++) {
+                String value = array.optString(i, null);
+                if (value != null) out.add(value);
+            }
+            return out;
+        }
+
+        private static List<String> withParts(List<String> screen, List<String> parts) {
+            List<String> all = new ArrayList<>(screen);
+            all.addAll(parts);
+            return all;
+        }
+
+        /** Each figure as now read when it was found, else as recorded; the recorded item applicability stays. */
+        private static OfferSnapshot merged(OfferSnapshot read, OfferSnapshot recorded) {
+            if (read == null) return recorded;
+            return new OfferSnapshot(read.payCents != null ? read.payCents : recorded.payCents,
+                    read.miles != null ? read.miles : recorded.miles,
+                    read.minutes != null ? read.minutes : recorded.minutes,
+                    read.stops != null ? read.stops : recorded.stops, null, recorded.finalStopHotspotMiles,
+                    read.items != null ? read.items : recorded.items,
+                    read.itemCountApplicable || recorded.itemCountApplicable);
         }
 
         /** An add-on route's figures as a line keeps them: pay, miles, minutes, stops and items when read. */

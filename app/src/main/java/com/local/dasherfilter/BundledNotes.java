@@ -305,6 +305,9 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        // 0.6.58 (the owner, 20 November 2026: "the data parsing ... needs to happen on view render").
+        notice(44, "Each offer in your history now keeps the masked text that was read of it, and its figures are "
+                + "worked out from that text whenever you look, so a better reading fixes past offers too.");
         // 0.6.57 (the owner, 20 November 2026: "when I accept an order it should raise my mins to that if I have no mins set").
         notice(43, "With Learn on and no minimums set, Offer Filter now reads offers (tapping nothing), and the first "
                 + "offer you accept sets your minimums.");
@@ -545,6 +548,9 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.58 (the owner, 20 November 2026).
+        release("0.6.58", "Your history now keeps what was read of each offer, masked, and works its pay, miles and time out "
+                + "from it whenever you look: a reading improved later fixes offers already on your chart.");
         // 0.6.57 (the owner, 20 November 2026).
         release("0.6.57", "With no minimums set and Learn on, the first offer you accept sets your minimums from its own "
                 + "pay per stop, per mile and per hour. Until then offers are read and shown, and nothing is tapped.");

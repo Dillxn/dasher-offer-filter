@@ -9641,7 +9641,7 @@ public final class OfferFilterService extends AccessibilityService {
         List<String> labels = new ArrayList<>(scan.text);
         labels.addAll(scan.metricParts);
         DecisionLog.Entry entry = DecisionLog.Entry.of(DecisionLog.Source.SCREEN, addOn, decision.basis, decision,
-                action, settings.enabled, labels).peeked(peeked);
+                action, settings.enabled, labels).peeked(peeked).withScreen(scan.text, scan.metricParts);
         boolean freshInstance = newScreenInstancePending;
         newScreenInstancePending = false;
         FoldedTag folded = new FoldedTag();
