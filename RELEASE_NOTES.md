@@ -1,3 +1,19 @@
+## 0.6.67 — The bar said truly; the chart names its purple line
+
+Version 0.6.67 (code 159) answers the owner's report c90432a0 and screenshot of 22 November 2026 on 0.6.66: a $7.80 offer (2.3 mi, 14 min, 2 stops; area score 81% against $4.05/stop, $5.45/mi and $28.20/hr) passed a 35% bar and was accepted. "didn't set the bar on the chart", then "the last order in this image has it's tree above the score like, suggesting >100%, but it says area score 81%.. I don't know what the 35% bar rating means".
+
+What happened: the tree stood at 81%, but its tip was under the offer's badge and the route's road, and the purple line had no name beside the pay line's "Pay $2.84 ref". The accept set the bar your accepts set (FilterStore.ACCEPT_BAR) from 35%, left by an accept at 35% the night before, to 81%. Autopilot's bar is the lower of that and Reach Platinum's limit (0.6.64), and the goal (76%, with Dasher's rate at 81%) needed 81 of the last 100 offers to pass, so the bar went only from 35% to 37%. 0.6.64 to 0.6.66 called every rise SET and wrote "at or above your minimums: the bar went back to 100%"; the homepage note said "Your accept lowered the bar: bar 81% · was bar 35%".
+
+- **The accept's line.** FilterStore.AcceptedLesson.LIFTED for an accept under 100% that raises the accept bar; SET is only a 100%+ accept putting it back to 100%. The words say what the accept set and that the goal can hold the bar lower. A history line 0.6.64 to 0.6.66 wrote with SET's words is read with LIFTED's when its own score is under 100%.
+- **The note.** "Your accept set the bar to 81%" over "was 35% · your Platinum goal holds it at 37% for now" (AutopilotText.barHeldBy: the plan's acceptance-rate or one-in-five limit holds the bar in use under the accept's). Undo's toast no longer says minimums for a bar.
+- **Autopilot's details** say what the bar does ("Offers scoring at least 37% of your minimums pass") and where your accepts set it (Status.acceptBar).
+- **The chart.** The selected badge moves the shorter way off its own tree's tip, up over it or down onto its roof under it, so the tip shows. Autopilot's line is named as the chip is, "Auto 37%", at its right end (left of the badge, or under the line where it would meet "100%"), and the pay line's words go under their line where the purple line would run through them. The spoken description names the purple line.
+- **The ticket.** "Area score 81% of your minimums · bar 35%", and "Below your minimums (under 100%), but at or over Autopilot's 35% bar, the lowest score it lets through: passed for you to decide, never auto-accepted."
+- **Terms (notice 51).** The Terms said an accept under 100% made that bar "drop to its score"; it becomes its score, which after an earlier, lower accept raises it, Autopilot's bar staying no higher than the goal allows. Terms for 0.6.67, effective 22 November 2026; Privacy unchanged (for 0.6.64). LegalTexts regenerated. Kept suites corrected for this deliberate change, none added: LegalTextsTest (the Terms' identity and pinned sentence) and ConsentGateTest (notice 51).
+- The model is unchanged: Autopilot's bar = min(share bar, accept bar, 100).
+
+Source only so far: the kept suites and lint could not run in the build container (Maven Central answered 429 for Robolectric's nativeruntime-dist-compat jar), so this is not yet built into a signed APK or published. No phone has run it.
+
 ## 0.6.66 — Below the goal, protect it at once
 
 Version 0.6.66 (code 158) answers the owner, 20 November 2026: "it declined an order that brought me down into gold". In the two dashes on 0.6.65 the bar stayed at 100% ("History: 10 of 20 eligible offers"; autopilotMode LEARNING). Autopilot.plan held the bar at 100 until 20 counted offers, whatever the goal, so with Dasher's rate at 79.6% and Reach Platinum's goal at 84% it declined 8 of 11 offers. The $6.55 accept (1.2 mi) had raised pay per mile to its raw rate, so the last two needed $11.08 and $15.00.

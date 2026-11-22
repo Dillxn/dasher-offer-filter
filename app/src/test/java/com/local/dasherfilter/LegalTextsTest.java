@@ -41,9 +41,9 @@ public final class LegalTextsTest {
      * The beta texts' effective identities, also read by ConsentGateTest. Only a text changed in substance gets
      * a new identity in its header; then tools/legal_texts.py regenerates the app's matching copy.
      */
-    static final String TERMS_EFFECTIVE = "20 November 2026";
+    static final String TERMS_EFFECTIVE = "22 November 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.64";
+    static final String TERMS_VERSION = "0.6.67";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -65,6 +65,7 @@ public final class LegalTextsTest {
      * 0.6.62 both (one set of minimums set by your accepts, with Undo; the bar at most 100%);
      * 0.6.63 both (an accept moves all minimums together by its score; each accept's line says whether it set them);
      * 0.6.64 both (an accept at 100%+ raises each minimum it beat; one under 100% lowers the bar instead);
+     * 0.6.67 the terms text only (an accept under 100% sets that bar to its score, which can raise it);
      * 0.6.58 the privacy text only (a line keeps the masked text read of its offer; figures are worked out from it);
      * 0.6.57 both (with learning on and no rule set, offers are read and an accept teaches whatever the switch);
      * 0.6.56 the privacy text only (diagnostics also go soon after an unread offer, at most twelve a day);
@@ -152,7 +153,9 @@ public final class LegalTextsTest {
                 // 0.6.62: one set of minimums, set by your accepts with Undo; the bar at most 100%, lowered only for
                 // an acceptance-rate goal; no working minimums or holds (0.6.29 to 0.6.61).
                 "each active minimum it beat (pay per stop, the pickup included, pay per mile or pay per hour) rises to that offer's own rate",
-                "If it scores under 100%, your minimums stay and that bar drops to its score",
+                "If it scores under 100%, your minimums stay and that bar becomes its score",
+                "after an earlier accept that scored less, that raises it, though Autopilot's bar still "
+                        + "goes no higher than your goal allows",
                 "A note on the homepage says what changed, with Undo",
                 "Merely passing, timing out or disappearing is not an acceptance",
                 "From 0.6.29 to 0.6.61 Autopilot also kept separate working minimums set by your accepts",

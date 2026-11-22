@@ -1086,7 +1086,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         acceptNote = new AcceptNoteCard(this, ui, problems, () -> {
             rulesChanged();
             refresh();
-            toast("Your minimums from before are back.");
+            toast("Back to what it was before your accept.");
         });
         addFeeNotice(problems);
         // The stored route's own line, only for an offer older than the skyline's (refreshRoute).
@@ -2023,7 +2023,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         peekIntro.refresh(saved.enabled);
         whatsNew.refresh();
         growthCard.refresh();
-        acceptNote.refresh();
+        acceptNote.refresh(status);
         refreshFeeNotice();
         // The status line beside the chip: the start with no rule; with Autopilot on, its status in every state of
         // the spec's (auto-decline paused among them: the sleeping mascot resumes); with Autopilot off, paused, that

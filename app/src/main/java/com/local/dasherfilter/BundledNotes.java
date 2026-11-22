@@ -305,6 +305,10 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        // 0.6.67 (the owner, 22 November 2026, after an 81% accept: "I don't know what the 35% bar rating means").
+        notice(51, "An offer you accept below your minimums sets the bar to its score, which can raise it after an "
+                + "earlier, lower accept. Your acceptance-rate goal can still hold the bar lower, and the app now says "
+                + "when it does.");
         // 0.6.64 (the owner, 20 November 2026: "an accept of a lower score doesn't change your mins but instead lowers
         // the score bar").
         notice(50, "An offer you accept that beats your minimums raises each one it beat to what it paid. One below "
@@ -567,6 +571,12 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.67 (the owner, 22 November 2026: an 81% accept's tree looked over 100%, and "I don't know what the 35%
+        // bar rating means").
+        release("0.6.67", "The chart names Autopilot's purple line (\"Auto 35%\"), the lowest score it lets through, "
+                + "and keeps each offer's tree tip clear of its badge.", "An accept's note and history line now say "
+                + "where it set the bar and when your acceptance-rate goal holds the bar lower; an offer's details say "
+                + "what the bar is.");
         // 0.6.66 (the owner, 20 November 2026: "it declined an order that brought me down into gold").
         release("0.6.66", "Below your acceptance-rate goal, Autopilot now protects it at once, even with little "
                 + "history, and drops the bar straight to what the goal needs instead of a step a minute.");

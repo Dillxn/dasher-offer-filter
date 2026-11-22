@@ -1387,7 +1387,12 @@ final class FilterStore {
         }
     }
 
-    enum AcceptedLesson { RAISED, LOWERED, SET, SAVED, UNCHANGED, OFF, STALE, UNKNOWN }
+    /**
+     * What an accept did. LOWERED and LIFTED: it scored under 100% and the bar your accepts set moved down or up to its
+     * score (LIFTED from 0.6.67: an earlier, lower accept had set it lower; 0.6.64 to 0.6.66 called that SET and said
+     * the bar went back to 100%). SET: it scored 100% or more and put that bar back to 100%.
+     */
+    enum AcceptedLesson { RAISED, LOWERED, LIFTED, SET, SAVED, UNCHANGED, OFF, STALE, UNKNOWN }
 
     /** Only the existing outcome detector's confirmed manual standalone branch may consume this permit. */
     static AcceptedLesson recordConfirmedManualAcceptance(Context context, LearningPermit permit, OfferSnapshot offer) {
@@ -1451,7 +1456,8 @@ final class FilterStore {
                 edit.apply();
                 return AcceptedLesson.UNCHANGED;
             }
-            result = up ? AcceptedLesson.RAISED : bar < barWas ? AcceptedLesson.LOWERED : AcceptedLesson.SET;
+            result = up ? AcceptedLesson.RAISED : bar < barWas ? AcceptedLesson.LOWERED
+                    : score >= FilterSettings.BAR_AT_MINIMUMS ? AcceptedLesson.SET : AcceptedLesson.LIFTED;
             long wall = wallClock.getAsLong();
             long revision;
             if (up) {

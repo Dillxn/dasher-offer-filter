@@ -8910,7 +8910,7 @@ public final class OfferFilterService extends AccessibilityService {
             // Every accept's fate goes on its own line (0.6.63; the owner, 20 November 2026: diagnostics "should be
             // more automatic and more robust"), so any report or summary says whether it set the minimums and why not.
             boolean set = lesson == FilterStore.AcceptedLesson.RAISED || lesson == FilterStore.AcceptedLesson.LOWERED
-                    || lesson == FilterStore.AcceptedLesson.SET;
+                    || lesson == FilterStore.AcceptedLesson.LIFTED || lesson == FilterStore.AcceptedLesson.SET;
             step(accepted.line, set ? DecisionLog.StepKind.LEARNER_MINIMUMS_SET : DecisionLog.StepKind.LEARNER_NOT_SET,
                     lessonWords(lesson, permitted));
             // An accept that should have set them and did not sends the dash so far on its own (opt-in on).
@@ -8930,12 +8930,24 @@ public final class OfferFilterService extends AccessibilityService {
         status("Acceptance observed.");
     }
 
+    /**
+     * What 0.6.64 to 0.6.66 wrote for every accept that raised the bar your accepts set, an accept under 100% that
+     * lifted it included; DecisionLog reads such a line, under 100%, with {@link FilterStore.AcceptedLesson#LIFTED}'s.
+     */
+    static final String LESSON_SET_BEFORE_0_6_67 = "at or above your minimums: the bar went back to 100%";
+
     /** A lesson's fate in fixed words ("[learner]" lines): never an amount, a best or a minimum. */
     static String lessonWords(FilterStore.AcceptedLesson lesson, boolean permitted) {
         switch (lesson) {
             case RAISED: return "raised your minimums where this offer paid more (each measure on its own)";
-            case LOWERED: return "below your minimums: your minimums stay, and the bar came down to this offer's score";
-            case SET: return "at or above your minimums: the bar went back to 100%";
+            // 0.6.67: the bar Autopilot uses is the lower of the one your accepts set and your goal's limit, so these
+            // say what the accept set and leave room for the goal (the owner's 81% accept was told "the bar went back
+            // to 100%" while Reach Platinum held the bar at 35%).
+            case LOWERED: return "below your minimums: your minimums stay, and the bar is now at most this offer's "
+                    + "score";
+            case LIFTED: return "below your minimums, but above the bar an earlier accept set: your minimums stay, and "
+                    + "the bar can rise to this offer's score as far as your goal allows";
+            case SET: return "at or above your minimums: the bar can go back up to 100% as far as your goal allows";
             case SAVED: return "learned a new best; your saved minimums are still higher";
             case UNCHANGED: return "nothing new: no measure paid more than your minimums, and the bar stays (also while "
                     + "below your acceptance-rate goal)";

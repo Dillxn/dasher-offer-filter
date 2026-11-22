@@ -12,6 +12,14 @@
 
 - "the whole app should be declarative / deterministic since we already have a history the view should reflect it". Derive current views and desired adjustments from retained authoritative facts, settings and explicit clock context. Events schedule reconciliation; a past callback, scanner connection or another offer must not be needed to discover facts already retained. Distinguish a not-yet-computed view from empty history. Show actual eligible counts and applied values, not an invented gathering/learning phase. An offer already in flight keeps its original decision; tap and consent guards and scanner safe-point commits remain mandatory.
 
+# 0.6.67 (22 November 2026): an accept's bar said truly; the chart names its purple line
+
+- The owner's report c90432a0 (row e115f8bc) and screenshot on 0.6.66: an 81% accept (area; Reach Platinum 76%, Dasher's rate 81%) under a 35% bar; "didn't set the bar on the chart", "its tree above the score ... suggesting >100%", "I don't know what the 35% bar rating means". The tree was at 81% with its tip under the badge and the route's road; the accept raised ACCEPT_BAR 35 → 81 (an earlier 35% accept), reported as SET ("the bar went back to 100%") and "Your accept lowered the bar"; Autopilot's bar stayed min(share 37, 81) = 37 (Mode GOAL).
+- The 0.6.64 model stands: the goal's limit wins over the bar accepts set. AcceptedLesson.LIFTED (under 100%, raising ACCEPT_BAR) vs SET (100%+ back to 100); DecisionLog reads the old SET words on a line scoring under 100% with LIFTED's. AcceptNoteCard says "Your accept set the bar to N%" and, via AutopilotText.barHeldBy, that the goal holds it at the bar in use; AutopilotText.Status.acceptBar and detailsAcceptBar explain it in the details.
+- Chart: the marked badge moves the shorter way off its own tree's tip (badgeCenterY, used by flagAt and highestWithin); Autopilot's line is named "Auto N%" (as the chip) at its right end, under its line where over meets "100%"; the pay line's words go under their line where the purple line crosses them. This reverses 0.6.3's unnamed bar line: two lines on two scales could not be told apart.
+- Terms for 0.6.67 (effective 22 November 2026): an under-100% accept's bar "becomes its score", which can raise it; notice 51. Privacy unchanged (0.6.64).
+- Source only when written: the release gate could not run in that container (Maven Central 429 on org.robolectric:nativeruntime-dist-compat:1.0.18); a mirror workaround was refused by the sandbox. Run tools/sign-local.sh before publishing.
+
 # 0.6.66 (20 November 2026): below the goal, protect it at once
 
 - With an acceptance-rate goal and Dasher's rate known below it, Autopilot.plan never waits for 20 counted offers (none: BAR_MIN), and Autopilot.step drops a bar above the share limit to the target in one commit. An acceptance-rate goal must never be left unprotected by a warm-up.

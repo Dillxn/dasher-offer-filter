@@ -78,9 +78,9 @@ final class AutopilotText {
 
     // ---- The skyline ----
 
-    static final String SKYLINE_DESCRIPTION = "Building height is pay in dollars. Each tree is the recorded score, "
-            + "percent of your minimums; the dashed line is your minimums, 100%. Building colour is what happened: "
-            + "green passed, amber passed below your minimums or left for review, red filtered.";
+    static final String SKYLINE_DESCRIPTION = "Building height is pay in dollars. Each tree is the offer's score, "
+            + "percent of your minimums as they are now; the green dashed line is your minimums, 100%. Building colour "
+            + "is what happened: green passed, amber passed below your minimums or left for review, red filtered.";
 
     // ---- The diagnostic log (category "autopilot") ----
 
@@ -167,6 +167,8 @@ final class AutopilotText {
         final int arOffersSince;
         /** Accepted and declined offers behind the app's estimate; -1 unless estimated. */
         final int arCounted;
+        /** The bar your own accepts set (0.6.64, {@link FilterStore#acceptBar}); 100 with none under your minimums. */
+        final int acceptBar;
         final Kind kind;
 
         Status(FilterSettings rules, boolean readerConnected, Autopilot.Plan plan, AutopilotStore.Reading reading,
@@ -196,7 +198,16 @@ final class AutopilotText {
         Status(FilterSettings rules, boolean readerConnected, Autopilot.Plan plan, AutopilotStore.Reading reading,
                AutopilotStore.Change lastChange, boolean storedRecovering, int storedExtra,
                AutopilotStore.Grew lastGrowth, long wallNow, boolean axesPending, AutopilotStore.Ratings ratings) {
+            this(rules, readerConnected, plan, reading, lastChange, storedRecovering, storedExtra, lastGrowth, wallNow,
+                    axesPending, ratings, FilterSettings.BAR_AT_MINIMUMS);
+        }
+
+        Status(FilterSettings rules, boolean readerConnected, Autopilot.Plan plan, AutopilotStore.Reading reading,
+               AutopilotStore.Change lastChange, boolean storedRecovering, int storedExtra,
+               AutopilotStore.Grew lastGrowth, long wallNow, boolean axesPending, AutopilotStore.Ratings ratings,
+               int acceptBar) {
             if (rules == null) throw new IllegalArgumentException("rules");
+            this.acceptBar = Math.max(Autopilot.BAR_MIN, Math.min(FilterSettings.BAR_AT_MINIMUMS, acceptBar));
             this.rules = rules;
             this.on = rules.autopilot;
             this.bar = rules.minimumScalePercent;
@@ -600,6 +611,8 @@ final class AutopilotText {
                 + "no offer is up.");
         String floor = detailsFloor(s);
         if (floor != null) lines.add(floor);
+        String accepted = detailsAcceptBar(s);
+        if (accepted != null) lines.add(accepted);
         if (s.on) lines.add("Goal: " + goalLabel(s.storedGoal) + ".");
         String platinum = detailsPlatinum(s);
         if (platinum != null) lines.add(platinum);
@@ -625,12 +638,60 @@ final class AutopilotText {
         return Collections.unmodifiableList(lines);
     }
 
-    /** "Bar: 82% of your minimums (100% = exactly your minimums)."; while off, that offers meet exactly them. */
+    /**
+     * "Bar: 35%. Offers scoring at least 35% of your minimums pass; 100% is exactly your minimums."; while off, that
+     * offers meet exactly them. (0.6.67 says what the bar does; the owner, 22 November 2026: "I don't know what the 35%
+     * bar rating means".)
+     */
     static String detailsBar(Status s) {
         if (!s.on) return DETAILS_OFF;
         if (s.rules.hasAutopilotAxes()) return "Bar: " + s.bar + "%. Each acceptance sets Autopilot's working "
                 + "minimums separately; later bar changes move them together.";
-        return "Bar: " + s.bar + "% of your minimums (100% = exactly your minimums).";
+        return "Bar: " + s.bar + "%. Offers scoring at least " + s.bar + "% of your minimums pass; 100% is exactly "
+                + "your minimums.";
+    }
+
+    /**
+     * What holds the bar deciding offers below {@code limit}, the bar your accepts set (0.6.67): "your Platinum goal",
+     * "your 70% goal", or for pay first "keeping 1 in 5 offers passing", when the plan's acceptance-rate limit (pay
+     * first's one in five) is what sets it; null when nothing holds it below that limit, or before a plan for these
+     * rules. Autopilot's bar is the lower of the two (0.6.64), so an accept can set a bar the goal keeps it from.
+     */
+    static String barHeldBy(Status s, int limit) {
+        if (s == null || !s.on || s.plan == null || s.bar >= limit) return null;
+        switch (s.plan.mode) {
+            case GOAL:
+            case RECOVERY:
+            case PINNED:
+            case PASS_FLOOR:
+                break;
+            default:
+                return null;
+        }
+        int goal = FilterSettings.sanitizedGoal(s.storedGoal);
+        if (goal == FilterSettings.GOAL_PAY_FIRST) return "keeping 1 in 5 offers passing";
+        return "your " + (goal == FilterSettings.GOAL_PLATINUM ? "Platinum" : goal + "%") + " goal";
+    }
+
+    /**
+     * The bar your accepts set, while under 100% (0.6.67): "An offer you accepted under your minimums scored 81%, so
+     * the bar can go up to 81%. Your Platinum goal holds it at 37% for now." when the goal's limit is lower, else that
+     * the bar is that score or less until an accept scoring more. Null at 100% or while off.
+     */
+    static String detailsAcceptBar(Status s) {
+        if (!s.on || s.acceptBar >= FilterSettings.BAR_AT_MINIMUMS) return null;
+        String held = barHeldBy(s, s.acceptBar);
+        String head = "An offer you accepted under your minimums scored " + s.acceptBar + "%, so the bar ";
+        if (held != null) {
+            return head + "can go up to " + s.acceptBar + "%. " + capitalize(held) + " holds it at " + s.bar
+                    + "% for now.";
+        }
+        return head + "is at most " + s.acceptBar + "% and offers like it pass. An accept scoring more raises it; one "
+                + "at 100% or more puts it back to 100%" + (s.goal > 0 ? " unless you are below your goal" : "") + ".";
+    }
+
+    private static String capitalize(String words) {
+        return words.isEmpty() ? words : Character.toUpperCase(words.charAt(0)) + words.substring(1);
     }
 
     /** The actual rates in force, including the current bar, without rounding the rule itself. */
@@ -975,14 +1036,19 @@ final class AutopilotText {
         if (usesAutopilotScore(entry)) return "Autopilot score " + entry.scorePercent + "% · bar "
                 + entry.barPercent + "%";
         if (entry.model >= 3 && "area".equals(entry.scoreKind)) {
-            return "Area score " + entry.scorePercent + "% · bar " + entry.barPercent + "%";
+            // 0.6.67: "of your minimums", as the strict line says, so 81% reads as under them, not over the bar.
+            return "Area score " + entry.scorePercent + "% of your minimums · bar " + entry.barPercent + "%";
         }
         return ticketScoreLine(entry.scorePercent, entry.barPercent, entry.model);
     }
 
-    /** A passing offer below 100% of the minimums: why it passed, and that it is never auto-accepted. */
+    /**
+     * A passing offer below 100% of the minimums: why it passed, what the bar is, and that it is never auto-accepted
+     * (0.6.67 says what the bar is; the owner, 22 November 2026: "I don't know what the 35% bar rating means").
+     */
     static String ticketBelowMinimums(int barPercent) {
-        return "Below your minimums: passed by Autopilot's " + barPercent + "% bar. Never auto-accepted.";
+        return "Below your minimums (under 100%), but at or over Autopilot's " + barPercent + "% bar, the lowest score "
+                + "it lets through: passed for you to decide, never auto-accepted.";
     }
 
     static String ticketBelowMinimums(DecisionLog.Entry entry) {

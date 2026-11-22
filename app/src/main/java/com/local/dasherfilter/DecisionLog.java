@@ -525,8 +525,17 @@ final class DecisionLog {
                 // A step this version does not know (written by a newer one) is skipped; the line is kept.
                 try {
                     JSONObject step = kept.getJSONObject(i);
-                    entry = entry.withStep(new Step(StepKind.valueOf(step.getString("kind")), step.getLong("at"),
-                            step.optString("detail")));
+                    StepKind kind = StepKind.valueOf(step.getString("kind"));
+                    String detail = step.optString("detail");
+                    // 0.6.64 to 0.6.66 wrote a 100%+ accept's words ("the bar went back to 100%") for an accept under
+                    // 100% that lifted the bar an earlier, lower accept had set: read with the words it should have
+                    // had (0.6.67), by the line's own score.
+                    if (kind == StepKind.LEARNER_MINIMUMS_SET
+                            && OfferFilterService.LESSON_SET_BEFORE_0_6_67.equals(detail)
+                            && entry.scorePercent >= 0 && entry.scorePercent < FilterSettings.BAR_AT_MINIMUMS) {
+                        detail = OfferFilterService.lessonWords(FilterStore.AcceptedLesson.LIFTED, true);
+                    }
+                    entry = entry.withStep(new Step(kind, step.getLong("at"), detail));
                 } catch (JSONException | IllegalArgumentException unknown) {
                     // Skipped.
                 }

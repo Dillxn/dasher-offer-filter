@@ -1184,7 +1184,7 @@ final class AutopilotRuntime {
         return new AutopilotText.Status(rules, readerConnected, plan, AutopilotStore.reading(app, wallNow),
                 AutopilotStore.lastChange(app), AutopilotStore.recovering(app), AutopilotStore.extra(app),
                 AutopilotStore.lastGrowth(app), wallNow, FilterStore.pendingAutopilotAxes(app) != null,
-                AutopilotStore.ratings(app, wallNow));
+                AutopilotStore.ratings(app, wallNow), FilterStore.acceptBar(app));
     }
 
     // ---- Logging and listeners ----

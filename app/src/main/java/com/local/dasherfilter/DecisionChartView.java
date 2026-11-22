@@ -100,6 +100,8 @@ final class DecisionChartView extends View {
     private final List<String> barWords = new ArrayList<>();
     /** Where those words were drawn, backdrops and all (for {@link #highestWithin}). */
     private final List<RectF> barWordBoxes = new ArrayList<>();
+    /** Where Autopilot's line's own name was last drawn, with its backdrop's margin; empty when it was not. */
+    private final RectF barLabelBox = new RectF();
     /** What the pay minimum asks of a single order at today's bar, in cents; 0 with no pay minimum. */
     private long payoutMinimumCents;
     /** What screen readers hear with no offer yet (nothing is drawn but the street). */
@@ -433,18 +435,17 @@ final class DecisionChartView extends View {
         drawBarLine(canvas, runs);
         // The lines' words, then the badge over everything, so no label's backdrop covers it.
         float badgeX = Float.isNaN(markedRoof) ? Float.NaN : buildingCenter(marked, slot);
-        float badgeY = Float.isNaN(markedRoof) ? Float.NaN : Math.max(markedRoof - ui.dp(12), ui.dp(10));
+        // Where it stands over its settled roof, kept as the building rises, so it never jumps mid-rise.
+        float[] flag = Float.isNaN(markedRoof) ? null : flagAt(marked);
+        float badgeY = flag == null ? Float.NaN : Math.max(markedRoof + flag[1] - roofAt(marked), ui.dp(10));
         drawThresholdLabels(canvas, left, right, badgeX, badgeY);
         drawBarWords(canvas, runs);
         if (!Float.isNaN(markedRoof)) {
-            float center = buildingCenter(marked, slot);
-            drawBadge(canvas, center, markedRoof - ui.dp(12), DecisionLog.outcome(entries.get(marked)),
-                    marked == selected);
+            drawBadge(canvas, badgeX, badgeY, DecisionLog.outcome(entries.get(marked)), marked == selected);
             // The stored route's offer, when it is the marked one: a small road at its badge's lower right.
             if (marked == routed) {
-                float flag = Math.max(markedRoof - ui.dp(12), ui.dp(10));
-                OutcomeBadge.drawRoadPip(canvas, ui, center + ui.dp(ROAD_MARK_RIGHT_DP),
-                        flag + ui.dp(ROAD_MARK_DOWN_DP), ui.dp(ROAD_MARK_DP), ui.ink);
+                OutcomeBadge.drawRoadPip(canvas, ui, badgeX + ui.dp(ROAD_MARK_RIGHT_DP),
+                        badgeY + ui.dp(ROAD_MARK_DOWN_DP), ui.dp(ROAD_MARK_DP), ui.ink);
             }
         }
         if (spotlight < 1) Motion.settling(this);
@@ -454,6 +455,43 @@ final class DecisionChartView extends View {
     /** The one offer with a badge: the selected one, else the newest. */
     private int badged() {
         return selected >= 0 && selected < entries.size() ? selected : entries.size() - 1;
+    }
+
+    /**
+     * Where the marked offer's badge stands: 12 dp over its roof at {@code centerX}; but where the badge ({@code full}:
+     * the selected offer's, else the quiet dot), or the stored route's road at its lower right ({@code road}), would
+     * cover its own tree's tip ({@code tipX}, {@code tip}; NaN for no tree), it moves the shorter way clear of it: up
+     * over the tip, or down onto its roof under it (0.6.67: the owner's 81% tree went up under its badge and road and
+     * read as reaching 100%; lifted there, the badge would have sat on the 100% line instead). Never above the view's
+     * top margin, nor down past the street.
+     */
+    private float badgeCenterY(float centerX, float roof, float tipX, float tip, boolean full, boolean road) {
+        float y = Math.max(roof - ui.dp(12), ui.dp(10));
+        if (Float.isNaN(tip)) return y;
+        float reach = full ? ui.dp(9) : ui.dp(4.5f);
+        // How far above (negative) and below the badge's middle the shapes over the tree's column reach.
+        float high = Float.NaN, low = Float.NaN;
+        if (Math.abs(tipX - centerX) < reach + ui.dp(1)) {
+            high = -reach;
+            low = reach;
+        }
+        if (road) {
+            float half = ui.dp(ROAD_MARK_DP) / 2f + ui.dp(1);
+            if (Math.abs(tipX - centerX - ui.dp(ROAD_MARK_RIGHT_DP)) < half + ui.dp(1)) {
+                float roadHigh = ui.dp(ROAD_MARK_DOWN_DP) - half;
+                float roadLow = ui.dp(ROAD_MARK_DOWN_DP) + half;
+                high = Float.isNaN(high) ? roadHigh : Math.min(high, roadHigh);
+                low = Float.isNaN(low) ? roadLow : Math.max(low, roadLow);
+            }
+        }
+        float gap = ui.dp(2);
+        if (Float.isNaN(low) || tip <= y + high - gap || tip >= y + low + gap) return y;
+        float up = tip - low - gap;
+        float down = tip - high + gap;
+        boolean upFits = up >= ui.dp(10);
+        boolean downFits = down + low <= plotBottom();
+        if (upFits && (!downFits || y - up <= down - y)) return up;
+        return downFits ? down : y;
     }
 
     /**
@@ -715,9 +753,9 @@ final class DecisionChartView extends View {
         label.setTextSize(Math.min(ui.sp(10), ui.dp(13)));
         // The lines' own words keep their places: "100%" at the right end, the pay line's at the left.
         List<RectF> taken = new ArrayList<>();
-        taken.add(lineLabelBox("100%", end - ui.dp(2), hundredY(), true));
+        taken.add(lineLabelBox("100%", end - ui.dp(2), hundredY(), true, false));
         if (payoutMinimumCents > 0) {
-            taken.add(lineLabelBox(payLabel(), ui.dp(SIDE_DP) + ui.dp(2), payoutThresholdY(), false));
+            taken.add(lineLabelBox(payLabel(), ui.dp(SIDE_DP) + ui.dp(2), payoutThresholdY(), false, false));
         }
         for (int i = runs.size() - 1; i > 0 && barWords.size() < BAR_WORDS_MOST; i--) {
             BarRun before = runs.get(i - 1), after = runs.get(i);
@@ -751,10 +789,14 @@ final class DecisionChartView extends View {
         label.setColor(ui.inkMuted);
     }
 
-    /** Where a line's words stand (as {@link #drawLineLabel} draws them), with their backdrop's margin. */
-    private RectF lineLabelBox(String text, float x, float lineY, boolean end) {
+    /**
+     * Where a line's words stand (as {@link #drawLineLabel} draws them; {@code under}: under their line), with their
+     * backdrop's margin. Measured with the label paint as it is set.
+     */
+    private RectF lineLabelBox(String text, float x, float lineY, boolean end, boolean under) {
+        useLineLabelPaint();
         float wide = label.measureText(text);
-        float baseline = lineY - ui.dp(3) - label.descent();
+        float baseline = under ? lineY + ui.dp(3) - label.ascent() : lineY - ui.dp(3) - label.descent();
         float textLeft = end ? x - wide : x;
         return new RectF(textLeft - ui.dp(3), baseline + label.ascent() - ui.dp(1), textLeft + wide + ui.dp(3),
                 baseline + label.descent() + ui.dp(1));
@@ -778,27 +820,12 @@ final class DecisionChartView extends View {
     }
 
     /**
-     * The bar line said: "Autopilot's bar, offer by offer: 25%, 32% (accepted), now 25% (hold over)"; null with no
-     * level to draw.
+     * The bar line said (0.6.67, one level since 0.6.64): "Autopilot's bar, Auto 35%: an offer whose tree reaches it
+     * would pass now"; null where it is not drawn.
      */
     private String barSaid() {
-        List<BarRun> runs = barRuns();
-        boolean drawn = false;
-        for (BarRun run : runs) drawn |= run.bar != 100;
-        if (!drawn) return null;
-        StringBuilder said = new StringBuilder("Autopilot's bar, offer by offer: ");
-        int shown = -1;
-        for (int i = 0; i < runs.size(); i++) {
-            BarRun run = runs.get(i);
-            if (run.bar == shown) continue;
-            if (shown >= 0) said.append(", ");
-            said.append(run.at == Long.MAX_VALUE ? "now " : "").append(run.bar).append('%');
-            AutopilotStore.Change change = i == 0 ? null : changeBetween(runs.get(i - 1).at, run.at, run.bar);
-            String word = change == null ? null : AutopilotText.barStepWord(change);
-            if (word != null) said.append(" (").append(word).append(')');
-            shown = run.bar;
-        }
-        return said.toString();
+        if (!barNamed()) return null;
+        return "Autopilot's bar, " + barLabel() + ": an offer whose tree reaches it would pass now";
     }
 
     /** The bar line's words as last drawn, oldest first (for tests and the description). */
@@ -807,29 +834,94 @@ final class DecisionChartView extends View {
     }
 
     /**
-     * "100%" at the right end, over the minimums' line, in the trees' green; the pay line's "Pay $10.00 min" (or "ref"
-     * by area) at its left end, just over it, in its own colour. Autopilot's line goes unnamed (its chip says it). Where
-     * the badge (at {@code badgeX}, {@code badgeY}; NaN without one) would cover "100%", the words stand just left of it.
+     * "100%" at the right end, over the minimums' line, in the trees' green; Autopilot's line, where it is drawn,
+     * named as its chip is, "Auto 35%", at its right end in its purple (0.6.67; unnamed from 0.6.3 to 0.6.66, the chip
+     * saying it, until the owner, 22 November 2026, could not tell it from the pay line's words: "I don't know what
+     * the 35% bar rating means"), under its line where over it would meet "100%", and left out where neither fits; the
+     * pay line's "Pay $10.00 min" (or "ref" by area) at its left end, just over it, in its own colour, or under it
+     * where Autopilot's line would run through its words. Where the badge (at {@code badgeX}, {@code badgeY}; NaN
+     * without one) would cover a right-end label, the words stand just left of it.
      */
     private void drawThresholdLabels(Canvas canvas, float left, float right, float badgeX, float badgeY) {
         float end = right - ui.dp(2);
-        if (!Float.isNaN(badgeX)) {
-            float reach = ui.dp(9);
-            label.setTypeface(Ui.MEDIUM);
-            label.setTextSize(Math.min(ui.sp(10), ui.dp(13)));
-            float baseline = hundredY() - ui.dp(3) - label.descent();
-            float wide = label.measureText("100%");
-            boolean across = badgeX + reach > end - wide - ui.dp(3) && badgeX - reach < end + ui.dp(3);
-            boolean level = badgeY + reach > baseline + label.ascent() - ui.dp(1)
-                    && badgeY - reach < baseline + label.descent() + ui.dp(1);
-            label.setTypeface(null);
-            label.setTextSize(ui.sp(11));
-            if (across && level) end = badgeX - reach - ui.dp(4);
+        float hundredEnd = clearOfBadge("100%", end, hundredY(), false, badgeX, badgeY);
+        drawLineLabel(canvas, "100%", hundredEnd, hundredY(), true, false, treeColor());
+        RectF hundred = lineLabelBox("100%", hundredEnd, hundredY(), true, false);
+        RectF named = null;
+        barLabelBox.setEmpty();
+        float barY = barNamed() ? barY() : Float.NaN;
+        if (!Float.isNaN(barY)) {
+            String words = barLabel();
+            boolean under = false;
+            float barEnd = clearOfBadge(words, end, barY, false, badgeX, badgeY);
+            RectF box = lineLabelBox(words, barEnd, barY, true, false);
+            if (RectF.intersects(box, hundred) || box.top < 0) {
+                under = true;
+                barEnd = clearOfBadge(words, end, barY, true, badgeX, badgeY);
+                box = lineLabelBox(words, barEnd, barY, true, true);
+            }
+            if (!RectF.intersects(box, hundred) && box.bottom <= plotBottom() + ui.dp(2)) {
+                named = box;
+                barLabelBox.set(box);
+                drawLineLabel(canvas, words, barEnd, barY, true, under, barLineColor());
+            }
         }
-        drawLineLabel(canvas, "100%", end, hundredY(), true, treeColor());
         if (payoutMinimumCents > 0) {
-            drawLineLabel(canvas, payLabel(), left + ui.dp(2), payoutThresholdY(), false, payoutColor());
+            float payY = payoutThresholdY();
+            String words = payLabel();
+            RectF over = lineLabelBox(words, left + ui.dp(2), payY, false, false);
+            RectF below = lineLabelBox(words, left + ui.dp(2), payY, false, true);
+            boolean crossed = crosses(over, barY) || named != null && RectF.intersects(over, named);
+            boolean clearBelow = !crosses(below, barY) && (named == null || !RectF.intersects(below, named))
+                    && below.bottom <= plotBottom() + ui.dp(2);
+            drawLineLabel(canvas, words, left + ui.dp(2), payY, false, crossed && clearBelow, payoutColor());
         }
+        resetLabelPaint();
+    }
+
+    /** Whether Autopilot's line is drawn: on, with offers, and off 100% (where the minimums' line stands). */
+    private boolean barNamed() {
+        return autopilotNow && !entries.isEmpty() && lineLevel(minimumScalePercent) != 100;
+    }
+
+    /** Where Autopilot's line stands. */
+    private float barY() {
+        return y(lineLevel(minimumScalePercent), scoreScaleMax(), plotTop(), plotBottom());
+    }
+
+    /** Autopilot's line named as its chip names the bar (0.6.67): "Auto 35%". */
+    String barLabel() {
+        return "Auto " + minimumScalePercent + "%";
+    }
+
+    /** Whether a dashed line at {@code y} (NaN: none) runs through {@code box}. */
+    private static boolean crosses(RectF box, float y) {
+        return !Float.isNaN(y) && y >= box.top && y <= box.bottom;
+    }
+
+    /**
+     * Where a right-end label's right edge stands: {@code end}, or just left of the badge where the badge would cover
+     * the words ({@code under}: the words under their line). Leaves the label paint as line labels use it.
+     */
+    private float clearOfBadge(String text, float end, float lineY, boolean under, float badgeX, float badgeY) {
+        if (Float.isNaN(badgeX)) return end;
+        float reach = ui.dp(9);
+        RectF box = lineLabelBox(text, end, lineY, true, under);
+        boolean across = badgeX + reach > box.left && badgeX - reach < box.right;
+        boolean level = badgeY + reach > box.top && badgeY - reach < box.bottom;
+        return across && level ? badgeX - reach - ui.dp(4) : end;
+    }
+
+    private void useLineLabelPaint() {
+        label.setTypeface(Ui.MEDIUM);
+        label.setTextSize(Math.min(ui.sp(10), ui.dp(13)));
+    }
+
+    private void resetLabelPaint() {
+        label.setTextAlign(Paint.Align.CENTER);
+        label.setTypeface(null);
+        label.setTextSize(ui.sp(11));
+        label.setColor(ui.inkMuted);
     }
 
     /** The pay line's words: what a single order must bring at the bar. */
@@ -838,15 +930,16 @@ final class DecisionChartView extends View {
     }
 
     /**
-     * A line's label just over it, at {@code x} (its right end when {@code end}); where a building or tree rises through
-     * it (0.6.9), it keeps a backdrop of the page so it stays readable.
+     * A line's label just over it ({@code under}: just under it), at {@code x} (its right end when {@code end});
+     * where a building or tree rises through it (0.6.9), it keeps a backdrop of the page so it stays readable.
      */
-    private void drawLineLabel(Canvas canvas, String text, float x, float lineY, boolean end, int color) {
+    private void drawLineLabel(Canvas canvas, String text, float x, float lineY, boolean end, boolean under,
+                               int color) {
         label.setTextAlign(end ? Paint.Align.RIGHT : Paint.Align.LEFT);
         label.setTypeface(Ui.MEDIUM);
         label.setTextSize(Math.min(ui.sp(10), ui.dp(13)));
         label.setColor(color);
-        float baseline = lineY - ui.dp(3) - label.descent();
+        float baseline = under ? lineY + ui.dp(3) - label.ascent() : lineY - ui.dp(3) - label.descent();
         float wide = label.measureText(text);
         float textLeft = end ? x - wide : x;
         if (barReaches(textLeft - ui.dp(3), textLeft + wide + ui.dp(3), baseline + label.descent())) {
@@ -951,7 +1044,11 @@ final class DecisionChartView extends View {
      */
     float[] flagAt(int index) {
         if (index < 0 || index >= entries.size() || getWidth() <= 0 || index != badged()) return null;
-        return new float[] {buildingCenter(index, slotWidth()), Math.max(roofAt(index) - ui.dp(12), ui.dp(10))};
+        float x = buildingCenter(index, slotWidth());
+        float[] tree = treeAt(index);
+        float tip = tree == null ? Float.NaN : tree[1] - (treeClippedAt(index) ? ui.dp(4) : 0);
+        return new float[] {x, badgeCenterY(x, roofAt(index), tree == null ? Float.NaN : tree[0], tip,
+                index == selected, index == routed)};
     }
 
     /** Settled score tree: center X, tip Y, baseline Y and width. An unknown or retired score has no tree. */
@@ -1034,6 +1131,10 @@ final class DecisionChartView extends View {
             }
         }
         for (RectF box : barWordBoxes) if (box.right >= from && box.left <= to) highest = Math.min(highest, box.top);
+        // Autopilot's line's name (0.6.67), where it was last drawn.
+        if (!barLabelBox.isEmpty() && barLabelBox.right >= from && barLabelBox.left <= to) {
+            highest = Math.min(highest, barLabelBox.top);
+        }
         // "100%" sits over its line at the right end, the pay line's words at the left.
         if (to >= right - ui.dp(30)) highest = Math.min(highest, hundredY() - labelHigh);
         if (payoutMinimumCents > 0) {
@@ -1047,7 +1148,8 @@ final class DecisionChartView extends View {
                     ? Math.max(reach, ui.dp(ROAD_MARK_RIGHT_DP) + ui.dp(ROAD_MARK_DP) / 2f + ui.dp(1)) : reach;
             if (center + rightReach >= from && center - reach <= to) {
                 highest = Math.min(highest, roofAt(i) - (unreadAt(i) ? ui.sp(10) * 1.2f : 0));
-                if (i == marked) highest = Math.min(highest, Math.max(roofAt(i) - ui.dp(12), ui.dp(10)) - ui.dp(9));
+                float[] flag = i == marked ? flagAt(i) : null;
+                if (flag != null) highest = Math.min(highest, flag[1] - ui.dp(9));
             }
             float[] tree = treeAt(i);
             if (tree != null && tree[0] + tree[3] / 2f >= from && tree[0] - tree[3] / 2f <= to) {
@@ -1258,7 +1360,7 @@ final class DecisionChartView extends View {
         }
         String bar = barSaid();
         return summary + selectedDescription() + " " + AutopilotText.skylineDescription(independentScores)
-                + (bar != null ? " Dashed line: " + bar + "." : "")
+                + (bar != null ? " Purple dashed line: " + bar + "." : "")
                 + (payoutMinimumCents > 0 ? totalPayLine ? " Solid line: your latest acceptance's total pay at the bar, "
                 + DecisionLog.money(payoutMinimumCents) + "; a quarter of each Autopilot score is an offer's total "
                 + "pay against it." : " Solid line: a single order's " + (areaMode
