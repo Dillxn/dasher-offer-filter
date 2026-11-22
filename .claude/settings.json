@@ -1,5 +1,6 @@
 {
   "permissions": {
-    "allow": ["Bash", "WebFetch", "WebSearch", "mcp__github", "mcp__Render"]
+    "allow": ["Bash", "WebFetch", "WebSearch", "mcp__github", "mcp__Render", "mcp__Supabase__execute_sql",
+      "mcp__Supabase__list_projects", "mcp__Supabase__list_tables"]
   }
 }
