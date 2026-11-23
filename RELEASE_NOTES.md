@@ -12,7 +12,7 @@ What happened: the tree stood at 81%, but its tip was under the offer's badge an
 - **Terms (notice 51).** The Terms said an accept under 100% made that bar "drop to its score"; it becomes its score, which after an earlier, lower accept raises it, Autopilot's bar staying no higher than the goal allows. Terms for 0.6.67, effective 22 November 2026; Privacy unchanged (for 0.6.64). LegalTexts regenerated. Kept suites corrected for this deliberate change, none added: LegalTextsTest (the Terms' identity and pinned sentence) and ConsentGateTest (notice 51).
 - The model is unchanged: Autopilot's bar = min(share bar, accept bar, 100).
 
-Source only so far: the kept suites and lint could not run in the build container (Maven Central answered 429 for Robolectric's nativeruntime-dist-compat jar), so this is not yet built into a signed APK or published. No phone has run it.
+Release gate: Maven Central first answered this container 429 for Robolectric's nativeruntime-dist-compat jar; the gate then ran through Google's copy of Maven Central, which the owner said is always OK (tools/google-maven-central-mirror.gradle): 320 tests in the 13 kept suites, none failed or skipped, every adapter suite paired on Android 15 and 16 (Robolectric, simulated); lint 0 errors (40 warnings). No phone has run it.
 
 ## 0.6.66 — Below the goal, protect it at once
 
