@@ -571,10 +571,11 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
-        // 0.6.67 (the owner, 22 November 2026: an 81% accept's tree looked over 100%, and "I don't know what the 35%
-        // bar rating means").
-        release("0.6.67", "The chart names Autopilot's purple line (\"Auto 35%\"), the lowest score it lets through, "
-                + "and keeps each offer's tree tip clear of its badge.", "An accept's note and history line now say "
+        // 0.6.67 (the owner, 22 November 2026: an 81% accept's tree looked over 100%, "I don't know what the 35% bar
+        // rating means", then "tan line should show highest paid offer on graph" and "it is not obvious to me at a glance").
+        release("0.6.67", "The chart names its lines: \"Mins 100%\", the tan line at the top pay shown (\"Top "
+                + "$17.60\"), and Autopilot's purple bar with what holds it (\"Platinum bar 37%\"). The marked "
+                + "offer's tree shows its score at its tip, clear of its badge.", "An accept's note and history line now say "
                 + "where it set the bar and when your acceptance-rate goal holds the bar lower; an offer's details say "
                 + "what the bar is.");
         // 0.6.66 (the owner, 20 November 2026: "it declined an order that brought me down into gold").

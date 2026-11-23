@@ -2105,6 +2105,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
         autopilotStatus = status;
         minimums.setAutopilot(status.on, status.bar, status.belowGoal());
         chip.show(status);
+        // The chart's purple line says what holds the bar (0.6.67): "Platinum bar 37%".
+        if (chart != null) chart.setBarReason(AutopilotText.barLineWord(status));
     }
 
     /**

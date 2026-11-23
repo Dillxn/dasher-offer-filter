@@ -674,6 +674,29 @@ final class AutopilotText {
     }
 
     /**
+     * What holds Autopilot's bar where it is, in a word for the chart's purple line (0.6.67): "Platinum" (Reach
+     * Platinum's acceptance-rate limit), "Goal" (a numeric goal's), "Pay first" (its one in five passing), "Accept" (an
+     * accept under your minimums set it) or "Lowest" (even the lowest bar passes too few for the goal); null while the
+     * bar is still on its way to the plan's target, before a plan for these rules, or with Autopilot off.
+     */
+    static String barLineWord(Status s) {
+        if (s == null || !s.on || s.plan == null || s.plan.target != s.bar) return null;
+        switch (s.plan.mode) {
+            case ACCEPT_BAR:
+                return "Accept";
+            case PINNED:
+                return "Lowest";
+            case PASS_FLOOR:
+                return "Pay first";
+            case GOAL:
+            case RECOVERY:
+                return FilterSettings.sanitizedGoal(s.storedGoal) == FilterSettings.GOAL_PLATINUM ? "Platinum" : "Goal";
+            default:
+                return null;
+        }
+    }
+
+    /**
      * The bar your accepts set, while under 100% (0.6.67): "An offer you accepted under your minimums scored 81%, so
      * the bar can go up to 81%. Your Platinum goal holds it at 37% for now." when the goal's limit is lower, else that
      * the bar is that score or less until an accept scoring more. Null at 100% or while off.
