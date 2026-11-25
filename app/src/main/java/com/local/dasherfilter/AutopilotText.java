@@ -65,7 +65,8 @@ final class AutopilotText {
             + "declined.";
     static final String DETAILS_AT_GOAL = "At or above your goal.";
     static final String DETAILS_NO_WAITING = "Not enough watched waiting yet to tell how often offers come.";
-    static final String DETAILS_AUTO_ACCEPT = "Auto-accept only takes offers that meet 100% of your minimums.";
+    static final String DETAILS_AUTO_ACCEPT = "Auto-accept only takes offers that pass at 100% or more, by the same "
+            + "score as every offer.";
 
     // ---- The minimums grew (0.5.1 to 0.6.20): the homepage's one-time note ----
 

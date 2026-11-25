@@ -140,11 +140,11 @@ final class Consent {
                 + "turn it on in Settings. Your touch stops it."},
         {"On by default.", "Autopilot puts pay first. Scores are a percent of your best accept, the best offer "
                 + "you accepted. Its bar moves from " + FilterStore.BAR_MIN + "% to " + FilterStore.BAR_MAX + "% of "
-                + "that, lower for an acceptance-rate goal or after you accept an offer below it. An offer you accept "
-                + "that beats your best raises each minimum it beat to what it paid; Undo is on the homepage. This can "
-                + "allow offers below your minimums. Peek can briefly open "
+                + "that, lower for an acceptance-rate goal or after you accept an offer below it. Each offer you accept "
+                + "raises any minimum it beat to what it paid; Undo is on the homepage. This can allow offers below "
+                + "your minimums. Peek can briefly open "
                 + "Dasher to read a background offer. An anonymous daily count tells the developer how many people "
-                + "use the app. Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the "
+                + "use the app. Turn any of them off: Autopilot from its chip, Peek and the "
                 + "count in Settings."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},

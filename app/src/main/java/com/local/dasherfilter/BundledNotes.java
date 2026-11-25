@@ -24,7 +24,11 @@ final class BundledNotes {
     static final boolean WRITTEN = true;
     /** 0.6.68: one scale, your best accept's (notice 52 and the 0.6.68 card). */
     static final String BEST_ACCEPT = "Scores are now a percent of your best accept, the best offer you accepted, which "
-            + "scores 100%. Autopilot's bar, an accept's raises and the chart all use that one scale.";
+            + "scores 100%. Autopilot's bar, auto-accept and the chart all use that one score.";
+    /** 0.6.68: accepts raise what they beat, and the Learn switch is gone (notice 52 and the 0.6.68 card). */
+    static final String ACCEPTS_RAISE = "Every offer you accept raises any minimum it beat, whatever it scores, so your "
+            + "minimums are the highest you have accepted. Learning is always on: the Learn button is gone, and Undo "
+            + "last change is in How offers are judged.";
     /** How a line still to be written starts. */
     static final String PLACEHOLDER = "[DOCS PACKAGE:";
 
@@ -310,7 +314,7 @@ final class BundledNotes {
         notice(38, HISTORY_REPAIRS);
         // 0.6.68 (the owner, 25 November 2026: "that derivative score is the score we want to display and make
         // decisions on").
-        notice(52, BEST_ACCEPT);
+        notice(52, BEST_ACCEPT, ACCEPTS_RAISE);
         // 0.6.67 (the owner, 22 November 2026, after an 81% accept: "I don't know what the 35% bar rating means").
         notice(51, "An offer you accept below your minimums sets the bar to its score, which can raise it after an "
                 + "earlier, lower accept. Your acceptance-rate goal can still hold the bar lower, and the app now says "
@@ -578,8 +582,8 @@ final class BundledNotes {
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
         // 0.6.68 (the owner, 25 November 2026: "we should track highest mins area score of an offer").
-        release("0.6.68", BEST_ACCEPT, "An offer below your best that passes a lowered bar is still left to you, "
-                + "and auto-accept still asks your minimums themselves. The chart's Mins line shows where they stand.");
+        release("0.6.68", BEST_ACCEPT, ACCEPTS_RAISE, "An offer below your best that passes a lowered bar is still "
+                + "left to you. The chart's Mins line shows where your minimums stand.");
         // 0.6.67 (the owner, 22 November 2026: an 81% accept's tree looked over 100%, "I don't know what the 35% bar
         // rating means", then "tan line should show highest paid offer on graph" and "it is not obvious to me at a glance").
         release("0.6.67", "The chart names its lines: \"Mins 100%\", the tan line at the top pay shown (\"Top "

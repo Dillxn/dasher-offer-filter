@@ -50,8 +50,8 @@ import java.util.regex.Pattern;
  * an offer for its ticket), the skyline of recent offers (tap for a ticket) and a map of where offers pay best, in
  * three columns in a short window, the map under the skyline as it grows taller, the constellation above them in a
  * tall one; the road along the bottom. Every rule lives on the constellation and saves at once: the knobs (pay, per
- * mile and per hour, hollow until set), the max stops badge by the pin, and the Learn button (a tap turns learning
- * from the user's accepts on or off; a long press shows Learned minimums). Autopilot is the band's chip. As the window
+ * mile and per hour, hollow until set) and the max stops badge by the pin (the Learn button is retired in 0.6.68:
+ * learning is always on). Autopilot is the band's chip. As the window
  * shrinks, the road goes first; then the stage shrinks to its three columns, and only then fades away; the band and
  * the lines stay. A resize only lays the page out again (the screen is not made again for it). Settings holds only
  * what exists nowhere else: setup still needing a fix, two switches, updates, anonymous feedback, reports and a tip,
@@ -103,9 +103,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
      */
     static final String DECLINE_WAIT_SWITCH = "Decline after 10 seconds";
     static final String DECLINE_WAIT_LINE = "Time to take an offer yourself; a touch keeps it yours";
-    /** The learner button's toasts. */
-    static final String LEARN_ON_TOAST = "Learning on: offers you accept set your minimums, with Undo.";
-    static final String LEARN_OFF_TOAST = "Learning off: your accepts leave your minimums alone.";
     static final String FIRST_RULE = "Rule saved. Tap the mascot to turn on auto-decline.";
     /** The one-time 0.5.0 notice (FilterStore's model notice). */
     static final String NOTICE_TITLE = "Your 0.5.0 rule changes";
@@ -119,10 +116,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** Settings' auto-accept confirmation: what it takes, and that below-minimum passes are always left to the user. */
     static final String AUTO_ACCEPT_TITLE = "Auto-accept matching offers?";
     static final String AUTO_ACCEPT_MESSAGE = "This can commit you to a delivery without another tap. It accepts only "
-            + "complete standalone offers that meet 100% of your minimums (and Autopilot's bar when that is higher). "
-            + "Offers Autopilot lets through below your minimums are always left to you. Add-ons and unclear offers "
-            + "stay yours. Your touch stops the current attempt.\n\nThe app can misread an offer. Enable this only if "
-            + "you accept that risk.";
+            + "complete standalone offers the filter passes at 100% or more, by the same score every offer gets. "
+            + "Offers Autopilot lets through below 100% are always left to you. Add-ons and unclear offers stay "
+            + "yours. Your touch stops the current attempt.\n\nThe app can misread an offer. Enable this only if you "
+            + "accept that risk.";
     /**
      * Clear history's confirmation: the spec's words, with the unsent automatic diagnostics it also clears (the
      * anonymous-feedback package's addition) kept in the list, and both things of Autopilot's it forgets named: the
@@ -1210,7 +1207,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /**
      * The minimums' constellation, where every rule is set, in the page's sky at every window size where it fits. Its
      * knobs set the minimums and its badge the max stops, each saved at once through {@link FilterStore},
-     * and its Learn button turns learning on or off and, held, shows Learned minimums; a tap
+     * (the Learn button that turned learning on or off is retired in 0.6.68); a tap
      * on a marked offer opens its ticket, as its building in the skyline does, and a tap off every offer while an older
      * one is chosen chooses the newest again.
      */
@@ -1232,14 +1229,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
 
             @Override public void setMaxStops(int stops) {
                 setStops(stops);
-            }
-
-            @Override public void toggleLearning() {
-                MainActivity.this.toggleLearning();
-            }
-
-            @Override public void showLearning() {
-                showLearningDetails();
             }
 
             @Override public void chooseScoreMode() {
@@ -1305,20 +1294,8 @@ public final class MainActivity extends Activity implements Updater.Busy {
     // ---- Autopilot ----
 
     private void refreshRuleChoices(FilterSettings rules) {
-        // The constellation's round button is the learner's switch (the owner, 11 October 2026: "option on
-        // homepage not settings page").
-        if (minimums != null) minimums.setLearning(rules.acceptanceLearning);
         // The scoring mode is the radar's middle word (0.6.6; the band's chip before, Settings before that).
         if (minimums != null) minimums.setScoreMode(rules.scoreByArea);
-    }
-
-    /** The constellation's learner button: learning on or off, said once in a toast. */
-    private void toggleLearning() {
-        boolean on = !FilterStore.load(this).acceptanceLearning;
-        FilterStore.setAcceptanceLearning(this, on);
-        rulesChanged();
-        refresh();
-        toast(on ? LEARN_ON_TOAST : LEARN_OFF_TOAST);
     }
 
     private void chooseScoreMode() {
@@ -1355,14 +1332,35 @@ public final class MainActivity extends Activity implements Updater.Busy {
         body.addView(state, Ui.matchWidth());
         body.addView(ui.text(TimeScore.EXPLANATION + "\n\nAutopilot applies its bar once. Max stops stays a hard "
                 + "limit and missing required facts stay for review. A passing offer is left for you to decide. "
-                + "Automatic acceptance is a separate opt-in and still checks every active minimum at 100%.",
-                15, ui.inkSecondary, false), Ui.matchWidth());
+                + "Automatic acceptance is a separate opt-in and takes only offers scoring 100% or more.\n\n"
+                + LEARNING_WORDS, 15, ui.inkSecondary, false), Ui.matchWidth());
+        FilterStore.Adoption adoption = FilterStore.pendingAdoption(this);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(body);
         AlertDialog dialog = OwnWindowTouches.show(new AlertDialog.Builder(this).setTitle("How offers are judged")
                 .setView(scroll).setPositiveButton("Close", null));
         dialog.setOnDismissListener(ignored -> { if (timeScoreState == state) timeScoreState = null; });
+        // 0.6.68: Undo last change, which the retired Learn button's Learned minimums held; the homepage's note keeps
+        // its own Undo until you close it.
+        Button undo = ui.button(UNDO_LAST_CHANGE, false, () -> {
+            boolean changed = adoption != null && FilterStore.undoAdoption(this, adoption.id);
+            dialog.dismiss();
+            if (changed) rulesChanged();
+            refresh();
+            toast(changed ? "Your minimums from before your last accept are back." : "No minimums changed.");
+        });
+        undo.setEnabled(adoption != null);
+        body.addView(undo, Ui.matchWidth());
     }
+
+    /** How offers are judged's button that puts back the minimums from before your last accept (0.6.68). */
+    static final String UNDO_LAST_CHANGE = "Undo last change";
+    /** How offers are judged's words on what your accepts do (0.6.68: always, with no Learn switch). */
+    static final String LEARNING_WORDS = "When you accept an offer yourself, each minimum it beat rises to what it "
+            + "paid on that measure, so your minimums are the highest each one has been on an offer you accepted; "
+            + "none is ever lowered. The best offer you accepted scores 100%. Automatic accepts, add-ons, declines and "
+            + "unclear acceptances change nothing. Undo last change puts back your minimums from before your last "
+            + "accept, until you change them yourself or Clear history.";
 
     private void refreshTimeScoreState(FilterSettings rules) {
         if (timeScoreState == null) return;
@@ -1375,50 +1373,6 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
     }
 
-    private void showLearningDetails() {
-        FilterSettings rules = FilterStore.load(this);
-        FilterStore.Adoption adoption = FilterStore.pendingAdoption(this);
-        LinearLayout body = ui.column();
-        body.setPadding(ui.dp(20), 0, ui.dp(20), ui.dp(12));
-        Switch learning = ui.toggle(body, "Learn from my acceptances", rules.acceptanceLearning);
-        TextView words = ui.text(learningDetailWords(rules), 15, ui.inkSecondary, false);
-        learning.setOnCheckedChangeListener((view, on) -> {
-            FilterStore.setAcceptanceLearning(this, on);
-            words.setText(learningDetailWords(FilterStore.load(this)));
-            rulesChanged();
-            refresh();
-        });
-        body.addView(words, Ui.matchWidth());
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(body);
-        AlertDialog dialog = OwnWindowTouches.show(new AlertDialog.Builder(this)
-                .setTitle("Learned minimums")
-                .setView(scroll)
-                .setPositiveButton("Close", null));
-        // A single fixed dialog button keeps its full target at large fonts in a short window. The two learning
-        // actions remain separate native buttons, scrolling with their explanation instead of stacking off screen.
-        LinearLayout actions = ui.row();
-        Button undo = ui.button("Undo last change", false, () -> {
-            boolean changed = adoption != null && FilterStore.undoAdoption(this, adoption.id);
-            dialog.dismiss();
-            if (changed) rulesChanged();
-            refresh();
-            toast(changed ? "Your minimums from before your last accept are back." : "No minimums changed.");
-        });
-        undo.setPadding(ui.dp(8), 0, ui.dp(8), 0);
-        undo.setEnabled(adoption != null);
-        actions.addView(undo, Ui.weighted());
-        body.addView(actions, 1, Ui.matchWidth());
-    }
-
-    private static String learningDetailWords(FilterSettings rules) {
-        return "On by default. When you accept an offer yourself, your minimums become what it paid on each measure "
-                + "it shows: pay per stop, pay per mile and pay per hour. Higher or lower: accepting an offer the "
-                + "filter would decline says it was worth it. A measure you turned off stays off. Automatic accepts, "
-                + "add-ons, declines and unclear acceptances do not change them. Off leaves your minimums alone.\n\n"
-                + "After each change a note on the homepage says what changed, with Undo. Undo last change here puts "
-                + "back your minimums from before your last accept, until you change them yourself or Clear history.";
-    }
 
     /** What Autopilot is doing now (finalSpec explainability), as the button, the chip and the status line say it. */
     private AutopilotText.Status autopilotStatus() {
@@ -1712,9 +1666,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
             lines.add("Auto-accept was turned off because your rules changed. You can change it in Settings.");
         }
         if (facts.optBoolean("paused")) lines.add("No rule was left, so auto-decline was paused.");
-        lines.add("Area scoring and learning from your accepts are back as separate choices on the homepage: the "
-                + "Strict chip beside Autopilot's, and the radar's Learn button. No old learned values were carried "
-                + "over, and Autopilot remains separate.");
+        lines.add("Area scoring is back as a choice on the homepage (the word in the radar's middle), and offers you "
+                + "accept now raise your minimums. No old learned values were carried over, and Autopilot remains "
+                + "separate.");
         return lines;
     }
 

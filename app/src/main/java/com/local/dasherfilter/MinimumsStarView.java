@@ -61,10 +61,10 @@ import java.util.Locale;
  * middle must be pushed a clear way further in). The ring scale holds still while a knob moves (it may be pushed a
  * little past the outer ring) and settles to fit when it is let go.
  *
- * <p>One round 48 dp button is the learner's switch (0.6.1): "Learn" over "On" or "Off", ringed in teal while on, in
- * grey while off. A tap turns learning on or off, a long press shows Learned minimums; it has no drag. Autopilot's
- * control is the page's chip alone. Screen readers reach each knob and the badge as adjustable controls and the button
- * as a switch, with the long press among its actions.
+ * <p>The learner's round "Learn" button (0.6.1 to the first 0.6.68 build) is retired (the owner, 25 November 2026:
+ * "idk even what learn is. i think it can be deprecated"): learning is always on, and {@link #placeButton} places
+ * nothing, so the button is never drawn, touched or heard; its code stays dormant behind that one gate. Autopilot's
+ * control is the page's chip alone. Screen readers reach each knob and the badge as adjustable controls.
  *
  * <p>The displayed offer's points are joined in the spokes' order, leaving out a spoke it did not say. Other offers
  * remain in history and can be selected on the skyline; their hidden polygons receive no touches or accessibility
@@ -2626,7 +2626,8 @@ final class MinimumsStarView extends View {
      * the knobs' full size does (it stays as set meanwhile; on by default).
      */
     private float placeButton() {
-        if (!knobsOn()) return 0;
+        // 0.6.68: the Learn button is retired; nothing is placed, so nothing of it is drawn, touched or heard.
+        if (RETIRED_LEARN_BUTTON || !knobsOn()) return 0;
         float half = ui.dp(BUTTON_DP) / 2f;
         // 0.6.8, the owner's mockup: on the lower left of the rim, where the max stops pin stood, clear of the badge.
         placeStops();
@@ -2687,6 +2688,9 @@ final class MinimumsStarView extends View {
     int buttonRing() {
         return !learningOn ? (ui.dark ? 0x40FFFFFF : 0x330B0B0B) : learnedColor();
     }
+
+    /** The Learn button is retired (0.6.68): learning is always on, with nothing to switch. */
+    private static final boolean RETIRED_LEARN_BUTTON = true;
 
     /** Teal, the learned bests' color on this chart, for the learner's button while it is on. */
     int learnedColor() {

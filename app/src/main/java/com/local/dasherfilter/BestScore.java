@@ -19,10 +19,10 @@ import java.util.concurrent.Executors;
  * offer, a misread offer, one over max stops or one whose pay or a needed figure was not read). Accepts made while
  * auto-decline was paused count, as they teach (0.6.59). It is held to {@value FilterSettings#BEST_LEAST}–{@value
  * FilterSettings#BEST_NONE}: an accept that beat the minimums asks no more than them (the minimums themselves rise
- * for it), and none known is exactly the minimums. Only while acceptance learning is on: it is what your accepts
- * teach, with the raises and the bar your accepts set, and learning off leaves your minimums as they are. Recomputed
- * whenever the history or the minimums change, so Clear history, a change of minimums or the best accept leaving the
- * 200 kept lines all follow at once.
+ * for it), and none known is exactly the minimums. Learning is always on from 0.6.68 (its Learn switch is gone); the
+ * internal flag stays only so a kept safety test can check that nothing is read with it off and no rule set, and then
+ * the best score does not apply. Recomputed whenever the history or the minimums change, so Clear history, a change of
+ * minimums or the best accept leaving the 200 kept lines all follow at once.
  *
  * <p>A consequence the owner should know: the scale follows the minimums, so raising one minimum lowers the best
  * score with it, and changes how the measures are weighed more than how much an offer must pay overall.
@@ -100,6 +100,22 @@ final class BestScore {
         int percent = highest(base, source);
         cached = new Cached(source, key, percent);
         return percent;
+    }
+
+    /**
+     * The score {@code offer} has under {@code rules} once it counts among the offers you accepted (an accept's lesson
+     * runs before its line is marked accepted): its share of {@code rules}' minimums as a percent of the best share among
+     * the kept accepts and it; -1 when a needed figure was not read.
+     */
+    static int scoreWith(FilterSettings rules, OfferSnapshot offer) {
+        if (rules == null || offer == null) return -1;
+        List<OfferSnapshot> facts = new ArrayList<>();
+        List<OfferSnapshot> source = accepted;
+        if (source != null) facts.addAll(source);
+        facts.add(offer);
+        int best = rules.acceptanceLearning && rules.hasMonetaryRule()
+                ? highest(minimumsOf(rules), facts) : FilterSettings.BEST_NONE;
+        return AreaScore.scorePercent(rules.withBest(best), offer);
     }
 
     /** The rules the best score is measured against: the minimums themselves, nothing scaling them. */

@@ -193,14 +193,13 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Autopilot puts pay first. Scores are a percent of your best accept, the best offer you accepted.",
                 "Its bar moves from " + FilterStore.BAR_MIN + "% to " + FilterStore.BAR_MAX + "% of that, lower for "
                         + "an acceptance-rate goal or after you accept an offer below it.",
-                "An offer you accept that beats your best raises each minimum it beat to what it paid; Undo is on the "
-                        + "homepage.",
+                // 0.6.68: every accept raises what it beat, whatever it scores; the Learn switch is gone.
+                "Each offer you accept raises any minimum it beat to what it paid; Undo is on the homepage.",
                 "This can allow offers below your minimums.",
                 "Peek can briefly open Dasher to read a background offer.",
                 // 0.6.3 (notice 20): the anonymous daily count.
                 "An anonymous daily count tells the developer how many people use the app.",
-                "Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the count in "
-                        + "Settings."}) {
+                "Turn any of them off: Autopilot from its chip, Peek and the count in Settings."}) {
             assertTrue(fact, defaults.contains(fact));
         }
         // 0.5.1 (notice 15) to 0.6.20: the minimums grew, at most 10% at a time, with Undo; from 0.6.21 (notice 28)
@@ -235,8 +234,8 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
                 "Peek is on by default after you accept the current notice", "Peek may tap Dasher's ⚙ button once",
                 "You can turn Peek off in Settings.", "it keeps your unlocked screen from timing out",
                 "it can turn media and alarm sound down for a moment",
-                "Acceptance learning is on by default",
-                "Learn button on the homepage turns it off and on",
+                // 0.6.68: learning is always on; its Learn button is gone.
+                "Acceptance learning is always on",
                 "Feedback and offer reports are accountless and are sent only when you tap Send",
                 "turn it off with " + DailyCount.SWITCH + " in Settings"}) {
             assertTrue(fact, terms.contains(fact));
