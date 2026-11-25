@@ -2,11 +2,11 @@ package com.local.dasherfilter;
 
 /**
  * An opt-in Accept request needs two complete reads of one continuing offer, a quiet touch watch and a KEEP under
- * {@link #acceptRules}: the same rule that judges every offer, at 100% (0.6.68; the owner, 25 November 2026: "there
- * should be no secret logic for auto accept. it should follow the same exact rule as everything else"). So it takes
- * exactly the offers the page shows as passed, and never one that passes only Autopilot's lowered bar, which the page
- * shows as passed below 100% and leaves to you. This class never taps or infers an acceptance. A refused request also
- * consumes the one-request budget.
+ * {@link #acceptRules}: the same rule and bar that judge every offer (0.6.68; the owner, 25 November 2026: "there
+ * should be no secret logic for auto accept. it should follow the same exact rule as everything else", then "auto
+ * accept should be based on auto pilot's bar"). So it takes every offer the filter passes, one Autopilot's lowered bar
+ * lets through below 100% included. This class never taps or infers an acceptance. A refused request also consumes
+ * the one-request budget.
  */
 final class AutoAccept {
     static final long QUIET_MS = 700;
@@ -34,15 +34,15 @@ final class AutoAccept {
     }
 
     /**
-     * The rules an automatic Accept is judged by: exactly the decision's own (the selected model, the time factor and
-     * the best score), at {@code max(100, bar)}. Autopilot may lower the bar to protect the acceptance rate; what it lets
-     * through below 100% is yours to accept, never an automatic Accept's.
+     * The rules an automatic Accept is judged by: exactly the decision's own (the selected model, the time factor, the
+     * best score and Autopilot's bar). Before 0.6.68 it asked every minimum strictly at max(100, bar), never a lowered
+     * bar (the owner's decision of 6 October 2026, superseded on 25 November 2026).
      */
     static FilterSettings acceptRules(FilterSettings settings) {
-        return settings.withMinimumScalePercent(Math.max(FilterSettings.BAR_AT_MINIMUMS, settings.minimumScalePercent));
+        return settings;
     }
 
-    /** Both arming and the final dispatch recheck: a KEEP under {@link #acceptRules}, the offer scoring 100% or more. */
+    /** Both arming and the final dispatch recheck: a KEEP under {@link #acceptRules}, the offer passing the bar. */
     static boolean meetsRequirements(OfferSnapshot offer, FilterSettings settings) {
         return OfferRule.evaluate(offer, acceptRules(settings)).result == OfferRule.Result.KEEP;
     }

@@ -19,8 +19,8 @@ public final class LegalTextsTest {
         for (String fact : new String[] {"Area mode is the default (from 0.6.27", "Strict mode checks every active minimum; choose it in How offers are judged",
                 "An offer permitted by the filter is not an accepted delivery", "confirmed manual standalone",
                 "offers whose pay was not read do not change them",
-                // 0.6.68: auto-accept follows the same rule as every offer (before, every minimum strictly at 100%).
-                "a complete standalone offer the filter passes at 100% or more",
+                // 0.6.68: auto-accept follows the same rule and bar as every offer (before, every minimum strictly at 100%).
+                "any complete standalone offer the filter passes, by the same rule, score and bar",
                 "Add-ons are judged strictly", "Undo is conditional and cannot overwrite a later change",
                 "It never asks more than your minimums, and it never changes them"})
             assertTrue(fact, terms.contains(fact));
@@ -167,13 +167,15 @@ public final class LegalTextsTest {
                 "From 0.6.29 to 0.6.61 Autopilot also kept separate working minimums set by your accepts",
                 "0.6.62 removes those working minimums and holds",
                 "using your recent offers, how often they come and the acceptance rate Dasher shows",
-                // 0.6.68: 100% is your best accept, so the words say "below 100%"; auto-accept follows the same rule
-                // and score (the owner: "there should be no secret logic for auto accept").
-                "an offer below 100% that passes a lowered bar says so and is left to you",
+                // 0.6.68: 100% is your best accept, so the words say "below 100%"; auto-accept follows the same rule,
+                // score and bar (the owner: "there should be no secret logic for auto accept", "auto accept should be
+                // based on auto pilot's bar"), so it can accept offers a lowered bar lets through.
+                "an offer below 100% that passes a lowered bar says so; it is left to you unless you turned on auto-accept",
                 "100% is your best accept",
-                "a complete standalone offer the filter passes at 100% or more, by the same rule and score that judge "
-                        + "every offer",
-                "never one that passes only a lowered bar",
+                "it can accept offers well below your best accept",
+                // 0.6.68 reverses this for auto-accept, at the owner's word; the Terms keep what it did before.
+                "Before 0.6.68 it asked every active minimum strictly at 100% or more, even in area mode, and never took "
+                        + "an offer that passed only a lowered bar",
                 "Autopilot's default goal, pay first, does not try to keep your acceptance rate up.",
                 "An acceptance-rate goal you choose instead is a best effort, not a promise: Autopilot cannot accept "
                         + "offers for you, and your acceptance rate rises only when you accept offers.",
