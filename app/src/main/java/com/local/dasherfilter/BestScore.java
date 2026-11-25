@@ -19,8 +19,13 @@ import java.util.concurrent.Executors;
  * offer, a misread offer, one over max stops or one whose pay or a needed figure was not read). Accepts made while
  * auto-decline was paused count, as they teach (0.6.59). It is held to {@value FilterSettings#BEST_LEAST}–{@value
  * FilterSettings#BEST_NONE}: an accept that beat the minimums asks no more than them (the minimums themselves rise
- * for it), and none known is exactly the minimums. Recomputed whenever the history or the minimums change, so Clear
- * history, a change of minimums or the best accept leaving the 200 kept lines all follow at once.
+ * for it), and none known is exactly the minimums. Only while acceptance learning is on: it is what your accepts
+ * teach, with the raises and the bar your accepts set, and learning off leaves your minimums as they are. Recomputed
+ * whenever the history or the minimums change, so Clear history, a change of minimums or the best accept leaving the
+ * 200 kept lines all follow at once.
+ *
+ * <p>A consequence the owner should know: the scale follows the minimums, so raising one minimum lowers the best
+ * score with it, and changes how the measures are weighed more than how much an offer must pay overall.
  *
  * <p>Why accepted offers only: the minimums grow from what you accept, cumulatively per measure, so no one accepted
  * offer is likely to score 100% of them; the best offer you took is the reference "100%" the owner described. An offer
@@ -85,7 +90,7 @@ final class BestScore {
      */
     static int percent(FilterSettings rules) {
         List<OfferSnapshot> source = accepted;
-        if (rules == null || source == null || source.isEmpty() || !rules.hasMonetaryRule()) {
+        if (rules == null || !rules.acceptanceLearning || source == null || source.isEmpty() || !rules.hasMonetaryRule()) {
             return FilterSettings.BEST_NONE;
         }
         FilterSettings base = minimumsOf(rules);
@@ -99,7 +104,7 @@ final class BestScore {
 
     /** The rules the best score is measured against: the minimums themselves, nothing scaling them. */
     static FilterSettings minimumsOf(FilterSettings rules) {
-        return rules.withoutAutopilotAxes().withoutTimeAdjustment()
+        return rules.withoutAutopilotAxes().withoutTimeAdjustment().withBest(FilterSettings.BEST_NONE)
                 .withMinimumScalePercent(FilterSettings.BAR_AT_MINIMUMS);
     }
 

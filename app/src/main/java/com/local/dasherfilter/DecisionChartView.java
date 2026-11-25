@@ -1442,7 +1442,7 @@ final class DecisionChartView extends View {
         String summary = String.format(Locale.US,
                 "Chart of the last %d offers: %d passed%s, %s%d declined, %s%d need review.",
                 entries.size(), counts[DecisionLog.Outcome.PASSED.ordinal()],
-                below > 0 ? " (" + below + " below your minimums)" : "",
+                below > 0 ? " (" + below + " below " + AutopilotText.hundred(currentRules) + ")" : "",
                 accepted > 0 ? accepted + " accepted, " : "", counts[DecisionLog.Outcome.DECLINED.ordinal()],
                 (yours > 0 ? yours + " left to you, " : "")
                         + (requested > 0 ? requested + " accept requested but unconfirmed, " : ""),
@@ -1460,7 +1460,7 @@ final class DecisionChartView extends View {
             else if (entry.scorePercent > SCORE_DISPLAY_CAP) clipped++;
         }
         String bar = barSaid();
-        return summary + selectedDescription() + " " + AutopilotText.skylineDescription(independentScores)
+        return summary + selectedDescription() + " " + AutopilotText.skylineDescription(independentScores, currentRules)
                 + (bar != null ? " Purple dashed line: " + bar + "." : "")
                 + (topPayCents > 0 ? " Solid line: the top pay among these offers, " + DecisionLog.money(topPayCents)
                 + "." : "")
@@ -1480,7 +1480,7 @@ final class DecisionChartView extends View {
         // Passed only by Autopilot's lowered bar: said so, never as a full pass.
         String state = outcome == DecisionLog.Outcome.YOURS ? "left to you"
                 : outcome == DecisionLog.Outcome.PASSED && AutopilotText.passedBelowMinimums(entry)
-                ? AutopilotText.PASSED_BELOW_MINIMUMS.toLowerCase(Locale.US)
+                ? AutopilotText.passedBelowWords(entry).toLowerCase(Locale.US)
                 : outcome.name().toLowerCase(Locale.US);
         return " Selected offer " + (selected + 1) + " of " + entries.size() + ": "
                 + (entry.facts.payCents == null ? "payout unknown" : DecisionLog.money(entry.facts.payCents))
@@ -1489,7 +1489,7 @@ final class DecisionChartView extends View {
                         ? ", recorded Autopilot score " + entry.scorePercent + "%."
                         : entry.model >= 3 && "area".equals(entry.scoreKind)
                         ? ", recorded area score " + entry.scorePercent + "%."
-                        : ", score " + entry.scorePercent + "% of your minimums."
+                        : ", score " + entry.scorePercent + "% of " + AutopilotText.hundred(entry.scoringRules) + "."
                 : entry.addOn && entry.scorePercent < 0 ? ", add-on: no standalone score."
                 : entry.scorePercent >= 0 ? ", score from earlier area rules." : ", score unknown.")
                 + (selected == routed ? " On a route." : "");

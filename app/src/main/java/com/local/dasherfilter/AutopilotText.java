@@ -27,7 +27,7 @@ final class AutopilotText {
     static final String ACTION_CHANGE_GOAL = "Change acceptance goal";
     static final String ACTION_DETAILS = "Autopilot details";
     static final String TOAST_NEEDS_MINIMUM = "Set a pay, per-mile or hourly minimum first.";
-    static final String TOAST_OFF = "Autopilot off · back to exactly your minimums";
+    static final String TOAST_OFF = "Autopilot off · the bar is back at 100%";
 
     // ---- The goal chooser ----
 
@@ -59,7 +59,8 @@ final class AutopilotText {
     static final String DETAILS_TURN_OFF = "Turn off";
     static final String DETAILS_TURN_ON = "Turn on";
     static final String DETAILS_CLOSE = "Close";
-    static final String DETAILS_OFF = "Autopilot is off: offers are judged at exactly your minimums.";
+    static final String DETAILS_OFF = "Autopilot is off: offers are judged at 100%, your best accept (with none, your "
+            + "minimums).";
     static final String DETAILS_AR_NOT_SEEN = "Acceptance rate: not seen yet. Dasher shows it when an offer is "
             + "declined.";
     static final String DETAILS_AT_GOAL = "At or above your goal.";
@@ -647,6 +648,9 @@ final class AutopilotText {
         if (!s.on) return DETAILS_OFF;
         if (s.rules.hasAutopilotAxes()) return "Bar: " + s.bar + "%. Each acceptance sets Autopilot's working "
                 + "minimums separately; later bar changes move them together.";
+        if (s.rules.bestScaled()) return "Bar: " + s.bar + "%. Offers scoring at least " + s.bar + "% of your best "
+                + "accept pass. 100% is your best accept, the best offer you accepted, which scores "
+                + s.rules.bestPercent + "% of your minimums.";
         return "Bar: " + s.bar + "%. Offers scoring at least " + s.bar + "% of your minimums pass; 100% is exactly "
                 + "your minimums.";
     }
@@ -803,8 +807,8 @@ final class AutopilotText {
         if (s.rules.hasAutopilotAxes()) return holds + ": your latest acceptance set the working minimums to that "
                 + "offer's own rates, and this hold. A newer acceptance replaces those levels and this hold. Changing "
                 + "your goal or minimums lets it go sooner.";
-        return holds + ": you accepted an offer that scored " + plan.floor + "% of your minimums. Changing your goal "
-                + "or minimums lets it go sooner.";
+        return holds + ": you accepted an offer that scored " + plan.floor + "% of " + hundred(s.rules)
+                + ". Changing your goal or minimums lets it go sooner.";
     }
 
     /**
@@ -1068,11 +1072,10 @@ final class AutopilotText {
         if (usesAutopilotScore(entry)) return "Autopilot score " + entry.scorePercent + "% · bar "
                 + entry.barPercent + "%";
         if (entry.scoringRules != null && entry.scoringRules.bestScaled()) {
-            // 0.6.68: the score is against the best offer you accepted; its share of the minimums beside it.
-            int minimums = minimumsScore(entry);
+            // 0.6.68: one score, against the best offer you accepted (100%); How this offer was judged says what it
+            // is of your minimums.
             return ("area".equals(entry.scoreKind) ? "Area score " : "Score ") + entry.scorePercent
-                    + "% of your best accept" + (minimums >= 0 ? " (" + minimums + "% of your minimums)" : "")
-                    + " · bar " + entry.barPercent + "%";
+                    + "% of your best accept · bar " + entry.barPercent + "%";
         }
         if (entry.model >= 3 && "area".equals(entry.scoreKind)) {
             // 0.6.67: "of your minimums", as the strict line says, so 81% reads as under them, not over the bar.
@@ -1094,8 +1097,8 @@ final class AutopilotText {
         if (usesAutopilotScore(entry)) return "Below your saved or learned minimums: permitted by Autopilot's working "
                 + "minimums. Never auto-accepted.";
         if (entry != null && entry.scoringRules != null && entry.scoringRules.bestScaled()) {
-            return "Below your minimums, but at or over the " + entry.barPercent + "% bar against the best offer you "
-                    + "accepted (it scores 100%): passed for you to decide, never auto-accepted.";
+            return "Below your best accept (under 100%), but at or over Autopilot's " + entry.barPercent + "% bar, the "
+                    + "lowest score it lets through: passed for you to decide, never auto-accepted.";
         }
         return ticketBelowMinimums(entry.barPercent);
     }
@@ -1111,6 +1114,27 @@ final class AutopilotText {
      * and never auto-accepted.
      */
     static final String PASSED_BELOW_MINIMUMS = "Passed below your minimums";
+    /** The same, for a line scored against your best accept (0.6.68): 100% was that offer, not your minimums. */
+    static final String PASSED_BELOW_BEST = "Passed below your best accept";
+
+    /** {@link #PASSED_BELOW_BEST} or {@link #PASSED_BELOW_MINIMUMS}, as the line's own rules scored it. */
+    static String passedBelowWords(DecisionLog.Entry entry) {
+        return entry != null && entry.scoringRules != null && entry.scoringRules.bestScaled() ? PASSED_BELOW_BEST
+                : PASSED_BELOW_MINIMUMS;
+    }
+
+    /** Whether {@code outcome} is one of the passed-below words. */
+    static boolean isPassedBelow(String outcome) {
+        return PASSED_BELOW_MINIMUMS.equals(outcome) || PASSED_BELOW_BEST.equals(outcome);
+    }
+
+    /**
+     * What 100% is for {@code rules} (0.6.68): "your best accept" while it scores under your minimums, else "your
+     * minimums" ({@link OfferRule#hundred}).
+     */
+    static String hundred(FilterSettings rules) {
+        return OfferRule.hundred(rules);
+    }
 
     /**
      * An offer that passed only because Autopilot's bar was below 100% (its score under 100, or its reason saying so,
@@ -1119,11 +1143,10 @@ final class AutopilotText {
     static boolean passedBelowMinimums(DecisionLog.Entry entry) {
         if (entry == null || entry.result != OfferRule.Result.KEEP || entry.model < 2) return false;
         if (usesAutopilotScore(entry)) return entry.reason != null && entry.reason.contains("below your minimums");
-        // 0.6.68: against a best score under the minimums, a pass at a bar of 100 can still be below them.
-        if (entry.reason != null && entry.reason.contains("below your minimums")) return true;
         if (entry.barPercent >= FilterSettings.BAR_AT_MINIMUMS) return false;
+        // 0.6.68: a line scored against your best accept says "below your best accept".
         return (entry.scorePercent >= 0 && entry.scorePercent < FilterSettings.BAR_AT_MINIMUMS)
-                || entry.reason.contains("below your minimums");
+                || entry.reason.contains("below your minimums") || entry.reason.contains("below " + OfferRule.BEST_ACCEPT);
     }
 
     /** The typical minimums ($2.00 a stop, $1.00 a mile, $15 an hour) are {@code rules}' already. */
@@ -1138,7 +1161,12 @@ final class AutopilotText {
      * "&lt;facts&gt;; below your minimums (85%), passed by Autopilot's 82% bar. Yours to accept."
      */
     static String belowMinimumsCard(String facts, int scorePercent, int barPercent) {
-        return (facts == null ? "" : facts) + "; below your minimums" + (scorePercent >= 0 ? " (" + scorePercent + "%)"
+        return belowCard(facts, "your minimums", scorePercent, barPercent);
+    }
+
+    /** "&lt;facts&gt;; below your best accept (92%), passed by Autopilot's 85% bar. Yours to accept." (0.6.68). */
+    private static String belowCard(String facts, String hundred, int scorePercent, int barPercent) {
+        return (facts == null ? "" : facts) + "; below " + hundred + (scorePercent >= 0 ? " (" + scorePercent + "%)"
                 : "") + ", passed by Autopilot's " + barPercent + "% bar. Yours to accept.";
     }
 
@@ -1151,10 +1179,7 @@ final class AutopilotText {
         return decision.scoringRules != null && decision.scoringRules.hasAutopilotAxes()
                 ? (facts == null ? "" : facts) + "; below your saved or learned minimums, permitted by Autopilot's "
                         + "working minimums. Yours to accept."
-                : decision.scoringRules != null && decision.scoringRules.bestScaled() && decision.basis != null
-                ? belowMinimumsCard(facts, AreaScore.scorePercent(
-                        decision.scoringRules.withBest(FilterSettings.BEST_NONE), decision.basis), decision.minimumScalePercent)
-                : belowMinimumsCard(facts, decision.scorePercent, decision.minimumScalePercent);
+                : belowCard(facts, hundred(decision.scoringRules), decision.scorePercent, decision.minimumScalePercent);
     }
 
     static String belowMinimumsCard(OfferSnapshot facts, OfferRule.Decision decision) {
@@ -1164,10 +1189,23 @@ final class AutopilotText {
     // ---- The skyline ----
 
     static String skylineDescription(boolean hasAutopilotScores) {
-        return hasAutopilotScores ? "Building height is pay in dollars. Each tree is the score recorded under that "
+        return skylineDescription(hasAutopilotScores, null);
+    }
+
+    /**
+     * The skyline in words for {@code current} rules (0.6.68): with your best accept under your minimums, trees are
+     * scores against it, and the green dashed line is your minimums where they stand on that scale.
+     */
+    static String skylineDescription(boolean hasAutopilotScores, FilterSettings current) {
+        if (hasAutopilotScores) return "Building height is pay in dollars. Each tree is the score recorded under that "
                 + "offer's rules; 100% is its scoring reference. Adjusted offers use an Autopilot score. Building "
                 + "colour is what happened: green passed, amber passed below your minimums or left for review, red "
-                + "filtered." : SKYLINE_DESCRIPTION;
+                + "filtered.";
+        if (current == null || !current.bestScaled()) return SKYLINE_DESCRIPTION;
+        return "Building height is pay in dollars. Each tree is the offer's score, percent of your best accept, the "
+                + "best offer you accepted, which scores 100%; the green dashed line is your minimums, at "
+                + AreaScore.minimumsLevel(current) + "%. Building colour is what happened: green passed, amber passed "
+                + "below your best accept or left for review, red filtered.";
     }
 
     /** The dashed rail at the bar: "Bar 82%". */

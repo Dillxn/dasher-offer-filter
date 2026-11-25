@@ -57,6 +57,8 @@ final class VerdictTile extends View {
     static final String NO_OFFERS = "No offers yet";
     /** The tags: passed only by Autopilot's bar below the minimums, accepted by the app, its Accept only requested. */
     static final String TAG_BELOW = "below min";
+    /** 0.6.68: passed below your best accept, the score's 100%, by Autopilot's lowered bar. */
+    static final String TAG_BELOW_BEST = "below best";
     static final String TAG_AUTO = "auto";
     static final String TAG_REQUESTED = "requested";
     /** The outcome's words (MainActivity.captionOutcome) for an offer the app accepted. */
@@ -259,7 +261,7 @@ final class VerdictTile extends View {
         } else {
             DecisionLog.Outcome result = DecisionLog.outcome(latest);
             outcome = MainActivity.captionOutcome(latest);
-            boolean below = AutopilotText.PASSED_BELOW_MINIMUMS.equals(outcome);
+            boolean below = AutopilotText.isPassedBelow(outcome);
             // An offer passed below the minimums by Autopilot's bar never reads as a full pass: an amber tick.
             badgeColor = below ? Ui.WARNING : Ui.outcomeColor(result);
             symbol = OutcomeBadge.symbol(result);
@@ -270,7 +272,7 @@ final class VerdictTile extends View {
             pay = facts.payCents == null ? "$?" : DecisionLog.money(facts.payCents);
             payColor = facts.payCents == null ? ui.inkMuted : ui.ink;
             if (below) {
-                tag = TAG_BELOW;
+                tag = AutopilotText.PASSED_BELOW_BEST.equals(outcome) ? TAG_BELOW_BEST : TAG_BELOW;
                 tagColor = AutopilotChip.purple(ui);
             } else if (AUTOMATICALLY_ACCEPTED.equals(outcome)) {
                 tag = TAG_AUTO;

@@ -282,7 +282,10 @@ final class AreaScore {
         Need need = floors(rules, offer).required(rules.scoreByArea, false);
         return offer.payCents == null || need == null ? -1 : percent(offer.payCents, need);
     }
-    /** The score against the minimums themselves (a bar of 100): whether an offer is below them. */
+    /**
+     * The score at a bar of 100, without Autopilot's working rates or the time factor: whether an offer is below 100%
+     * (0.6.68: of your best accept while it scores under your minimums, else of your minimums).
+     */
     static int baselineScorePercent(FilterSettings rules, OfferSnapshot offer) {
         return scorePercent(rules.withoutAutopilotAxes().withoutTimeAdjustment()
                 .withMinimumScalePercent(FilterSettings.BAR_AT_MINIMUMS), offer);

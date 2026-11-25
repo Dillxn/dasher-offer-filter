@@ -2466,7 +2466,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static String captionOutcome(DecisionLog.Entry entry) {
         DecisionLog.Outcome outcome = DecisionLog.outcome(entry);
         if (outcome == DecisionLog.Outcome.PASSED && AutopilotText.passedBelowMinimums(entry)) {
-            return AutopilotText.PASSED_BELOW_MINIMUMS;
+            return AutopilotText.passedBelowWords(entry);
         }
         if (outcome != DecisionLog.Outcome.ACCEPTED) return outcome.said;
         for (int i = entry.steps.size() - 1; i >= 0; i--) {
@@ -2513,9 +2513,9 @@ public final class MainActivity extends Activity implements Updater.Busy {
     /** The full reason, without repeating the below-minimums outcome, kept in the overview's spoken description. */
     static String verdictReason(DecisionLog.Entry entry) {
         String why = reasonLine(entry);
-        String below = "Below your minimums · ";
-        if (captionOutcome(entry).equals(AutopilotText.PASSED_BELOW_MINIMUMS) && why.startsWith(below)) {
-            why = why.substring(below.length());
+        if (!AutopilotText.isPassedBelow(captionOutcome(entry))) return why;
+        for (String below : new String[] {"Below your minimums · ", "Below your best accept · "}) {
+            if (why.startsWith(below)) return why.substring(below.length());
         }
         return why;
     }
@@ -2809,10 +2809,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private static final Pattern BASELINE_REASON = Pattern.compile("(\\d+)% of baseline: (.+)");
     private static final Pattern MEETS_BAR = Pattern.compile("meets the (\\d+)% bar");
     private static final Pattern BELOW_PASSES = Pattern.compile("below your minimums; passes the (\\d+)% bar");
-    /** 0.6.68: against the best offer you accepted. */
-    private static final Pattern BEST_REASON = Pattern.compile("(\\d+)% bar of your best: (.+)");
-    private static final Pattern BELOW_PASSES_BEST =
-            Pattern.compile("below your minimums; passes the (\\d+)% bar of your best accept");
+    /** 0.6.68: "85% of your best accept: area requirement", a decline against your best accept's level. */
+    private static final Pattern BEST_REASON = Pattern.compile("(\\d+)% of your best accept: (.+)");
+    private static final Pattern BELOW_PASSES_BEST = Pattern.compile("below your best accept; passes the (\\d+)% bar");
+    private static final Pattern ADD_ON_BELOW_BEST =
+            Pattern.compile("combined route and add-on below your best accept; pass the (\\d+)% bar");
     private static final Pattern ADD_ON_MEETS_BAR = Pattern.compile("combined route and add-on meet the (\\d+)% bar");
     private static final Pattern ADD_ON_BELOW_PASSES =
             Pattern.compile("combined route and add-on below your minimums; pass the (\\d+)% bar");
@@ -2837,13 +2838,20 @@ public final class MainActivity extends Activity implements Updater.Busy {
         }
         Matcher best = BEST_REASON.matcher(reason);
         if (best.matches()) {
+            // "Below 85% of your best accept", with the binding measure in strict mode: "(per-mile minimum)".
+            String level = "100".equals(best.group(1)) ? "Below your best accept"
+                    : "Below " + best.group(1) + "% of your best accept";
             String plain = plainReason(best.group(2));
-            return (plain.startsWith("Below your ") ? "Below " + best.group(1) + "% of your best accept's "
-                    + plain.substring("Below your ".length()) : plain + " (" + best.group(1) + "% of your best accept)");
+            return "area requirement".equals(best.group(2)) || !plain.startsWith("Below your ") ? level
+                    : level + " (" + plain.substring("Below your ".length()) + ")";
         }
         Matcher belowBest = BELOW_PASSES_BEST.matcher(reason);
         if (belowBest.matches()) {
-            return "Below your minimums · passed at " + belowBest.group(1) + "% of your best accept";
+            return "Below your best accept · passed by Autopilot's " + belowBest.group(1) + "% bar";
+        }
+        Matcher addOnBelowBest = ADD_ON_BELOW_BEST.matcher(reason);
+        if (addOnBelowBest.matches()) {
+            return "Add-on below your best accept · passed by Autopilot's " + addOnBelowBest.group(1) + "% bar";
         }
         Matcher bar = BAR_REASON.matcher(reason);
         if (bar.matches()) {
@@ -2903,6 +2911,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
             case "dollars per hour": plain = "Below your hourly minimum"; break;
             case "meets your minimums": plain = "Meets your minimums"; break;
             case "combined route and add-on meet your minimums": plain = "Add-on meets your minimums"; break;
+            case "combined route and add-on meet your best accept": plain = "Add-on meets your best accept"; break;
             case "pay not found": plain = "Pay not readable"; break;
             case "an enabled value was not found": plain = "Miles, time or stops not readable"; break;
             case "add-on marginal economics": plain = "Add-on pays too little for what it adds"; break;

@@ -740,6 +740,8 @@ final class DashSummary {
                 + " · mode " + (rules.scoreByArea ? "area" : "strict")
                 + " · acceptance learning " + onOff(rules.acceptanceLearning)
                 + " · bar " + rules.minimumScalePercent + "% (Autopilot " + onOff(rules.autopilot) + ")"
+                // 0.6.68: what 100% was, so the dash's scores can be read: your best accept's share of the minimums.
+                + (rules.bestScaled() ? " · best accept " + rules.bestPercent + "% of minimums" : "")
                 + " · rules set: " + (set.isEmpty() ? "none" : String.join(", ", set));
     }
 

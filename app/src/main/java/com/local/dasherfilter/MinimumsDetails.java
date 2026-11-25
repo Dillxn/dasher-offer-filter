@@ -148,6 +148,13 @@ final class MinimumsDetails {
                 : "Required " + money(required) + " under the " + (recorded ? "recorded " : "current ")
                         + (rules.scoreByArea ? "area" : "strict")
                         + " model at " + judgedBar + "% (one final cent rounding).");
+        if (rules.bestScaled()) {
+            // 0.6.68: what 100% is, and this offer against the minimums themselves (said here, not on the score line).
+            int minimums = AreaScore.scorePercent(rules.withBest(FilterSettings.BEST_NONE), facts);
+            lines.add("100% is your best accept: the best offer you accepted scores " + rules.bestPercent + "% of your "
+                    + "minimums, and every score is a share of that." + (minimums >= 0 ? " This offer scores "
+                    + minimums + "% of your minimums." : ""));
+        }
         if (rules.hasAutopilotAxes()) lines.add("Autopilot's working minimums replace the active resolved minimums "
                 + "for filtering, each adjusted independently from a confirmed personal acceptance. The used "
                 + "amounts include the bar and are rounded to cents for display; saved minimums and learned bests "
@@ -164,7 +171,8 @@ final class MinimumsDetails {
         else lines.add(rules.hasAutopilotAxes() ? "Every active working minimum must be met at the bar."
                 : "Every active resolved minimum must be met at the bar.");
         lines.add("Permitted by the filter does not mean accepted. Automatic acceptance separately requires every "
-                + "active minimum at 100%, never a lowered bar. Add-ons use your minimums strictly at the current bar.");
+                + "active minimum at 100%, never a lowered bar. Add-ons use your minimums strictly at the current bar"
+                + (rules.bestScaled() ? ", scaled to your best accept like every offer." : "."));
         if (rules.maxStops > 0) lines.add("Max stops " + rules.maxStops + " (never scaled).");
         if (approximate[0]) lines.add(ROUNDED);
         return String.join("\n", lines);

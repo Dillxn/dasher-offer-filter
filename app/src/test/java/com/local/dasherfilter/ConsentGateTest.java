@@ -188,11 +188,12 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         }
         String defaults = point("On by default.");
         for (String fact : new String[] {
-                // 0.6.62 (notice 48): one set of minimums; the bar is at most 100% of them.
-                "Autopilot puts pay first. Its bar moves from " + FilterStore.BAR_MIN + "% to "
-                        + FilterStore.BAR_MAX + "% of your minimums, lower for an acceptance-rate goal or after you "
-                        + "accept an offer below them.",
-                "An offer you accept that beats them raises each one it beat to what it paid; Undo is on the "
+                // 0.6.62 (notice 48): one set of minimums; the bar is at most 100% of them. 0.6.68 (notice 52): 100%
+                // is your best accept, and the bar and the raises follow it.
+                "Autopilot puts pay first. Scores are a percent of your best accept, the best offer you accepted.",
+                "Its bar moves from " + FilterStore.BAR_MIN + "% to " + FilterStore.BAR_MAX + "% of that, lower for "
+                        + "an acceptance-rate goal or after you accept an offer below it.",
+                "An offer you accept that beats your best raises each minimum it beat to what it paid; Undo is on the "
                         + "homepage.",
                 "This can allow offers below your minimums.",
                 "Peek can briefly open Dasher to read a background offer.",

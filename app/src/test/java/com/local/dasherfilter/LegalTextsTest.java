@@ -66,7 +66,8 @@ public final class LegalTextsTest {
      * 0.6.63 both (an accept moves all minimums together by its score; each accept's line says whether it set them);
      * 0.6.64 both (an accept at 100%+ raises each minimum it beat; one under 100% lowers the bar instead);
      * 0.6.67 the terms text only (an accept under 100% sets that bar to its score, which can raise it);
-     * 0.6.68 the terms text only (scores and the bar against your best accept);
+     * 0.6.68 both (scores, the bar and an accept's raises against your best accept; the privacy text says it is worked
+     * out from the kept history and goes with a selected offer's feedback);
      * 0.6.58 the privacy text only (a line keeps the masked text read of its offer; figures are worked out from it);
      * 0.6.57 both (with learning on and no rule set, offers are read and an accept teaches whatever the switch);
      * 0.6.56 the privacy text only (diagnostics also go soon after an unread offer, at most twelve a day);
@@ -75,8 +76,8 @@ public final class LegalTextsTest {
      * 0.6.48 both (unread offers do not count toward a hold's 24 offers; a full history replaces unread offers that
      * decided nothing first; the summary's log lines around a problem are kept with the dash's counts).
      */
-    static final String PRIVACY_EFFECTIVE = "20 November 2026";
-    static final String PRIVACY_VERSION = "0.6.64";
+    static final String PRIVACY_EFFECTIVE = "25 November 2026";
+    static final String PRIVACY_VERSION = "0.6.68";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -162,7 +163,9 @@ public final class LegalTextsTest {
                 "From 0.6.29 to 0.6.61 Autopilot also kept separate working minimums set by your accepts",
                 "0.6.62 removes those working minimums and holds",
                 "using your recent offers, how often they come and the acceptance rate Dasher shows",
-                "an offer below your minimums that passes a lowered bar says so",
+                // 0.6.68: 100% is your best accept while learning is on, so the words say "below 100%".
+                "an offer below 100% that passes a lowered bar says so and is left to you",
+                "100% is your best accept", "auto-accept always asks your minimums themselves",
                 "a complete standalone offer that strictly meets every active minimum at 100% or more",
                 "never one that passes only a lowered bar",
                 "Autopilot's default goal, pay first, does not try to keep your acceptance rate up.",

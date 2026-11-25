@@ -6177,7 +6177,8 @@ public final class OfferFilterService extends AccessibilityService {
         OfferRule.Result result = OfferNotificationService.announced(decision);
         String reason = decision.reason;
         String why = paused ? "auto-decline is paused"
-                : decision.belowMinimums ? "the offer passes only Autopilot's bar, below your minimums"
+                : decision.belowMinimums ? "the offer passes only Autopilot's bar, below "
+                        + OfferRule.hundred(decision.scoringRules)
                 : result == OfferRule.Result.KEEP ? "the offer passes your rules" : "the offer needs your review";
         if (!paused && navigating()) {
             // Below the minimums, the card says so with the figures Peek's other cards give (an add-on's own: what it
@@ -8943,11 +8944,11 @@ public final class OfferFilterService extends AccessibilityService {
             // 0.6.67: the bar Autopilot uses is the lower of the one your accepts set and your goal's limit, so these
             // say what the accept set and leave room for the goal (the owner's 81% accept was told "the bar went back
             // to 100%" while Reach Platinum held the bar at 35%).
-            case LOWERED: return "below your minimums: your minimums stay, and the bar is now at most this offer's "
-                    + "score";
-            case LIFTED: return "below your minimums, but above the bar an earlier accept set: your minimums stay, and "
-                    + "the bar can rise to this offer's score as far as your goal allows";
-            case SET: return "at or above your minimums: the bar can go back up to 100% as far as your goal allows";
+            // 0.6.68: "100%" is your best accept while it scores under your minimums, else your minimums.
+            case LOWERED: return "under 100%: your minimums stay, and the bar is now at most this offer's score";
+            case LIFTED: return "under 100%, but above the bar an earlier accept set: your minimums stay, and the bar "
+                    + "can rise to this offer's score as far as your goal allows";
+            case SET: return "at or above 100%: the bar can go back up to 100% as far as your goal allows";
             case SAVED: return "learned a new best; your saved minimums are still higher";
             case UNCHANGED: return "nothing new: no measure paid more than your minimums, and the bar stays (also while "
                     + "below your acceptance-rate goal)";

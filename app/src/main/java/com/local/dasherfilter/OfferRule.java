@@ -21,6 +21,10 @@ final class OfferRule {
     static final String COMBINED_FAILS = "combined route fails: ";
     /** The reason of a standalone offer declined because a store it is from is on the skip list ({@link SkipList}). */
     static final String SKIP_LIST = "on your skip list";
+    /** What 100% is from 0.6.68 while your best accept scores under your minimums ({@link FilterSettings#bestPercent}). */
+    static final String BEST_ACCEPT = "your best accept";
+    /** A pass at 100% or more of your best accept (0.6.68). */
+    static final String MEETS_BEST = "meets your best accept";
     /** The pay-per-stop minimum's words in a reason (0.6.12; it was "flat minimum" for the minimum pay before). */
     static final String PAY_PER_STOP = "dollars per stop";
 
@@ -164,21 +168,22 @@ final class OfferRule {
             return new Decision(Result.REVIEW, required, VALUE_NOT_FOUND, offer, score, bar, false, autopilot);
         }
         // The score is measured against the minimums at the bar (0.6.62); below them is at a bar of 100.
-        // 0.6.68: against a best score under the minimums an offer can pass below them at any bar.
-        boolean scaled = settings.hasAutopilotAxes() || settings.timeAware || settings.bestScaled();
+        // Below 100% is below what 100% means: your minimums, or from 0.6.68 your best accept while it scores under
+        // them (one scale for the score, the bar and this check).
+        boolean scaled = settings.hasAutopilotAxes() || settings.timeAware;
         int baselineScore = scaled || bar != FilterSettings.BAR_AT_MINIMUMS
                 ? AreaScore.baselineScorePercent(settings, offer) : score;
         boolean below = (bar < FilterSettings.BAR_AT_MINIMUMS || scaled)
                 && baselineScore >= 0 && baselineScore < FilterSettings.BAR_AT_MINIMUMS;
+        String under = "below " + hundred(settings);
         String reason = settings.timeAware && settings.timeWeight.factor != TimeScore.ONE
-                ? (below ? "below your minimums; passes time-aware requirements" : "meets time-aware requirements")
+                ? (below ? under + "; passes time-aware requirements" : "meets time-aware requirements")
                 : settings.hasAutopilotAxes()
-                ? below ? "below your minimums; passes Autopilot's current minimums"
+                ? below ? under + "; passes Autopilot's current minimums"
                         : "meets Autopilot's current minimums"
-                : settings.bestScaled() ? below ? "below your minimums; passes the " + bar + "% bar of your best accept"
-                        : "meets your minimums"
                 : bar > FilterSettings.BAR_AT_MINIMUMS ? "meets the " + bar + "% bar"
-                : below ? "below your minimums; passes the " + bar + "% bar"
+                : below ? under + "; passes the " + bar + "% bar"
+                : settings.bestScaled() ? MEETS_BEST
                 : settings.scoreByArea ? "meets your area requirement" : MEETS_MINIMUMS;
         return new Decision(Result.KEEP, required, reason, offer, score, bar, below, autopilot);
     }
@@ -200,6 +205,7 @@ final class OfferRule {
      * minimum is set. With the bar below 100, a KEEP that would not pass at 100 is marked below the minimums.
      */
     static Decision evaluateAddOn(AddOnOffer addOn, FilterSettings settings) {
+        // The best score stays (0.6.68): an add-on is judged on the same scale, at the same bar, as any offer.
         FilterSettings strict = settings.withoutAutopilotAxes().withoutTimeAdjustment()
                 .withScoreByArea(false).withAcceptanceLearning(false);
         return evaluateAddOnStrict(addOn, strict).withRules(strict).withRoute(addOn.active, addOn.combined);
@@ -213,7 +219,7 @@ final class OfferRule {
             return decision;
         }
         return new Decision(Result.KEEP, decision.requiredCents,
-                "combined route and add-on below your minimums; pass the " + bar + "% bar", decision.basis,
+                "combined route and add-on below " + hundred(settings) + "; pass the " + bar + "% bar", decision.basis,
                 decision.scorePercent, bar, true, settings.autopilot);
     }
 
@@ -241,6 +247,10 @@ final class OfferRule {
             if (ask == null) missing = true;
             else if (marginal == null || ask.compareTo(marginal) > 0) marginal = ask;
         }
+        // The added work's ask on the same scale as the route's (0.6.68): the best score's share, then the bar.
+        if (marginal != null && settings.bestScaled()) {
+            marginal = marginal.multiply(BigDecimal.valueOf(settings.bestPercent)).movePointLeft(2);
+        }
         long marginalCost = marginal == null ? 0 : AreaScore.roundedCents(marginal, bar);
         if (added.payCents != null && added.payCents < marginalCost) {
             return new Decision(Result.DECLINE, marginalCost, barPrefix(bar) + ADD_ON_ECONOMICS, added,
@@ -252,7 +262,7 @@ final class OfferRule {
         }
         return new Decision(Result.KEEP, marginalCost, bar > FilterSettings.BAR_AT_MINIMUMS
                 ? "combined route and add-on meet the " + bar + "% bar"
-                : "combined route and add-on meet your minimums", added, combined.scorePercent, bar, false, autopilot);
+                : "combined route and add-on meet " + hundred(settings), added, combined.scorePercent, bar, false, autopilot);
     }
 
     /**
@@ -280,10 +290,18 @@ final class OfferRule {
         return barPrefix(bar) + (area ? "area requirement" : axisReason(axis));
     }
 
-    /** "81% bar of your best: area requirement" against a best score under the minimums (0.6.68). */
+    /**
+     * "85% of your best accept: area requirement" against a best score under the minimums (0.6.68), the bar's share of
+     * what 100% asks; else "85% bar: …" as before.
+     */
     private static String atBar(FilterSettings settings, int bar, int axis) {
         if (!settings.bestScaled()) return atBar(bar, axis, settings.scoreByArea);
-        return bar + "% bar of your best: " + (settings.scoreByArea ? "area requirement" : axisReason(axis));
+        return bar + "% of " + BEST_ACCEPT + ": " + (settings.scoreByArea ? "area requirement" : axisReason(axis));
+    }
+
+    /** What 100% is for these rules (0.6.68): "your best accept" while it scores under the minimums, else them. */
+    static String hundred(FilterSettings settings) {
+        return settings != null && settings.bestScaled() ? BEST_ACCEPT : "your minimums";
     }
 
     private static String barPrefix(int bar) {

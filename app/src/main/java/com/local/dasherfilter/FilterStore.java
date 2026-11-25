@@ -1433,11 +1433,11 @@ final class FilterStore {
             boolean none = was[0] == 0 && was[1] == 0 && was[2] == 0;
             int[] rates = acceptedRates(offer);
             int barWas = acceptBar(prefs);
-            // 0.6.68: whether the accept beat the minimums is its score against them; the bar it sets is its score
-            // against the best offer you accepted (BestScore), the score decisions use, held to 100.
-            FilterSettings judged = before.withAutopilot(false, before.autopilotGoalPercent);
-            int score = none ? -1 : AreaScore.scorePercent(judged.withBest(FilterSettings.BEST_NONE), offer);
-            int bestScore = none || !judged.bestScaled() ? score : AreaScore.scorePercent(judged, offer);
+            // 0.6.68: the score is on the one scale decisions use, so 100% is your best accept while it scores under
+            // your minimums (BestScore): an accept at 100% or more is a new best, and raises each minimum it beat; one
+            // under it sets the bar your accepts set to its score, as before.
+            int score = none ? -1 : AreaScore.scorePercent(before.withAutopilot(false, before.autopilotGoalPercent),
+                    offer);
             int[] next = was.clone();
             int bar = barWas;
             if (none) {
@@ -1453,7 +1453,7 @@ final class FilterStore {
                 }
                 if (!belowGoal) bar = FilterSettings.BAR_AT_MINIMUMS;
             } else {
-                bar = Math.max(BAR_MIN, Math.min(FilterSettings.BAR_AT_MINIMUMS, bestScore));
+                bar = Math.max(BAR_MIN, score);
             }
             boolean up = false;
             for (int axis = 0; axis < 3; axis++) up |= next[axis] != was[axis];

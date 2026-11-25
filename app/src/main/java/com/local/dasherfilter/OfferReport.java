@@ -207,6 +207,9 @@ final class OfferReport {
                 .put("autopilot", rules.autopilot)
                 .put("autopilotGoal", rules.autopilotGoalPercent)
                 .put("barPercent", rules.minimumScalePercent)
+                // 0.6.68: what 100% was (the best accept's share of the minimums; 100 when it was the minimums), so a
+                // report's scores can be checked against its minimums.
+                .put("bestPercent", rules.bestPercent)
                 .put("autopilotMode", mode == null ? JSONObject.NULL : mode)
                 .put("recovering", autopilot.recovering)
                 .put("extra", autopilot.extra)

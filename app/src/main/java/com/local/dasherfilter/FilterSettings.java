@@ -34,10 +34,11 @@ final class FilterSettings {
 
     /**
      * The best score (0.6.68, {@link BestScore}): the highest score, against the minimums, of an offer you accepted in the
-     * retained history, held to {@value #BEST_LEAST}–{@value #BEST_NONE}. Scores and the bar are measured against it:
-     * an offer's score is its score against the minimums as a percent of this one, so the best offer you accepted scores
-     * 100%. Exactly {@value #BEST_NONE} (no scaling) when none is known. Never applied to add-ons, the +$ ceiling,
-     * auto-accept or the below-the-minimums check, which keep the minimums themselves.
+     * retained history, held to {@value #BEST_LEAST}–{@value #BEST_NONE}, while acceptance learning is on. It is what
+     * 100% means: every score is the minimums score as a percent of this one, so the best offer you accepted scores
+     * 100%, and the bar, the below-100% check, add-ons and an accept's lesson all use that one scale. Exactly
+     * {@value #BEST_NONE} (100% is the minimums themselves) with none known or learning off. Only auto-accept keeps the
+     * minimums themselves ({@link AutoAccept#acceptRules}).
      */
     final int bestPercent;
     final boolean timeAware;
@@ -231,11 +232,8 @@ final class FilterSettings {
                 timeAware, weight, bestPercent);
     }
 
-    /**
-     * Without the time-aware factor and without the best score (0.6.68): the requirement of the minimums themselves.
-     * Every path that kept the minimums (add-ons, the +$ ceiling, auto-accept, the below-the-minimums check) keeps them.
-     */
-    FilterSettings withoutTimeAdjustment() { return withTimeAware(false).withBest(BEST_NONE); }
+    /** Without the time-aware factor; the best score, being the score's own scale, stays (0.6.68). */
+    FilterSettings withoutTimeAdjustment() { return withTimeAware(false); }
 
     /** These rules measured against a best score of {@code percent} (0.6.68; {@value #BEST_NONE}: the minimums). */
     FilterSettings withBest(int percent) {
