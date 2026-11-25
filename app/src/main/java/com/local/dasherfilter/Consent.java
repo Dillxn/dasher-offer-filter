@@ -110,7 +110,9 @@ final class Consent {
     // 51 (0.6.67): the Terms said an accept under 100% only dropped the bar your accepts set; it sets it to its score,
     // which raises it after an earlier, lower accept, Autopilot's bar staying no higher than the goal allows (the
     // owner, 22 November 2026, after an 81% accept left the bar at 35%). The Terms say it; nothing else changed.
-    static final int VERSION = 51;
+    // 52 (0.6.68): scores and the bar are measured against your best accept, the highest score against your minimums
+    // of an offer you accepted yourself in the kept history (the owner, 25 November 2026). The Terms say it.
+    static final int VERSION = 52;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";
@@ -136,12 +138,13 @@ final class Consent {
                 + "It may also go Back after a Dasher error, tap Dasher's ⚙ once to bring up a missing offer, briefly "
                 + "turn offer sound down and keep your unlocked screen on during a dash. Auto-accept is off unless you "
                 + "turn it on in Settings. Your touch stops it."},
-        {"On by default.", "Autopilot puts pay first. Its bar moves from " + FilterStore.BAR_MIN + "% to "
-                + FilterStore.BAR_MAX + "% of your minimums, lower for an acceptance-rate goal or after you accept an "
-                + "offer below them. An offer you accept that beats them raises each one it beat to what it paid; "
-                + "Undo is on the homepage. This can allow offers below your minimums. Peek can briefly open "
+        {"On by default.", "Autopilot puts pay first. Scores are a percent of your best accept, the best offer "
+                + "you accepted. Its bar moves from " + FilterStore.BAR_MIN + "% to " + FilterStore.BAR_MAX + "% of "
+                + "that, lower for an acceptance-rate goal or after you accept an offer below it. Each offer you accept "
+                + "raises any minimum it beat to what it paid; Undo is on the homepage. This can allow offers below "
+                + "your minimums. Peek can briefly open "
                 + "Dasher to read a background offer. An anonymous daily count tells the developer how many people "
-                + "use the app. Turn any of them off: Autopilot from its chip, learning with Learn, Peek and the "
+                + "use the app. Turn any of them off: Autopilot from its chip, Peek and the "
                 + "count in Settings."},
         {"At your own risk.", "It can misread, accept or decline an offer you did not want it to. It comes with no warranty."},
         {"Not while driving.", "Don't handle your phone while driving. Pull over to look at offers."},

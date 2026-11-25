@@ -9,7 +9,7 @@ import java.util.List;
  * The homepage's note that an offer you accepted set your minimums (0.6.62; the owner, 20 November 2026: accepted
  * offers below the minimums lower them, "but offer undo in app"): "Your accept set your minimums" over what they are
  * now and were, then Undo and OK. Undo puts back the minimums from before it ({@link FilterStore#undoAdoption}); OK
- * closes the note, and Undo stays in Learned minimums. It goes by itself once the minimums change another way. Quiet,
+ * closes the note, and Undo stays in How offers are judged (0.6.68; Learned minimums before). It goes by itself once the minimums change another way. Quiet,
  * as the growth note is: no live region; part of the page, never over Dasher.
  *
  * <p>An accept under your minimums sets the bar your accepts set instead (0.6.64). Autopilot's bar is the lower of that

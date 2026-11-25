@@ -61,10 +61,10 @@ import java.util.Locale;
  * middle must be pushed a clear way further in). The ring scale holds still while a knob moves (it may be pushed a
  * little past the outer ring) and settles to fit when it is let go.
  *
- * <p>One round 48 dp button is the learner's switch (0.6.1): "Learn" over "On" or "Off", ringed in teal while on, in
- * grey while off. A tap turns learning on or off, a long press shows Learned minimums; it has no drag. Autopilot's
- * control is the page's chip alone. Screen readers reach each knob and the badge as adjustable controls and the button
- * as a switch, with the long press among its actions.
+ * <p>The learner's round "Learn" button (0.6.1 to the first 0.6.68 build) is retired (the owner, 25 November 2026:
+ * "idk even what learn is. i think it can be deprecated"): learning is always on, and {@link #placeButton} places
+ * nothing, so the button is never drawn, touched or heard; its code stays dormant behind that one gate. Autopilot's
+ * control is the page's chip alone. Screen readers reach each knob and the badge as adjustable controls.
  *
  * <p>The displayed offer's points are joined in the spokes' order, leaving out a spoke it did not say. Other offers
  * remain in history and can be selected on the skyline; their hidden polygons receive no touches or accessibility
@@ -565,13 +565,19 @@ final class MinimumsStarView extends View {
         invalidate();
     }
 
-    /** Independent working asks stay visible at 100%; only the unchanged baseline needs no duplicate shape. */
+    /**
+     * Independent working asks stay visible at 100%; only the unchanged baseline needs no duplicate shape. From 0.6.68
+     * the dashed shape is what offers must reach now whenever that is not the set shape: your best accept's level (the
+     * effective asks carry it), at Autopilot's bar while Autopilot is on.
+     */
     private void barShape() {
-        boolean adjusted = autopilotOn && (autopilotBar != FilterSettings.BAR_AT_MINIMUMS
+        boolean best = shownRules != null && shownRules.bestScaled();
+        boolean adjusted = best || autopilotOn && (autopilotBar != FilterSettings.BAR_AT_MINIMUMS
                 || shownRules.hasAutopilotAxes());
+        int bar = autopilotOn ? autopilotBar : FilterSettings.BAR_AT_MINIMUMS;
         for (int i = 0; i < NAMES.length; i++) {
             barCents[i] = !adjusted || Double.isNaN(effectiveCents[i]) ? Double.NaN
-                    : effectiveCents[i] * autopilotBar / 100.0;
+                    : effectiveCents[i] * bar / 100.0;
         }
     }
 
@@ -795,6 +801,10 @@ final class MinimumsStarView extends View {
                 + (shownRules.acceptanceLearning ? "offers you accept set them" : "learning is off")
                 + (shownRules.hasAutopilotAxes() ? "; dashed purple is Autopilot's independent working requirement, "
                         + "including at a 100% bar. Learned bests do "
+                        : shownRules.bestScaled() ? "; dashed is what offers must reach now: your best accept, the best "
+                        + "offer you accepted, which scores " + shownRules.bestPercent + "% of your minimums"
+                        + (autopilotOn && autopilotBar != FilterSettings.BAR_AT_MINIMUMS ? ", at Autopilot's "
+                        + autopilotBar + "% bar" : "") + ". Learned bests do "
                         : "; while Autopilot's bar is not 100%, dashed purple is its adjusted requirement. Learned bests do ")
                 + "not move saved knobs. Colored shapes are offers.";
         if (marks.isEmpty()) return described;
@@ -1401,7 +1411,9 @@ final class MinimumsStarView extends View {
         drawShape(canvas, cx, cy, radius, drawnSet, drawnFrom, drawnTo, glide, setColor(), false);
         drawShape(canvas, cx, cy, radius, drawnLearned, drawnLearnedAt, drawnLearnedAt, 1,
                 shownRules.acceptanceLearning ? (ui.dark ? 0xFF83E3D1 : 0xFF00796B) : 0xFF858F8D, true);
-        drawShape(canvas, cx, cy, radius, auto, autoFrom, autoTo, glide, autopilotColor(), true);
+        // Purple is Autopilot's; with it off, the dashed shape is your best accept's level alone, in learning's teal.
+        drawShape(canvas, cx, cy, radius, auto, autoFrom, autoTo, glide,
+                autopilotOn ? autopilotColor() : (ui.dark ? 0xFF83E3D1 : 0xFF00796B), true);
     }
 
     /**
@@ -2614,7 +2626,8 @@ final class MinimumsStarView extends View {
      * the knobs' full size does (it stays as set meanwhile; on by default).
      */
     private float placeButton() {
-        if (!knobsOn()) return 0;
+        // 0.6.68: the Learn button is retired; nothing is placed, so nothing of it is drawn, touched or heard.
+        if (RETIRED_LEARN_BUTTON || !knobsOn()) return 0;
         float half = ui.dp(BUTTON_DP) / 2f;
         // 0.6.8, the owner's mockup: on the lower left of the rim, where the max stops pin stood, clear of the badge.
         placeStops();
@@ -2675,6 +2688,9 @@ final class MinimumsStarView extends View {
     int buttonRing() {
         return !learningOn ? (ui.dark ? 0x40FFFFFF : 0x330B0B0B) : learnedColor();
     }
+
+    /** The Learn button is retired (0.6.68): learning is always on, with nothing to switch. */
+    private static final boolean RETIRED_LEARN_BUTTON = true;
 
     /** Teal, the learned bests' color on this chart, for the learner's button while it is on. */
     int learnedColor() {
@@ -2837,7 +2853,7 @@ final class MinimumsStarView extends View {
         if (outcome.isVerdict(result)) {
             parts.add(result == OfferRule.Result.KEEP
                     ? (AutopilotText.passedBelowMinimums(markEntries.get(m))
-                            ? AutopilotText.PASSED_BELOW_MINIMUMS.toLowerCase(Locale.US) : "passed")
+                            ? AutopilotText.passedBelowWords(markEntries.get(m)).toLowerCase(Locale.US) : "passed")
                     : result == OfferRule.Result.DECLINE ? "declined" : "left for review");
         } else {
             parts.add(outcome.said.toLowerCase(Locale.US));
@@ -2847,6 +2863,7 @@ final class MinimumsStarView extends View {
         if (markScores.get(m) >= 0) {
             parts.add((shownRules.hasAutopilotAxes() ? "Autopilot score " : "scores ") + markScores.get(m) + "% "
                     + (shownRules.hasAutopilotAxes() ? "under the working minimums now"
+                            : shownRules.bestScaled() ? "of " + AutopilotText.hundred(shownRules) + " now"
                             : shownRules.scoreByArea ? "area fitness now" : "of your minimums now"));
             DecisionLog.Entry entry = markEntries.get(m);
             if (entry.model >= 2 && entry.scorePercent >= 0

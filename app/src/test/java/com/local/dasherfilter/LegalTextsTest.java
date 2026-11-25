@@ -18,7 +18,9 @@ public final class LegalTextsTest {
         String terms = LegalTexts.Doc.TERMS.text();
         for (String fact : new String[] {"Area mode is the default (from 0.6.27", "Strict mode checks every active minimum; choose it in How offers are judged",
                 "An offer permitted by the filter is not an accepted delivery", "confirmed manual standalone",
-                "offers whose pay was not read do not change them", "strictly meets every active minimum at 100% or more",
+                "offers whose pay was not read do not change them",
+                // 0.6.68: auto-accept follows the same rule as every offer (before, every minimum strictly at 100%).
+                "a complete standalone offer the filter passes at 100% or more",
                 "Add-ons are judged strictly", "Undo is conditional and cannot overwrite a later change",
                 "It never asks more than your minimums, and it never changes them"})
             assertTrue(fact, terms.contains(fact));
@@ -41,9 +43,9 @@ public final class LegalTextsTest {
      * The beta texts' effective identities, also read by ConsentGateTest. Only a text changed in substance gets
      * a new identity in its header; then tools/legal_texts.py regenerates the app's matching copy.
      */
-    static final String TERMS_EFFECTIVE = "22 November 2026";
+    static final String TERMS_EFFECTIVE = "25 November 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.67";
+    static final String TERMS_VERSION = "0.6.68";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -66,6 +68,8 @@ public final class LegalTextsTest {
      * 0.6.63 both (an accept moves all minimums together by its score; each accept's line says whether it set them);
      * 0.6.64 both (an accept at 100%+ raises each minimum it beat; one under 100% lowers the bar instead);
      * 0.6.67 the terms text only (an accept under 100% sets that bar to its score, which can raise it);
+     * 0.6.68 both (scores, the bar and an accept's raises against your best accept; the privacy text says it is worked
+     * out from the kept history and goes with a selected offer's feedback);
      * 0.6.58 the privacy text only (a line keeps the masked text read of its offer; figures are worked out from it);
      * 0.6.57 both (with learning on and no rule set, offers are read and an accept teaches whatever the switch);
      * 0.6.56 the privacy text only (diagnostics also go soon after an unread offer, at most twelve a day);
@@ -74,8 +78,8 @@ public final class LegalTextsTest {
      * 0.6.48 both (unread offers do not count toward a hold's 24 offers; a full history replaces unread offers that
      * decided nothing first; the summary's log lines around a problem are kept with the dash's counts).
      */
-    static final String PRIVACY_EFFECTIVE = "20 November 2026";
-    static final String PRIVACY_VERSION = "0.6.64";
+    static final String PRIVACY_EFFECTIVE = "25 November 2026";
+    static final String PRIVACY_VERSION = "0.6.68";
 
     @Test public void theBundledTextsAreTheRepositorysFilesWordForWord() throws IOException {
         for (LegalTexts.Doc doc : LegalTexts.Doc.values()) {
@@ -153,7 +157,9 @@ public final class LegalTextsTest {
                 // 0.6.62: one set of minimums, set by your accepts with Undo; the bar at most 100%, lowered only for
                 // an acceptance-rate goal; no working minimums or holds (0.6.29 to 0.6.61).
                 "each active minimum it beat (pay per stop, the pickup included, pay per mile or pay per hour) rises to that offer's own rate",
-                "If it scores under 100%, your minimums stay and that bar becomes its score",
+                // 0.6.68: every accept raises each minimum it beat, whatever it scores; its score then sets the bar.
+                "whatever it scores, so your minimums are the highest each measure has been on an offer you accepted",
+                "if it scores under 100%, that bar becomes its score",
                 "after an earlier accept that scored less, that raises it, though Autopilot's bar still "
                         + "goes no higher than your goal allows",
                 "A note on the homepage says what changed, with Undo",
@@ -161,8 +167,12 @@ public final class LegalTextsTest {
                 "From 0.6.29 to 0.6.61 Autopilot also kept separate working minimums set by your accepts",
                 "0.6.62 removes those working minimums and holds",
                 "using your recent offers, how often they come and the acceptance rate Dasher shows",
-                "an offer below your minimums that passes a lowered bar says so",
-                "a complete standalone offer that strictly meets every active minimum at 100% or more",
+                // 0.6.68: 100% is your best accept, so the words say "below 100%"; auto-accept follows the same rule
+                // and score (the owner: "there should be no secret logic for auto accept").
+                "an offer below 100% that passes a lowered bar says so and is left to you",
+                "100% is your best accept",
+                "a complete standalone offer the filter passes at 100% or more, by the same rule and score that judge "
+                        + "every offer",
                 "never one that passes only a lowered bar",
                 "Autopilot's default goal, pay first, does not try to keep your acceptance rate up.",
                 "An acceptance-rate goal you choose instead is a best effort, not a promise: Autopilot cannot accept "
@@ -375,8 +385,9 @@ public final class LegalTextsTest {
                 // score, tapping nothing; only the maps it recognizes are skipped (MapNodes.isMap), never while a
                 // decline-error recovery or an automatic Accept is verified (pruneMaps), and whether Dasher's maps are
                 // recognized is unverified on phones.
-                "With no rule set, it reads nothing of Dasher's screen; Android's list of windows alone places its "
-                        + "tab.",
+                // 0.6.68: learning is always on, so offers are read even with no rule set (before, not with learning off).
+                "it read nothing of Dasher's screen, and Android's list of windows alone placed its tab); from 0.6.68 "
+                        + "learning is always on, so this is always so.",
                 "to show each offer's score and what auto-decline would do, and taps nothing; turning Offer Filter off "
                         + "in Android's Accessibility settings stops all reading of Dasher's screen.",
                 "Map views it recognizes inside Dasher's screens are skipped, not read, except while it checks a failed "

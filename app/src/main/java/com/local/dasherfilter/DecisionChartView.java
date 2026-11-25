@@ -746,7 +746,7 @@ final class DecisionChartView extends View {
         for (int i = 0; i < runs.size(); i++) {
             BarRun run = runs.get(i);
             float y = y(lineLevel(run.bar), maxScore, top, bottom);
-            if (run.bar != 100) canvas.drawLine(run.from, y, run.to, y, line);
+            if (run.bar != minimumsLevel()) canvas.drawLine(run.from, y, run.to, y, line);
             BarRun next = i + 1 < runs.size() ? runs.get(i + 1) : null;
             if (next != null && next.bar != run.bar && Math.abs(next.from - run.to) < 1f) {
                 canvas.drawLine(run.to, y, run.to, y(lineLevel(next.bar), maxScore, top, bottom), line);
@@ -984,7 +984,7 @@ final class DecisionChartView extends View {
 
     /** Whether Autopilot's line is drawn: on, with offers, and off 100% (where the minimums' line stands). */
     private boolean barNamed() {
-        return autopilotNow && !entries.isEmpty() && lineLevel(minimumScalePercent) != 100;
+        return autopilotNow && !entries.isEmpty() && lineLevel(minimumScalePercent) != minimumsLevel();
     }
 
     /** Where Autopilot's line stands. */
@@ -1064,9 +1064,19 @@ final class DecisionChartView extends View {
         return false;
     }
 
-    /** The minimums' line: 100% on the scale. */
+    /**
+     * The minimums' line: 100% of the minimums (0.6.68; the owner, 25 November 2026: the tree graph "should still show
+     * a line for 100% best mins area score as a point of reference for the 100% of best offer's score"). Trees stand
+     * against the best offer you accepted, so this line stands at {@link AreaScore#minimumsLevel}: 100% with no best
+     * score below the minimums, 123% for a best accept scoring 81% of them.
+     */
     float hundredY() {
-        return y(100, scoreScaleMax(), plotTop(), plotBottom());
+        return y(minimumsLevel(), scoreScaleMax(), plotTop(), plotBottom());
+    }
+
+    /** Where the minimums stand on the trees' scale ({@link AreaScore#minimumsLevel}). */
+    int minimumsLevel() {
+        return AreaScore.minimumsLevel(currentRules);
     }
 
     /**
@@ -1264,7 +1274,7 @@ final class DecisionChartView extends View {
 
     /** Percent scale does not depend on payouts or dollar requirements. Unknowns contribute nothing. */
     private long scoreScaleMax() {
-        int max = Math.max(100, lineLevel(minimumScalePercent));
+        int max = Math.max(Math.max(100, minimumsLevel()), lineLevel(minimumScalePercent));
         for (DecisionLog.Entry entry : entries) {
             if (tree(entry)) max = Math.max(max, Math.min(SCORE_DISPLAY_CAP, treeScore(entry)));
             if (entry.autopilot) max = Math.max(max, Math.min(SCORE_DISPLAY_CAP, lineLevel(entry.barPercent)));
@@ -1432,7 +1442,7 @@ final class DecisionChartView extends View {
         String summary = String.format(Locale.US,
                 "Chart of the last %d offers: %d passed%s, %s%d declined, %s%d need review.",
                 entries.size(), counts[DecisionLog.Outcome.PASSED.ordinal()],
-                below > 0 ? " (" + below + " below your minimums)" : "",
+                below > 0 ? " (" + below + " below " + AutopilotText.hundred(currentRules) + ")" : "",
                 accepted > 0 ? accepted + " accepted, " : "", counts[DecisionLog.Outcome.DECLINED.ordinal()],
                 (yours > 0 ? yours + " left to you, " : "")
                         + (requested > 0 ? requested + " accept requested but unconfirmed, " : ""),
@@ -1450,7 +1460,7 @@ final class DecisionChartView extends View {
             else if (entry.scorePercent > SCORE_DISPLAY_CAP) clipped++;
         }
         String bar = barSaid();
-        return summary + selectedDescription() + " " + AutopilotText.skylineDescription(independentScores)
+        return summary + selectedDescription() + " " + AutopilotText.skylineDescription(independentScores, currentRules)
                 + (bar != null ? " Purple dashed line: " + bar + "." : "")
                 + (topPayCents > 0 ? " Solid line: the top pay among these offers, " + DecisionLog.money(topPayCents)
                 + "." : "")
@@ -1470,7 +1480,7 @@ final class DecisionChartView extends View {
         // Passed only by Autopilot's lowered bar: said so, never as a full pass.
         String state = outcome == DecisionLog.Outcome.YOURS ? "left to you"
                 : outcome == DecisionLog.Outcome.PASSED && AutopilotText.passedBelowMinimums(entry)
-                ? AutopilotText.PASSED_BELOW_MINIMUMS.toLowerCase(Locale.US)
+                ? AutopilotText.passedBelowWords(entry).toLowerCase(Locale.US)
                 : outcome.name().toLowerCase(Locale.US);
         return " Selected offer " + (selected + 1) + " of " + entries.size() + ": "
                 + (entry.facts.payCents == null ? "payout unknown" : DecisionLog.money(entry.facts.payCents))
@@ -1479,7 +1489,7 @@ final class DecisionChartView extends View {
                         ? ", recorded Autopilot score " + entry.scorePercent + "%."
                         : entry.model >= 3 && "area".equals(entry.scoreKind)
                         ? ", recorded area score " + entry.scorePercent + "%."
-                        : ", score " + entry.scorePercent + "% of your minimums."
+                        : ", score " + entry.scorePercent + "% of " + AutopilotText.hundred(entry.scoringRules) + "."
                 : entry.addOn && entry.scorePercent < 0 ? ", add-on: no standalone score."
                 : entry.scorePercent >= 0 ? ", score from earlier area rules." : ", score unknown.")
                 + (selected == routed ? " On a route." : "");

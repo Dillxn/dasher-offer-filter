@@ -2,9 +2,11 @@ package com.local.dasherfilter;
 
 /**
  * An opt-in Accept request needs two complete reads of one continuing offer, a quiet touch watch and a KEEP under
- * {@link #acceptRules}: 100% of the user's own minimums, or Autopilot's bar when that is higher, so an offer passing
- * only below the minimums is never accepted automatically. This class never taps or infers an acceptance. A refused
- * request also consumes the one-request budget.
+ * {@link #acceptRules}: the same rule that judges every offer, at 100% (0.6.68; the owner, 25 November 2026: "there
+ * should be no secret logic for auto accept. it should follow the same exact rule as everything else"). So it takes
+ * exactly the offers the page shows as passed, and never one that passes only Autopilot's lowered bar, which the page
+ * shows as passed below 100% and leaves to you. This class never taps or infers an acceptance. A refused request also
+ * consumes the one-request budget.
  */
 final class AutoAccept {
     static final long QUIET_MS = 700;
@@ -32,26 +34,17 @@ final class AutoAccept {
     }
 
     /**
-     * The rules an automatic Accept is judged by: the same minimums at {@code max(100, bar)}. Autopilot may lower the
-     * bar to protect the acceptance rate, but never what an automatic Accept asks.
+     * The rules an automatic Accept is judged by: exactly the decision's own (the selected model, the time factor and
+     * the best score), at {@code max(100, bar)}. Autopilot may lower the bar to protect the acceptance rate; what it lets
+     * through below 100% is yours to accept, never an automatic Accept's.
      */
     static FilterSettings acceptRules(FilterSettings settings) {
-        return settings.withoutAutopilotAxes().withoutTimeAdjustment().withScoreByArea(false)
-                .withMinimumScalePercent(Math.max(FilterSettings.BAR_AT_MINIMUMS, settings.minimumScalePercent));
+        return settings.withMinimumScalePercent(Math.max(FilterSettings.BAR_AT_MINIMUMS, settings.minimumScalePercent));
     }
 
-    /**
-     * Both arming and the final dispatch recheck require every original saved/enabled-learned axis at max(100, bar), and
-     * every current Autopilot working axis at its current bar. An independent lowered axis cannot lower the former,
-     * and a raised axis cannot be skipped merely because the saved baseline passed. Area compensation never applies.
-     */
+    /** Both arming and the final dispatch recheck: a KEEP under {@link #acceptRules}, the offer scoring 100% or more. */
     static boolean meetsRequirements(OfferSnapshot offer, FilterSettings settings) {
-        if (!settings.hasAutopilotAxes()) {
-            return OfferRule.evaluate(offer, acceptRules(settings)).result == OfferRule.Result.KEEP;
-        }
-        FilterSettings baseline = acceptRules(settings);
-        return OfferRule.evaluate(offer, baseline).result == OfferRule.Result.KEEP
-                && OfferRule.evaluate(offer, settings.withoutTimeAdjustment().withScoreByArea(false)).result == OfferRule.Result.KEEP;
+        return OfferRule.evaluate(offer, acceptRules(settings)).result == OfferRule.Result.KEEP;
     }
 
     State observe(OfferSnapshot offer, String offerKey, FilterSettings settings, int countdown,

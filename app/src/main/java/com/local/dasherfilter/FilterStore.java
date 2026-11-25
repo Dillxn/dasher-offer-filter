@@ -94,7 +94,11 @@ final class FilterStore {
     // Fresh restoration state. The model-2 migration's deleted evidence is never read into these keys.
     private static final String LEARNER_SCHEMA = "learner_v3_schema";
     /** 1: 0.6.0's fresh state, learning off; 2: learning on by default (0.6.1). */
-    private static final int LEARNER_SCHEMA_NOW = 2;
+    /**
+     * 3 (0.6.68): the Learn switch is gone (the owner, 25 November 2026: "idk even what learn is. i think it can be
+     * deprecated"), so learning is turned on once more for everyone, and nothing in the app turns it off.
+     */
+    private static final int LEARNER_SCHEMA_NOW = 3;
     /**
      * Autopilot on by default (0.6.2; the owner, 12 October 2026): 1 once {@link #initializeAutopilot} has turned it
      * on, for a new install and, once, for an install updating from an earlier version. From then on the user's own
@@ -243,6 +247,7 @@ final class FilterStore {
         initializeAreaDefault(context, prefs);
         initializeOneMinimums(context, prefs);
         stampMinimumsSince(prefs);
+        BestScore.warm(context);
         return read(prefs);
     }
 
@@ -407,7 +412,8 @@ final class FilterStore {
                 // 0.6.62, the clean model: one set of minimums. No learned layer and no Autopilot working minimums.
                 AcceptedFloors.NONE, AutopilotAxes.NONE)
                 .withTimeAware(prefs.getBoolean(TIME_AWARE, false));
-        return rules.withTimeWeight(TimeScoreRuntime.weight(rules));
+        // 0.6.68: scores and the bar are measured against the best offer you accepted (BestScore).
+        return rules.withTimeWeight(TimeScoreRuntime.weight(rules)).withBest(BestScore.percent(rules));
     }
 
     /**
@@ -1194,12 +1200,12 @@ final class FilterStore {
         private static String pricingKey(FilterSettings rules) {
             // Pausing auto-decline changes no minimum and cannot cancel a choice already confirmed.
             // A later time window likewise cannot discard the already normalized, confirmed reference.
-            return rules.withEnabled(true).withTimeWeight(TimeScore.Weight.NONE).rulesKey();
+            return rules.withEnabled(true).withTimeWeight(TimeScore.Weight.NONE).withBest(FilterSettings.BEST_NONE).rulesKey();
         }
 
         private static String selectionKey(FilterSettings rules) {
             return rules.withEnabled(true).withoutAutopilotAxes().withAccepted(AcceptedFloors.NONE)
-                    .withTimeWeight(TimeScore.Weight.NONE).rulesKey();
+                    .withTimeWeight(TimeScore.Weight.NONE).withBest(FilterSettings.BEST_NONE).rulesKey();
         }
     }
 
@@ -1423,7 +1429,7 @@ final class FilterStore {
             // 0.6.62 (the owner, 20 November 2026): the offer you accepted sets your minimums, up or down, on each
             // measure it read: "one is accepting the lower paying offer and bypassing the filter for a reason and the
             // minimums should be responsive to that". With none set, it sets all three; an axis you turned off
-            // stays off. Undo is on the homepage's note and in Learned minimums.
+            // stays off. Undo is on the homepage's note and in How offers are judged (0.6.68).
             // 0.6.64 (the owner, 20 November 2026): minimums are tracked and raised per axis, and "a higher scoring
             // offer shouldn't lower your mins"; "an accept of a lower score doesn't change your mins but instead lowers
             // the score bar", qualified: "the bar resetting to 100% if we are below platinum on that goal".
@@ -1431,27 +1437,33 @@ final class FilterStore {
             boolean none = was[0] == 0 && was[1] == 0 && was[2] == 0;
             int[] rates = acceptedRates(offer);
             int barWas = acceptBar(prefs);
-            int score = none ? -1 : AreaScore.scorePercent(before.withAutopilot(false, before.autopilotGoalPercent),
-                    offer);
+            // 0.6.68 (the owner, 25 November 2026: "mins should always be the highest we've accepted (regardless of
+            // derivative scores)"): every accept raises each minimum it beat to its own rate, whatever it scores; none
+            // is ever lowered, and a measure you turned off stays off. With none set, it sets all three.
             int[] next = was.clone();
-            int bar = barWas;
             if (none) {
                 next = rates;
-            } else if (score < 0) {
-                edit.apply();
-                return AcceptedLesson.UNKNOWN;
-            } else if (score >= FilterSettings.BAR_AT_MINIMUMS) {
-                // Each measure the offer beat rises to that offer's own rate (the owner: "mins should be raised to
-                // the raw value"); the rest stay.
+            } else {
                 for (int axis = 0; axis < 3; axis++) {
                     if (was[axis] > 0 && rates[axis] > was[axis]) next[axis] = rates[axis];
                 }
-                if (!belowGoal) bar = FilterSettings.BAR_AT_MINIMUMS;
-            } else {
-                bar = Math.max(BAR_MIN, score);
             }
             boolean up = false;
             for (int axis = 0; axis < 3; axis++) up |= next[axis] != was[axis];
+            // The bar your accepts set follows its score under the minimums it leaves, as a percent of the best accept
+            // with it counted: 100% or more (your best accept) puts that bar back at 100% unless you are below your
+            // acceptance-rate goal; under 100%, the bar becomes its score, so offers like it pass (0.6.64's rule).
+            int score = none ? -1 : BestScore.scoreWith(before.withAutopilot(false, before.autopilotGoalPercent)
+                    .withMinimums(next[0], next[1], next[2]), offer);
+            int bar = barWas;
+            if (score >= FilterSettings.BAR_AT_MINIMUMS) {
+                if (!belowGoal) bar = FilterSettings.BAR_AT_MINIMUMS;
+            } else if (score >= 0) {
+                bar = Math.max(BAR_MIN, score);
+            } else if (!up) {
+                edit.apply();
+                return AcceptedLesson.UNKNOWN;
+            }
             if (!up && bar == barWas) {
                 edit.apply();
                 return AcceptedLesson.UNCHANGED;
@@ -1771,7 +1783,7 @@ final class FilterStore {
         return prefs(context).getLong(ACCEPT_NOTE, 0) == change.id ? change : null;
     }
 
-    /** OK on that note: it goes; Undo stays in Learned minimums. */
+    /** OK on that note: it goes; Undo stays in How offers are judged (0.6.68; Learned minimums before). */
     static void closeAcceptNote(Context context) {
         prefs(context).edit().remove(ACCEPT_NOTE).apply();
     }
