@@ -143,7 +143,7 @@ final class OfferRule {
         long required = settings.scoreByArea ? AreaScore.requiredPay(settings, offer, bar) : asks.required(bar);
         // Missing values can only raise the requirement, so a shortfall against the known part is already final.
         if (offer.payCents != null && offer.payCents < required) {
-            return new Decision(Result.DECLINE, required, atBar(bar, asks.axis, settings.scoreByArea), offer, score, bar, false, autopilot);
+            return new Decision(Result.DECLINE, required, atBar(settings, bar, asks.axis), offer, score, bar, false, autopilot);
         }
         if (offer.payCents == null) {
             // Only the most it can pay is known. The user's own rule for this one shape: decline when the offer as a
@@ -164,15 +164,19 @@ final class OfferRule {
             return new Decision(Result.REVIEW, required, VALUE_NOT_FOUND, offer, score, bar, false, autopilot);
         }
         // The score is measured against the minimums at the bar (0.6.62); below them is at a bar of 100.
-        int baselineScore = settings.hasAutopilotAxes() || settings.timeAware || bar != FilterSettings.BAR_AT_MINIMUMS
+        // 0.6.68: against a best score under the minimums an offer can pass below them at any bar.
+        boolean scaled = settings.hasAutopilotAxes() || settings.timeAware || settings.bestScaled();
+        int baselineScore = scaled || bar != FilterSettings.BAR_AT_MINIMUMS
                 ? AreaScore.baselineScorePercent(settings, offer) : score;
-        boolean below = (bar < FilterSettings.BAR_AT_MINIMUMS || settings.hasAutopilotAxes() || settings.timeAware)
+        boolean below = (bar < FilterSettings.BAR_AT_MINIMUMS || scaled)
                 && baselineScore >= 0 && baselineScore < FilterSettings.BAR_AT_MINIMUMS;
         String reason = settings.timeAware && settings.timeWeight.factor != TimeScore.ONE
                 ? (below ? "below your minimums; passes time-aware requirements" : "meets time-aware requirements")
                 : settings.hasAutopilotAxes()
                 ? below ? "below your minimums; passes Autopilot's current minimums"
                         : "meets Autopilot's current minimums"
+                : settings.bestScaled() ? below ? "below your minimums; passes the " + bar + "% bar of your best accept"
+                        : "meets your minimums"
                 : bar > FilterSettings.BAR_AT_MINIMUMS ? "meets the " + bar + "% bar"
                 : below ? "below your minimums; passes the " + bar + "% bar"
                 : settings.scoreByArea ? "meets your area requirement" : MEETS_MINIMUMS;
@@ -274,6 +278,12 @@ final class OfferRule {
     /** "dollars per mile", prefixed "82% bar: " when the bar is not 100. */
     private static String atBar(int bar, int axis, boolean area) {
         return barPrefix(bar) + (area ? "area requirement" : axisReason(axis));
+    }
+
+    /** "81% bar of your best: area requirement" against a best score under the minimums (0.6.68). */
+    private static String atBar(FilterSettings settings, int bar, int axis) {
+        if (!settings.bestScaled()) return atBar(bar, axis, settings.scoreByArea);
+        return bar + "% bar of your best: " + (settings.scoreByArea ? "area requirement" : axisReason(axis));
     }
 
     private static String barPrefix(int bar) {

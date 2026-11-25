@@ -651,6 +651,8 @@ final class DecisionLog {
                             .put("minutePay", proof.minutePay).put("minutes", proof.minutes));
             if (rules.hasAutopilotAxes()) json.put("autopilotAxes", rules.autopilotAxes.encode());
             if (rules.timeAware) json.put("timeWeight", rules.timeWeight.encode());
+            // 0.6.68: the best score the line was judged against, so its score is worked out again the same.
+            if (rules.bestScaled()) json.put("best", rules.bestPercent);
             return json;
         }
 
@@ -676,7 +678,8 @@ final class DecisionLog {
                     new AcceptedFloors(proof.optInt("pay"), proof.optInt("payUnits", 1), proof.optInt("milePay"),
                             proof.optDouble("miles", 0),
                             proof.optInt("minutePay"), proof.optInt("minutes")), axes)
-                    .withTimeAware(json.has("timeWeight")).withTimeWeight(weight);
+                    .withTimeAware(json.has("timeWeight")).withTimeWeight(weight)
+                    .withBest(json.optInt("best", FilterSettings.BEST_NONE));
         }
 
         /** An observed count is a positive integer, never a coerced string, fractional value or inferred zero. */
@@ -1196,6 +1199,7 @@ final class DecisionLog {
             writeTotals(context, new int[Tally.values().length]);
             context.getSharedPreferences(TOTALS, Context.MODE_PRIVATE).edit().putBoolean(OUTCOME_TALLIES_V1, true).apply();
             version++;
+            BestScore.publish(entries);
             TimeScoreRuntime.clear();
             File file = file(context);
             WRITER.execute(() -> {
@@ -1369,6 +1373,7 @@ final class DecisionLog {
         if (entries == null) {
             entries = load(context, file(context));
             foldStoredOnce(context, entries);
+            BestScore.publish(entries);
         }
         return entries;
     }
@@ -1433,6 +1438,7 @@ final class DecisionLog {
         try { DispatchStudyStore.decisions(context, all); }
         catch (RuntimeException unavailable) { /* Optional study never delays or changes a decision. */ }
         version++;
+        BestScore.publish(all);
         List<Entry> snapshot = new ArrayList<>(all);
         Context app = context.getApplicationContext();
         File file = file(app);

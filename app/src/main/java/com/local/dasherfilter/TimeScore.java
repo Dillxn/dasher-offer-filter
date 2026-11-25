@@ -78,7 +78,7 @@ final class TimeScore {
 
     /** Sample values use the same current saved/learned rules, without either adaptive adjustment or old scores. */
     static String key(FilterSettings rules) {
-        return rules.withoutAutopilotAxes().withTimeWeight(Weight.NONE).scoringKey();
+        return rules.withoutAutopilotAxes().withTimeWeight(Weight.NONE).withBest(FilterSettings.BEST_NONE).scoringKey();
     }
 
     static Weight calculate(FilterSettings rules, List<DecisionLog.Entry> history, long now, ZoneId zone) {
@@ -86,7 +86,7 @@ final class TimeScore {
         long bucket = Math.floorDiv(now, BUCKET_MS) * BUCKET_MS;
         java.time.ZonedDateTime local = Instant.ofEpochMilli(bucket).atZone(zone);
         int minute = local.getHour() * 60 + local.getMinute();
-        FilterSettings baseline = rules.withoutAutopilotAxes().withTimeWeight(Weight.NONE);
+        FilterSettings baseline = rules.withoutAutopilotAxes().withTimeWeight(Weight.NONE).withBest(FilterSettings.BEST_NONE);
         List<Sample> all = new ArrayList<>(), near = new ArrayList<>();
         Set<LocalDate> days = new HashSet<>();
         List<DecisionLog.Entry> seen = new ArrayList<>();

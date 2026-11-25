@@ -153,7 +153,7 @@ final class MinimumsDetails {
                 + "amounts include the bar and are rounded to cents for display; saved minimums and learned bests "
                 + "are unchanged by this adjustment.");
         if (rules.timeAware) {
-            int ordinary = AreaScore.scorePercent(rules.withoutTimeAdjustment(), facts);
+            int ordinary = AreaScore.scorePercent(rules.withTimeAware(false), facts);
             lines.add(rules.timeWeight.describe());
             if (ordinary >= 0) lines.add("Before time adjustment: " + ordinary + "%.");
         }

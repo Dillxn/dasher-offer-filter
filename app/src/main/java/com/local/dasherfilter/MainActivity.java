@@ -2809,6 +2809,10 @@ public final class MainActivity extends Activity implements Updater.Busy {
     private static final Pattern BASELINE_REASON = Pattern.compile("(\\d+)% of baseline: (.+)");
     private static final Pattern MEETS_BAR = Pattern.compile("meets the (\\d+)% bar");
     private static final Pattern BELOW_PASSES = Pattern.compile("below your minimums; passes the (\\d+)% bar");
+    /** 0.6.68: against the best offer you accepted. */
+    private static final Pattern BEST_REASON = Pattern.compile("(\\d+)% bar of your best: (.+)");
+    private static final Pattern BELOW_PASSES_BEST =
+            Pattern.compile("below your minimums; passes the (\\d+)% bar of your best accept");
     private static final Pattern ADD_ON_MEETS_BAR = Pattern.compile("combined route and add-on meet the (\\d+)% bar");
     private static final Pattern ADD_ON_BELOW_PASSES =
             Pattern.compile("combined route and add-on below your minimums; pass the (\\d+)% bar");
@@ -2830,6 +2834,16 @@ public final class MainActivity extends Activity implements Updater.Busy {
         if (reason.startsWith("pay at most ") && bound > 0) {
             return "Even at " + reason.substring("pay at most ".length(), bound) + " with its +$: "
                     + lowerFirst(plainReason(reason.substring(bound + " with its +$ amount; ".length())));
+        }
+        Matcher best = BEST_REASON.matcher(reason);
+        if (best.matches()) {
+            String plain = plainReason(best.group(2));
+            return (plain.startsWith("Below your ") ? "Below " + best.group(1) + "% of your best accept's "
+                    + plain.substring("Below your ".length()) : plain + " (" + best.group(1) + "% of your best accept)");
+        }
+        Matcher belowBest = BELOW_PASSES_BEST.matcher(reason);
+        if (belowBest.matches()) {
+            return "Below your minimums · passed at " + belowBest.group(1) + "% of your best accept";
         }
         Matcher bar = BAR_REASON.matcher(reason);
         if (bar.matches()) {

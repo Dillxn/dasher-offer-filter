@@ -1042,12 +1042,21 @@ final class AutopilotText {
         return AreaScore.scorePercent(current, facts);
     }
 
-    /** The ticket's score line, and its score against your minimums now when that differs ("· now 100%"). */
+    /** The ticket's score line, and its score now when that differs ("· now 100% of your best accept"). */
     static String ticketScoreLine(DecisionLog.Entry entry, FilterSettings current) {
         String line = ticketScoreLine(entry);
         int now = scoreNow(entry, current);
         if (line == null || now < 0 || now == entry.scorePercent) return line;
-        return line + " · now " + now + "% of your minimums";
+        return line + " · now " + now + (current.bestScaled() ? "% of your best accept" : "% of your minimums");
+    }
+
+    /**
+     * A standalone line's score against the minimums themselves, without the best score it was judged against
+     * (0.6.68); -1 when it has no rules snapshot or its figures cannot give one.
+     */
+    static int minimumsScore(DecisionLog.Entry entry) {
+        if (entry == null || entry.addOn || entry.scoringRules == null || entry.facts == null) return -1;
+        return AreaScore.scorePercent(entry.scoringRules.withBest(FilterSettings.BEST_NONE), entry.facts);
     }
 
     static String ticketScoreLine(DecisionLog.Entry entry) {
@@ -1058,6 +1067,13 @@ final class AutopilotText {
                 + (entry.barPercent != Autopilot.BAR_OFF ? " · bar " + entry.barPercent + "%" : "");
         if (usesAutopilotScore(entry)) return "Autopilot score " + entry.scorePercent + "% · bar "
                 + entry.barPercent + "%";
+        if (entry.scoringRules != null && entry.scoringRules.bestScaled()) {
+            // 0.6.68: the score is against the best offer you accepted; its share of the minimums beside it.
+            int minimums = minimumsScore(entry);
+            return ("area".equals(entry.scoreKind) ? "Area score " : "Score ") + entry.scorePercent
+                    + "% of your best accept" + (minimums >= 0 ? " (" + minimums + "% of your minimums)" : "")
+                    + " · bar " + entry.barPercent + "%";
+        }
         if (entry.model >= 3 && "area".equals(entry.scoreKind)) {
             // 0.6.67: "of your minimums", as the strict line says, so 81% reads as under them, not over the bar.
             return "Area score " + entry.scorePercent + "% of your minimums · bar " + entry.barPercent + "%";
@@ -1075,8 +1091,13 @@ final class AutopilotText {
     }
 
     static String ticketBelowMinimums(DecisionLog.Entry entry) {
-        return usesAutopilotScore(entry) ? "Below your saved or learned minimums: permitted by Autopilot's working "
-                + "minimums. Never auto-accepted." : ticketBelowMinimums(entry.barPercent);
+        if (usesAutopilotScore(entry)) return "Below your saved or learned minimums: permitted by Autopilot's working "
+                + "minimums. Never auto-accepted.";
+        if (entry != null && entry.scoringRules != null && entry.scoringRules.bestScaled()) {
+            return "Below your minimums, but at or over the " + entry.barPercent + "% bar against the best offer you "
+                    + "accepted (it scores 100%): passed for you to decide, never auto-accepted.";
+        }
+        return ticketBelowMinimums(entry.barPercent);
     }
 
     /** Read the decision's own snapshot: a later calibration never relabels an earlier score. */
@@ -1098,6 +1119,8 @@ final class AutopilotText {
     static boolean passedBelowMinimums(DecisionLog.Entry entry) {
         if (entry == null || entry.result != OfferRule.Result.KEEP || entry.model < 2) return false;
         if (usesAutopilotScore(entry)) return entry.reason != null && entry.reason.contains("below your minimums");
+        // 0.6.68: against a best score under the minimums, a pass at a bar of 100 can still be below them.
+        if (entry.reason != null && entry.reason.contains("below your minimums")) return true;
         if (entry.barPercent >= FilterSettings.BAR_AT_MINIMUMS) return false;
         return (entry.scorePercent >= 0 && entry.scorePercent < FilterSettings.BAR_AT_MINIMUMS)
                 || entry.reason.contains("below your minimums");
@@ -1128,6 +1151,9 @@ final class AutopilotText {
         return decision.scoringRules != null && decision.scoringRules.hasAutopilotAxes()
                 ? (facts == null ? "" : facts) + "; below your saved or learned minimums, permitted by Autopilot's "
                         + "working minimums. Yours to accept."
+                : decision.scoringRules != null && decision.scoringRules.bestScaled() && decision.basis != null
+                ? belowMinimumsCard(facts, AreaScore.scorePercent(
+                        decision.scoringRules.withBest(FilterSettings.BEST_NONE), decision.basis), decision.minimumScalePercent)
                 : belowMinimumsCard(facts, decision.scorePercent, decision.minimumScalePercent);
     }
 

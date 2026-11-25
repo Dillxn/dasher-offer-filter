@@ -41,9 +41,9 @@ public final class LegalTextsTest {
      * The beta texts' effective identities, also read by ConsentGateTest. Only a text changed in substance gets
      * a new identity in its header; then tools/legal_texts.py regenerates the app's matching copy.
      */
-    static final String TERMS_EFFECTIVE = "22 November 2026";
+    static final String TERMS_EFFECTIVE = "25 November 2026";
     /** The version the beta texts are for, in their second line. */
-    static final String TERMS_VERSION = "0.6.67";
+    static final String TERMS_VERSION = "0.6.68";
     /**
      * 0.6.19 changed both (turning Autopilot off and on keeps the accepted floor; its accepts kept 7 days); 0.6.20 the
      * privacy text only (the notice's diagnostics switch shows the current choice, and accepting keeps it as left);
@@ -66,6 +66,7 @@ public final class LegalTextsTest {
      * 0.6.63 both (an accept moves all minimums together by its score; each accept's line says whether it set them);
      * 0.6.64 both (an accept at 100%+ raises each minimum it beat; one under 100% lowers the bar instead);
      * 0.6.67 the terms text only (an accept under 100% sets that bar to its score, which can raise it);
+     * 0.6.68 the terms text only (scores and the bar against your best accept);
      * 0.6.58 the privacy text only (a line keeps the masked text read of its offer; figures are worked out from it);
      * 0.6.57 both (with learning on and no rule set, offers are read and an accept teaches whatever the switch);
      * 0.6.56 the privacy text only (diagnostics also go soon after an unread offer, at most twelve a day);

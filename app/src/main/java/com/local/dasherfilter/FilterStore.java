@@ -243,6 +243,7 @@ final class FilterStore {
         initializeAreaDefault(context, prefs);
         initializeOneMinimums(context, prefs);
         stampMinimumsSince(prefs);
+        BestScore.warm(context);
         return read(prefs);
     }
 
@@ -407,7 +408,8 @@ final class FilterStore {
                 // 0.6.62, the clean model: one set of minimums. No learned layer and no Autopilot working minimums.
                 AcceptedFloors.NONE, AutopilotAxes.NONE)
                 .withTimeAware(prefs.getBoolean(TIME_AWARE, false));
-        return rules.withTimeWeight(TimeScoreRuntime.weight(rules));
+        // 0.6.68: scores and the bar are measured against the best offer you accepted (BestScore).
+        return rules.withTimeWeight(TimeScoreRuntime.weight(rules)).withBest(BestScore.percent(rules));
     }
 
     /**
@@ -1194,12 +1196,12 @@ final class FilterStore {
         private static String pricingKey(FilterSettings rules) {
             // Pausing auto-decline changes no minimum and cannot cancel a choice already confirmed.
             // A later time window likewise cannot discard the already normalized, confirmed reference.
-            return rules.withEnabled(true).withTimeWeight(TimeScore.Weight.NONE).rulesKey();
+            return rules.withEnabled(true).withTimeWeight(TimeScore.Weight.NONE).withBest(FilterSettings.BEST_NONE).rulesKey();
         }
 
         private static String selectionKey(FilterSettings rules) {
             return rules.withEnabled(true).withoutAutopilotAxes().withAccepted(AcceptedFloors.NONE)
-                    .withTimeWeight(TimeScore.Weight.NONE).rulesKey();
+                    .withTimeWeight(TimeScore.Weight.NONE).withBest(FilterSettings.BEST_NONE).rulesKey();
         }
     }
 
@@ -1431,8 +1433,11 @@ final class FilterStore {
             boolean none = was[0] == 0 && was[1] == 0 && was[2] == 0;
             int[] rates = acceptedRates(offer);
             int barWas = acceptBar(prefs);
-            int score = none ? -1 : AreaScore.scorePercent(before.withAutopilot(false, before.autopilotGoalPercent),
-                    offer);
+            // 0.6.68: whether the accept beat the minimums is its score against them; the bar it sets is its score
+            // against the best offer you accepted (BestScore), the score decisions use, held to 100.
+            FilterSettings judged = before.withAutopilot(false, before.autopilotGoalPercent);
+            int score = none ? -1 : AreaScore.scorePercent(judged.withBest(FilterSettings.BEST_NONE), offer);
+            int bestScore = none || !judged.bestScaled() ? score : AreaScore.scorePercent(judged, offer);
             int[] next = was.clone();
             int bar = barWas;
             if (none) {
@@ -1448,7 +1453,7 @@ final class FilterStore {
                 }
                 if (!belowGoal) bar = FilterSettings.BAR_AT_MINIMUMS;
             } else {
-                bar = Math.max(BAR_MIN, score);
+                bar = Math.max(BAR_MIN, Math.min(FilterSettings.BAR_AT_MINIMUMS, bestScore));
             }
             boolean up = false;
             for (int axis = 0; axis < 3; axis++) up |= next[axis] != was[axis];

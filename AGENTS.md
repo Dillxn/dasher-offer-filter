@@ -16,6 +16,15 @@
 
 - When Maven Central refuses this machine (HTTP 429), Google's copy of it is always OK (asked, the owner: "yeah that's always ok"). Copy tools/google-maven-central-mirror.gradle to ~/.gradle/init.d/: every Maven Central repository the build declares, and Robolectric's runtime jars (robolectric.dependency.repo.url), then come from https://maven-central.storage-download.googleapis.com/maven2/. The build files and the release gate are unchanged.
 
+# 0.6.68 (25 November 2026): scores and the bar against your best accept
+
+- The owner: "we should track highest mins area score of an offer (hi score?) and make a derivative score which is offer's area score as a % of the highest score, and really that derivative score is the score we want to display and make decisions on in the forefront, though the tree graph should still show a line for 100% best mins area score as a point of reference".
+- BestScore (derived from the kept history, never stored): the highest AreaScore.scorePercent against the current minimums (selected model; no bar, time factor or Autopilot axes) of a hand-accepted standalone line (DecisionLog.handAcceptedAt; not add-ons, skipped stores, misreads, over max stops, unread). Held 10–100; none → 100. Best judgment: accepted offers only (minimums grow from accepts; an offer never taken must not raise every requirement). DecisionLog.persist/clear/load publish the facts under its lock; BestScore.percent takes no lock.
+- FilterStore.read applies FilterSettings.withBest; AreaScore.Floors scales every effective ask (and the total-pay reference) by best/100, like the time factor, so score = raw ÷ best and the bar (min(share, accept, 100)) is in those units. withoutTimeAdjustment also strips the best score: auto-accept, add-ons, the +$ ceiling and baselineScorePercent keep the minimums themselves. A pass under the raw minimums is belowMinimums (REVIEW card, never auto-accepted). The accept lesson classifies on the raw score (100%+ raises beaten minimums) and sets ACCEPT_BAR to its best-relative score, at most 100.
+- Snapshots: rules JSON "best" when under 100. Keys: scoringKey has ":best:N"; FilterStore's permit pricing/selection keys and TimeScore.key strip it.
+- Chart: hundredY at AreaScore.minimumsLevel (⌈10000 ÷ best⌉), "Mins 100%" kept; the bar line is skipped only where it coincides with the minimums' line.
+- Terms 0.6.68 (25 November 2026), notice 52; Privacy unchanged. Source and the local Android 15 run only.
+
 # 0.6.67 (22 November 2026): an accept's bar said truly; the chart names its lines
 
 - The owner's report c90432a0 (row e115f8bc) and screenshot on 0.6.66: an 81% accept (area; Reach Platinum 76%, Dasher's rate 81%) under a 35% bar; "didn't set the bar on the chart", "its tree above the score ... suggesting >100%", "I don't know what the 35% bar rating means". The tree was at 81% with its tip under the badge and the route's road; the accept raised ACCEPT_BAR 35 → 81 (an earlier 35% accept), reported as SET ("the bar went back to 100%") and "Your accept lowered the bar"; Autopilot's bar stayed min(share 37, 81) = 37 (Mode GOAL).

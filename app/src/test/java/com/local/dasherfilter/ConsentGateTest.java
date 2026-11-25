@@ -166,7 +166,7 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         int words = 0;
         for (String[] point : Consent.POINTS) words += (point[0] + " " + point[1]).split("\\s+").length;
         assertTrue(words + " words", words <= 420);
-        assertEquals("51 (0.6.67): an accept under your minimums sets the bar to its score, up or down", 51,
+        assertEquals("52 (0.6.68): scores and the bar against your best accept", 52,
                 Consent.VERSION);
         // 0.6.17 (notice 25): what DoorDash's terms say, plainly, and that the app is such a tool.
         String account = point("Your Dasher account.");
@@ -399,9 +399,9 @@ public class ConsentGateTest extends AndroidAdapterTestBase {
         // Learn on and no minimums, an accept sets them; 44, a line keeps its offer's masked text; 45, accepts made while paused teach;
         // 46, Dasher's Ratings page read for Reach Platinum; 47, learned raises adopted at once; 48, one set of minimums;
         // 49, an accept moves them together by its score; 50, per-measure raises and an accept bar; 51, that bar set
-        // up or down to an accept's score.
+        // up or down to an accept's score; 52, scores and the bar against your best accept.
         // A phone that accepted 14 (0.5.0) sees it again too.
-        assertEquals(51, Consent.VERSION);
+        assertEquals(52, Consent.VERSION);
         app.getSharedPreferences(Consent.PREFS, android.content.Context.MODE_PRIVATE).edit()
                 .putInt(Consent.ACCEPTED_VERSION, 14).commit();
         assertFalse("the old notice cannot authorize filtering after this update", Consent.accepted(app));

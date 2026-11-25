@@ -37,7 +37,7 @@ final class LegalTexts {
     private static final String TERMS_TEXT = """
             # {app} terms of use
 
-            Beta terms, effective 22 November 2026 · for {app} 0.6.67
+            Beta terms, effective 25 November 2026 · for {app} 0.6.68
 
             ## What {app} is
 
@@ -126,15 +126,24 @@ final class LegalTexts {
             score is its pay as a share of what your minimums ask of it (from 0.6.64; in 0.6.62 and 0.6.63, of your \
             minimums at the bar); it passes at the bar or above, and an offer below your minimums that passes a \
             lowered bar says so. The chart scores every offer against your current minimums and draws the bar as a \
-            line, so a tree above it would pass now. From 0.6.29 to 0.6.61 Autopilot also kept separate working \
-            minimums set by your accepts and held its bar, between 10% and 150%, at an accepted offer's score or \
-            just above an offer you declined, for the next 24 offers; 0.6.62 removes those working minimums and \
-            holds, and an offer you accept yourself now sets your minimums instead (see Acceptance learning). From \
-            0.5.1 to 0.6.20 Autopilot also raised saved minimums, at most 10% at a time, with Let my minimums grow \
-            to turn that off; that growth and its switch were removed in 0.6.21. A growth made before 0.6.21 keeps \
-            its note on the homepage, with Undo, until you tap it or your minimums change another way. Auto-accept \
-            starts off. If you separately enable it in Settings, it can tap Accept on a complete standalone offer \
-            that strictly meets every active minimum at 100% or more, even in area mode, committing you to that \
+            line, so a tree above it would pass now. From 0.6.68 scores and the bar are measured against your best \
+            accept: the highest score against your current minimums of an offer you accepted yourself among the \
+            offers the app keeps (at most 100%; your minimums themselves when there is none). An offer's score is \
+            then its score against your minimums as a percent of that best one, so the best offer you accepted \
+            scores 100%, and an offer passes at the bar or above; at a bar of 100% an offer as good as your best \
+            accept passes even when it is below your minimums, and such an offer is left to you, never \
+            auto-accepted. The best accept is worked out again from your history whenever it or your minimums \
+            change; Clear history removes it. The chart draws your minimums' line where they stand on that scale, \
+            above 100% when your best accept scores under them. Add-ons, the +$ ceiling and auto-accept still use \
+            your minimums themselves. From 0.6.29 to 0.6.61 Autopilot also kept separate working minimums set by \
+            your accepts and held its bar, between 10% and 150%, at an accepted offer's score or just above an \
+            offer you declined, for the next 24 offers; 0.6.62 removes those working minimums and holds, and an \
+            offer you accept yourself now sets your minimums instead (see Acceptance learning). From 0.5.1 to \
+            0.6.20 Autopilot also raised saved minimums, at most 10% at a time, with Let my minimums grow to turn \
+            that off; that growth and its switch were removed in 0.6.21. A growth made before 0.6.21 keeps its note \
+            on the homepage, with Undo, until you tap it or your minimums change another way. Auto-accept starts \
+            off. If you separately enable it in Settings, it can tap Accept on a complete standalone offer that \
+            strictly meets every active minimum at 100% or more, even in area mode, committing you to that \
             delivery; never one that passes only a lowered bar. Automatic acceptance leaves add-ons and unclear \
             offers to you. Add-ons are judged strictly: the whole route after the add-on against your minimums at \
             the current bar.
@@ -150,21 +159,22 @@ final class LegalTexts {
             own rate, rounded down to the cent, and the others stay; it never lowers one. Raising one measure can \
             leave that same offer under 100% in area mode. It also puts the bar your accepts set back at 100%, \
             unless you are below your acceptance-rate goal. If it scores under 100%, your minimums stay and that \
-            bar becomes its score, so offers like it pass; after an earlier accept that scored less, that raises \
-            it, though Autopilot's bar still goes no higher than your goal allows. (In 0.6.62 an accept set each \
-            minimum to its own rate, up or down, and in 0.6.63 it moved all of them together by its score.) With no \
-            minimum set, an acceptance sets each to what that offer paid on it. A measure you turned off stays off. \
-            A note on the homepage says what changed, with Undo, which puts back your minimums from before that \
-            acceptance; Undo last change in Learned minimums does the same. Undo is conditional and cannot \
-            overwrite a later change of yours, Clear history or another acceptance. Merely passing, timing out or \
-            disappearing is not an acceptance. Automatic accepts, declines, add-ons, ambiguous outcomes and offers \
-            whose pay was not read do not change them; a paused auto-decline does not stop it (from 0.6.59). \
-            Learning off leaves your minimums alone. Before 0.6.62, learning kept separate best-ever learned \
-            minimums that only rose and applied alongside your saved minimums (from 0.6.61 a raise became your \
-            saved minimum at once; before, a note offered Adopt); 0.6.62 makes any learned minimum still asking \
-            more than a saved one your saved minimum, once, and then removes the learned bests. From 0.6.54 Clear \
-            history sets your minimums back to the typical ones ($2.00 a stop, $1.00 a mile and $15 an hour); your \
-            other rules stay. Learning is local and makes no promise about earnings or future offers.
+            bar becomes its score (from 0.6.68, its score against your best accept, at most 100%), so offers like \
+            it pass; after an earlier accept that scored less, that raises it, though Autopilot's bar still goes no \
+            higher than your goal allows. (In 0.6.62 an accept set each minimum to its own rate, up or down, and in \
+            0.6.63 it moved all of them together by its score.) With no minimum set, an acceptance sets each to \
+            what that offer paid on it. A measure you turned off stays off. A note on the homepage says what \
+            changed, with Undo, which puts back your minimums from before that acceptance; Undo last change in \
+            Learned minimums does the same. Undo is conditional and cannot overwrite a later change of yours, Clear \
+            history or another acceptance. Merely passing, timing out or disappearing is not an acceptance. \
+            Automatic accepts, declines, add-ons, ambiguous outcomes and offers whose pay was not read do not \
+            change them; a paused auto-decline does not stop it (from 0.6.59). Learning off leaves your minimums \
+            alone. Before 0.6.62, learning kept separate best-ever learned minimums that only rose and applied \
+            alongside your saved minimums (from 0.6.61 a raise became your saved minimum at once; before, a note \
+            offered Adopt); 0.6.62 makes any learned minimum still asking more than a saved one your saved minimum, \
+            once, and then removes the learned bests. From 0.6.54 Clear history sets your minimums back to the \
+            typical ones ($2.00 a stop, $1.00 a mile and $15 an hour); your other rules stay. Learning is local and \
+            makes no promise about earnings or future offers.
             - If Dasher reports an error after that first Decline and leaves a recognized empty or map-only screen, \
             it can press Back and retry the same offer, at most twice within the original attempt's time limit. It \
             checks the offer again before retrying. Your touch, a new offer, locking the phone or leaving Dasher \

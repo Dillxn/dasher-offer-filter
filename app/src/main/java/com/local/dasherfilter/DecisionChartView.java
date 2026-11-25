@@ -746,7 +746,7 @@ final class DecisionChartView extends View {
         for (int i = 0; i < runs.size(); i++) {
             BarRun run = runs.get(i);
             float y = y(lineLevel(run.bar), maxScore, top, bottom);
-            if (run.bar != 100) canvas.drawLine(run.from, y, run.to, y, line);
+            if (run.bar != minimumsLevel()) canvas.drawLine(run.from, y, run.to, y, line);
             BarRun next = i + 1 < runs.size() ? runs.get(i + 1) : null;
             if (next != null && next.bar != run.bar && Math.abs(next.from - run.to) < 1f) {
                 canvas.drawLine(run.to, y, run.to, y(lineLevel(next.bar), maxScore, top, bottom), line);
@@ -984,7 +984,7 @@ final class DecisionChartView extends View {
 
     /** Whether Autopilot's line is drawn: on, with offers, and off 100% (where the minimums' line stands). */
     private boolean barNamed() {
-        return autopilotNow && !entries.isEmpty() && lineLevel(minimumScalePercent) != 100;
+        return autopilotNow && !entries.isEmpty() && lineLevel(minimumScalePercent) != minimumsLevel();
     }
 
     /** Where Autopilot's line stands. */
@@ -1064,9 +1064,19 @@ final class DecisionChartView extends View {
         return false;
     }
 
-    /** The minimums' line: 100% on the scale. */
+    /**
+     * The minimums' line: 100% of the minimums (0.6.68; the owner, 25 November 2026: the tree graph "should still show
+     * a line for 100% best mins area score as a point of reference for the 100% of best offer's score"). Trees stand
+     * against the best offer you accepted, so this line stands at {@link AreaScore#minimumsLevel}: 100% with no best
+     * score below the minimums, 123% for a best accept scoring 81% of them.
+     */
     float hundredY() {
-        return y(100, scoreScaleMax(), plotTop(), plotBottom());
+        return y(minimumsLevel(), scoreScaleMax(), plotTop(), plotBottom());
+    }
+
+    /** Where the minimums stand on the trees' scale ({@link AreaScore#minimumsLevel}). */
+    int minimumsLevel() {
+        return AreaScore.minimumsLevel(currentRules);
     }
 
     /**
@@ -1264,7 +1274,7 @@ final class DecisionChartView extends View {
 
     /** Percent scale does not depend on payouts or dollar requirements. Unknowns contribute nothing. */
     private long scoreScaleMax() {
-        int max = Math.max(100, lineLevel(minimumScalePercent));
+        int max = Math.max(Math.max(100, minimumsLevel()), lineLevel(minimumScalePercent));
         for (DecisionLog.Entry entry : entries) {
             if (tree(entry)) max = Math.max(max, Math.min(SCORE_DISPLAY_CAP, treeScore(entry)));
             if (entry.autopilot) max = Math.max(max, Math.min(SCORE_DISPLAY_CAP, lineLevel(entry.barPercent)));

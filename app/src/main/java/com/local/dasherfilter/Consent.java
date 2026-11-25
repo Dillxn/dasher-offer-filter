@@ -110,7 +110,9 @@ final class Consent {
     // 51 (0.6.67): the Terms said an accept under 100% only dropped the bar your accepts set; it sets it to its score,
     // which raises it after an earlier, lower accept, Autopilot's bar staying no higher than the goal allows (the
     // owner, 22 November 2026, after an 81% accept left the bar at 35%). The Terms say it; nothing else changed.
-    static final int VERSION = 51;
+    // 52 (0.6.68): scores and the bar are measured against your best accept, the highest score against your minimums
+    // of an offer you accepted yourself in the kept history (the owner, 25 November 2026). The Terms say it.
+    static final int VERSION = 52;
     static final String PREFS = "consent";
     static final String ACCEPTED_VERSION = "accepted_version";
     static final String ACCEPTED_AT = "accepted_at";

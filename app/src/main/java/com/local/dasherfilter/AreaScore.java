@@ -67,6 +67,12 @@ final class AreaScore {
         private Floors(FilterSettings rules, OfferSnapshot offer) {
             Fraction time = rules.timeWeight.factor == TimeScore.ONE ? null
                     : Fraction.of(TimeScore.ONE).dividedBy(Fraction.of(rules.timeWeight.factor));
+            // 0.6.68: the best score (BestScore) scales the whole requirement once, so a score is a percent of the
+            // best offer you accepted; the requirement is homogeneous of degree one in its asks, in either model.
+            if (rules.bestScaled()) {
+                Fraction best = Fraction.of(rules.bestPercent).dividedBy(Fraction.of(FilterSettings.BEST_NONE));
+                time = time == null ? best : time.times(best);
+            }
             int[] saved = rules.minimums();
             boolean unread = false;
             int axes = 0;
@@ -280,6 +286,14 @@ final class AreaScore {
     static int baselineScorePercent(FilterSettings rules, OfferSnapshot offer) {
         return scorePercent(rules.withoutAutopilotAxes().withoutTimeAdjustment()
                 .withMinimumScalePercent(FilterSettings.BAR_AT_MINIMUMS), offer);
+    }
+    /**
+     * Where the minimums themselves stand on the best score's scale (0.6.68): {@code ⌈100 × 100 ÷ best⌉}, 100 with no
+     * best score below them (an offer that just meets the minimums scores this much of the best).
+     */
+    static int minimumsLevel(FilterSettings rules) {
+        if (rules == null || !rules.bestScaled()) return FilterSettings.BAR_AT_MINIMUMS;
+        return (FilterSettings.BEST_NONE * 100 + rules.bestPercent - 1) / rules.bestPercent;
     }
     private static int percent(long pay, Fraction square) { return percent(pay, new Need(square, 2)); }
     /** ⌊100 × pay ÷ R⌋ exactly: the root of 100^root × pay^root ÷ R^root, floored. */

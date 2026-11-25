@@ -23,6 +23,11 @@ final class BundledNotes {
     /** The docs package's one switch: true once every line below is final (and none is a placeholder). */
     static final boolean WRITTEN = true;
     /** How a line still to be written starts. */
+    /** 0.6.68: scores and the bar against your best accept (notice 52 and the 0.6.68 card). */
+    static final String BEST_ACCEPT = "Scores are now measured against the best offer you accepted, which scores 100%, "
+            + "and so is the bar. An offer as good as your best accept passes even below your minimums, left to you, never "
+            + "auto-accepted.";
+
     static final String PLACEHOLDER = "[DOCS PACKAGE:";
 
     private static final Map<Integer, List<String>> NOTICE = new LinkedHashMap<>();
@@ -305,6 +310,9 @@ final class BundledNotes {
         // 0.6.40 (the owner, 23 October 2026: "the app should be declarative and therefore naturally self healing").
         notice(37, BAR_FOLLOWS);
         notice(38, HISTORY_REPAIRS);
+        // 0.6.68 (the owner, 25 November 2026: "that derivative score is the score we want to display and make
+        // decisions on").
+        notice(52, BEST_ACCEPT);
         // 0.6.67 (the owner, 22 November 2026, after an 81% accept: "I don't know what the 35% bar rating means").
         notice(51, "An offer you accept below your minimums sets the bar to its score, which can raise it after an "
                 + "earlier, lower accept. Your acceptance-rate goal can still hold the bar lower, and the app now says "
@@ -571,6 +579,9 @@ final class BundledNotes {
                         + "interval give the same comparison after reopening or restarting.",
                 "Autopilot shows the bar actually in use and its eligible-history count. A time adjustment "
                         + "still changes only between offers.");
+        // 0.6.68 (the owner, 25 November 2026: "we should track highest mins area score of an offer").
+        release("0.6.68", BEST_ACCEPT, "The chart keeps a line where your minimums stand on that scale: above 100% "
+                + "while your best accept scores under them.");
         // 0.6.67 (the owner, 22 November 2026: an 81% accept's tree looked over 100%, "I don't know what the 35% bar
         // rating means", then "tan line should show highest paid offer on graph" and "it is not obvious to me at a glance").
         release("0.6.67", "The chart names its lines: \"Mins 100%\", the tan line at the top pay shown (\"Top "
