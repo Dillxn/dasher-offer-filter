@@ -65,8 +65,8 @@ final class AutopilotText {
             + "declined.";
     static final String DETAILS_AT_GOAL = "At or above your goal.";
     static final String DETAILS_NO_WAITING = "Not enough watched waiting yet to tell how often offers come.";
-    static final String DETAILS_AUTO_ACCEPT = "Auto-accept only takes offers that pass at 100% or more, by the same "
-            + "score as every offer.";
+    static final String DETAILS_AUTO_ACCEPT = "Auto-accept takes every offer that passes Autopilot's bar, the same rule "
+            + "the filter uses.";
 
     // ---- The minimums grew (0.5.1 to 0.6.20): the homepage's one-time note ----
 
@@ -1091,7 +1091,7 @@ final class AutopilotText {
      */
     static String ticketBelowMinimums(int barPercent) {
         return "Below your minimums (under 100%), but at or over Autopilot's " + barPercent + "% bar, the lowest score "
-                + "it lets through: passed for you to decide, never auto-accepted.";
+                + "it lets through, so it passes.";
     }
 
     static String ticketBelowMinimums(DecisionLog.Entry entry) {
@@ -1099,7 +1099,7 @@ final class AutopilotText {
                 + "minimums. Never auto-accepted.";
         if (entry != null && entry.scoringRules != null && entry.scoringRules.bestScaled()) {
             return "Below your best accept (under 100%), but at or over Autopilot's " + entry.barPercent + "% bar, the "
-                    + "lowest score it lets through: passed for you to decide, never auto-accepted.";
+                    + "lowest score it lets through, so it passes.";
         }
         return ticketBelowMinimums(entry.barPercent);
     }

@@ -134,23 +134,24 @@ final class LegalTexts {
             worked out again from your history whenever it or your minimums change, and Clear history removes it. \
             Because it follows your minimums, raising one minimum also lowers your best accept's share of them, so \
             it changes how pay per stop, per mile and per hour are weighed more than how much an offer must pay \
-            overall. An offer passes at the bar or above, and an offer below 100% that passes a lowered bar says so \
-            and is left to you. The chart scores every offer on that scale against your current minimums and draws \
-            the bar as a line, so a tree above it would pass now, with a line where your minimums themselves stand \
-            (above 100% while your best accept scores under them). From 0.6.29 to 0.6.61 Autopilot also kept \
-            separate working minimums set by your accepts and held its bar, between 10% and 150%, at an accepted \
-            offer's score or just above an offer you declined, for the next 24 offers; 0.6.62 removes those working \
-            minimums and holds, and an offer you accept yourself now sets your minimums instead (see Acceptance \
-            learning). From 0.5.1 to 0.6.20 Autopilot also raised saved minimums, at most 10% at a time, with Let \
-            my minimums grow to turn that off; that growth and its switch were removed in 0.6.21. A growth made \
-            before 0.6.21 keeps its note on the homepage, with Undo, until you tap it or your minimums change \
-            another way. Auto-accept starts off. If you separately enable it in Settings, it can tap Accept on a \
-            complete standalone offer the filter passes at 100% or more, by the same rule and score that judge \
-            every offer (from 0.6.68; before, it asked every active minimum strictly at 100% or more, even in area \
-            mode), committing you to that delivery; never one that passes only a lowered bar. Automatic acceptance \
-            leaves add-ons and unclear offers to you. Add-ons are judged strictly: the whole route after the add-on \
-            against your minimums at the current bar, on the same scale as every offer (from 0.6.68, your best \
-            accept's).
+            overall. An offer passes at the bar or above, and an offer below 100% that passes a lowered bar says \
+            so; it is left to you unless you turned on auto-accept. The chart scores every offer on that scale \
+            against your current minimums and draws the bar as a line, so a tree above it would pass now, with a \
+            line where your minimums themselves stand (above 100% while your best accept scores under them). From \
+            0.6.29 to 0.6.61 Autopilot also kept separate working minimums set by your accepts and held its bar, \
+            between 10% and 150%, at an accepted offer's score or just above an offer you declined, for the next 24 \
+            offers; 0.6.62 removes those working minimums and holds, and an offer you accept yourself now sets your \
+            minimums instead (see Acceptance learning). From 0.5.1 to 0.6.20 Autopilot also raised saved minimums, \
+            at most 10% at a time, with Let my minimums grow to turn that off; that growth and its switch were \
+            removed in 0.6.21. A growth made before 0.6.21 keeps its note on the homepage, with Undo, until you tap \
+            it or your minimums change another way. Auto-accept starts off. If you separately enable it in \
+            Settings, it can tap Accept on any complete standalone offer the filter passes, by the same rule, score \
+            and bar that judge every offer, committing you to that delivery (from 0.6.68). So when Autopilot lowers \
+            its bar for an acceptance-rate goal, it can accept offers well below your best accept. Before 0.6.68 it \
+            asked every active minimum strictly at 100% or more, even in area mode, and never took an offer that \
+            passed only a lowered bar. Automatic acceptance leaves add-ons and unclear offers to you. Add-ons are \
+            judged strictly: the whole route after the add-on against your minimums at the current bar, on the same \
+            scale as every offer (from 0.6.68, your best accept's).
             - It also declines a standalone offer from a store you put on your skip list (from an offer's details; \
             Settings → Skipped stores removes one), whatever it pays, when it reads that store's name on Dasher's \
             screen. An offer from two stores is declined when either is on the list; an offer whose store it cannot \

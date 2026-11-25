@@ -115,11 +115,11 @@ public final class MainActivity extends Activity implements Updater.Busy {
     static final int PASS_CHECK_LEAST = 20;
     /** Settings' auto-accept confirmation: what it takes, and that below-minimum passes are always left to the user. */
     static final String AUTO_ACCEPT_TITLE = "Auto-accept matching offers?";
-    static final String AUTO_ACCEPT_MESSAGE = "This can commit you to a delivery without another tap. It accepts only "
-            + "complete standalone offers the filter passes at 100% or more, by the same score every offer gets. "
-            + "Offers Autopilot lets through below 100% are always left to you. Add-ons and unclear offers stay "
-            + "yours. Your touch stops the current attempt.\n\nThe app can misread an offer. Enable this only if you "
-            + "accept that risk.";
+    static final String AUTO_ACCEPT_MESSAGE = "This can commit you to a delivery without another tap. It accepts "
+            + "complete standalone offers that pass Autopilot's bar, the same rule the filter uses, including offers "
+            + "below your best accept when Autopilot lowers the bar for your acceptance-rate goal. Add-ons and unclear "
+            + "offers stay yours. Your touch stops the current attempt.\n\nThe app can misread an offer. Enable this "
+            + "only if you accept that risk.";
     /**
      * Clear history's confirmation: the spec's words, with the unsent automatic diagnostics it also clears (the
      * anonymous-feedback package's addition) kept in the list, and both things of Autopilot's it forgets named: the
@@ -1332,7 +1332,7 @@ public final class MainActivity extends Activity implements Updater.Busy {
         body.addView(state, Ui.matchWidth());
         body.addView(ui.text(TimeScore.EXPLANATION + "\n\nAutopilot applies its bar once. Max stops stays a hard "
                 + "limit and missing required facts stay for review. A passing offer is left for you to decide. "
-                + "Automatic acceptance is a separate opt-in and takes only offers scoring 100% or more.\n\n"
+                + "Automatic acceptance is a separate opt-in; it takes every offer that passes Autopilot's bar.\n\n"
                 + LEARNING_WORDS, 15, ui.inkSecondary, false), Ui.matchWidth());
         FilterStore.Adoption adoption = FilterStore.pendingAdoption(this);
         ScrollView scroll = new ScrollView(this);

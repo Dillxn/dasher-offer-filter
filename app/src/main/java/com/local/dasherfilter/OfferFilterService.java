@@ -9191,7 +9191,7 @@ public final class OfferFilterService extends AccessibilityService {
                     : decision.result == OfferRule.Result.KEEP ? DecisionLog.Action.PASSES
                     : DecisionLog.Action.NEEDS_REVIEW, peeked);
             if (handleAutoAccept(scan, offer, settings, isAddOn, routeStored, key, secondsLeft,
-                    generation, newCountdown, now)) return false;
+                    generation, newCountdown, now, decision.result == OfferRule.Result.KEEP)) return false;
             // Passing or unclear, the peeked offer is the user's: Dasher stays up, or while they navigate it goes back
             // to the map with its card (the user's decision).
             if (peeked && !keptForUser) {
@@ -9442,14 +9442,16 @@ public final class OfferFilterService extends AccessibilityService {
     /** Opt-in acceptance never reuses a notification action or an old node; this scan is the final full reread. */
     private boolean handleAutoAccept(Scan scan, OfferSnapshot offer, FilterSettings settings, boolean addOn,
                                      boolean routeStored, String key, int secondsLeft, long generation,
-                                     boolean freshInstance, long readAt) {
+                                     boolean freshInstance, long readAt, boolean decidedKeep) {
         long now = SystemClock.uptimeMillis();
         long actions = autoAcceptActions.get();
         if (autoAcceptWatched && actions != autoAcceptActionBaseline) {
             cancelAutoAccept(true, "user_action");
             return true;
         }
-        if (!AutoAccept.eligible(offer, settings, FilterStore.autoAcceptEnabled(this), addOn,
+        // 0.6.68: only an offer this very read passed (the skip list, max stops and the bar all decided), never one
+        // the rules alone would pass.
+        if (!decidedKeep || !AutoAccept.eligible(offer, settings, FilterStore.autoAcceptEnabled(this), addOn,
                 routeStored || scene == DasherScene.ROUTE, secondsLeft)
                 || stopped || scannerFaulted || !Consent.accepted(this) || !phoneReadable()
                 || inCall() || keyboardListed() || declineUnderWay(now) || episode.active(now)

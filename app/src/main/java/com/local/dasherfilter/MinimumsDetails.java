@@ -26,8 +26,7 @@ final class MinimumsDetails {
     static final String ADD_ON = "An add-on is judged twice: the whole route against your minimums at the bar, and "
             + "its added pay against what its added miles and minutes ask at the bar (pay per stop does not apply to "
             + "what it adds).";
-    static final String BELOW = "Below 100%, offers pass only because Autopilot lowered the bar and are never "
-            + "auto-accepted.";
+    static final String BELOW = "Below 100%, offers pass only because Autopilot lowered the bar.";
     static final String ROUNDED = "≈ means rounded up to the next cent.";
     /**
      * A "+$" offer, its pay unread beside a "+$" amount, is declined only when even the most it can pay misses the
@@ -170,8 +169,8 @@ final class MinimumsDetails {
                 + "minimum is a hard floor in area mode. Max stops stays hard.");
         else lines.add(rules.hasAutopilotAxes() ? "Every active working minimum must be met at the bar."
                 : "Every active resolved minimum must be met at the bar.");
-        lines.add("Permitted by the filter does not mean accepted. Automatic acceptance, if you turn it on, takes only "
-                + "offers that pass at 100% or more by this same rule, never a lowered bar. Add-ons use your minimums "
+        lines.add("Permitted by the filter does not mean accepted. Automatic acceptance, if you turn it on, takes every "
+                + "offer that passes by this same rule, at Autopilot's bar. Add-ons use your minimums "
                 + "strictly at the current bar" + (rules.bestScaled() ? ", scaled to your best accept like every offer."
                 : "."));
         if (rules.maxStops > 0) lines.add("Max stops " + rules.maxStops + " (never scaled).");
