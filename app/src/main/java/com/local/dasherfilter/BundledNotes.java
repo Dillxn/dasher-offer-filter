@@ -584,6 +584,11 @@ final class BundledNotes {
         // 0.6.68 (the owner, 25 November 2026: "we should track highest mins area score of an offer").
         release("0.6.68", BEST_ACCEPT, ACCEPTS_RAISE, "Auto-accept, if you turn it on, takes every offer that passes "
                 + "Autopilot's bar. The chart's Mins line shows where your minimums stand.");
+        // 0.6.69 (the owner, 25 November 2026: "we should track pay per active hour average over a rolling window and
+        // graph it's change over time over our tree graph").
+        release("0.6.69", "A blue line on the chart tracks your pay per active hour: what your last 10 accepts paid "
+                + "for the time Dasher estimated they'd take, as of each offer, with a dot where an accept moved it. "
+                + "Its newest level is named at its right end (\"$31/active hr\").");
         // 0.6.67 (the owner, 22 November 2026: an 81% accept's tree looked over 100%, "I don't know what the 35% bar
         // rating means", then "tan line should show highest paid offer on graph" and "it is not obvious to me at a glance").
         release("0.6.67", "The chart names its lines: \"Mins 100%\", the tan line at the top pay shown (\"Top "
