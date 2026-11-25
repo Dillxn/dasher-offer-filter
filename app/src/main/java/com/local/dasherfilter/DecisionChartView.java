@@ -32,7 +32,9 @@ import java.util.Map;
  * from 0.6.40 to 0.6.63 the bar each offer was judged at, stepping where it moved, with a word or two at its newest
  * steps on why). The marked offer's tree says its score at its tip ("81%"). An offer whose pay was not read is a
  * hollow dashed building with "?"; a score not read (or from the retired rules) has no tree, an open ring at its foot
- * instead.
+ * instead. From 0.6.69 a solid blue line runs over them all: pay per active hour of your last accepts as of each offer
+ * ({@link ActiveHourPay}), on a dollars-an-hour scale of its own from the street, a dot where an accept moved it, and
+ * named at its newest level ("$31/active hr").
  * One badge marks the selected offer (the newest, unless another was chosen), on its roof, and the stored route's offer
  * (0.6.3, {@link #setRoute}) has a small road beside that badge. Under the street, the dash's counts are the chart's
  * key ("DASH ✓ 1 ✕ 0 ? 1"), and a tap on one opens its latest offer ({@link OnCount}). Tapping a building or its tree
@@ -286,6 +288,10 @@ final class DecisionChartView extends View {
     private long topPayCents;
     /** What holds Autopilot's bar where it is, in a word ({@link #setBarReason}); null when not known. */
     private String barReason;
+    /**
+     * Pay per active hour as of each shown offer, oldest first ({@link ActiveHourPay#rolling}; 0.6.69): the blue line.
+     */
+    private ActiveHourPay.Point[] rates = new ActiveHourPay.Point[0];
     /** The minimums' line's name (0.6.67; "100%" before). */
     static final String MINS_LABEL = "Mins 100%";
 
@@ -328,6 +334,8 @@ final class DecisionChartView extends View {
             if (entry.facts.payCents != null) top = Math.max(top, entry.facts.payCents);
         }
         topPayCents = top;
+        // The rolling rate as of each shown offer, its window reaching into the older history too.
+        rates = ActiveHourPay.rolling(newestFirst, ordered.size());
         selected = previous == null ? -1 : ordered.indexOf(previous);
         // An observed outcome replaces the immutable entry, but it is still the same selected offer.
         for (int i = 0; selected < 0 && previous != null && i < ordered.size(); i++) {
@@ -449,6 +457,8 @@ final class DecisionChartView extends View {
             }
         }
         drawWindows(canvas);
+        // Pay per active hour over the buildings and trees (0.6.69).
+        drawRateLine(canvas, left, right);
         // Autopilot's bar over the street (0.6.40): its level is what each tree is weighed against.
         List<BarRun> runs = barRuns();
         drawBarLine(canvas, runs);
@@ -700,6 +710,223 @@ final class DecisionChartView extends View {
         line.setPathEffect(null);
     }
 
+    /** Dollars-an-hour ceilings for the blue line's scale ({@link #rateScaleMax}). */
+    private static final long[] RATE_DOLLARS = {20, 25, 30, 40, 50, 60, 80, 100, 150, 200, 300, 500, 1000};
+    /** The radius of the blue line's dots, where an accept moved it; its name keeps this much clear of the line too. */
+    private static final float RATE_DOT_DP = 2;
+    /** The blue line's points as last laid out ({@link #layOutRates}), left to right, its ends at the chart's edges. */
+    private float[] rateXs = new float[0];
+    private float[] rateYs = new float[0];
+    private int ratePoints;
+
+    /** The blue line's colour: the links' blue, apart from the trees' green, the tan line and Autopilot's purple. */
+    private int rateColor() {
+        return ui.link;
+    }
+
+    /** The newest shown offer's pay per active hour; {@link ActiveHourPay.Point#NONE} before any accept. */
+    private ActiveHourPay.Point newestRate() {
+        ActiveHourPay.Point point = rates.length == 0 ? null : rates[rates.length - 1];
+        return point == null ? ActiveHourPay.Point.NONE : point;
+    }
+
+    /**
+     * The blue line's scale, in cents an hour: the smallest of {@link #RATE_DOLLARS} at or above half again the highest
+     * rate shown, so the line stays in the lower two thirds, clear of the badge and the lines' names along the top.
+     */
+    private long rateScaleMax() {
+        long max = 0;
+        for (ActiveHourPay.Point point : rates) {
+            if (point != null && point.known()) max = Math.max(max, point.centsPerHour);
+        }
+        long want = Math.max(1, max + max / 2);
+        for (long dollars : RATE_DOLLARS) if (dollars * 100 >= want) return dollars * 100;
+        return want;
+    }
+
+    /**
+     * Lays the blue line out between {@code left} and {@code right} ({@link #rateXs}, {@link #rateYs}): from the first
+     * shown offer with a rate (from the chart's left edge when that is the oldest shown) through each offer's, between
+     * its building and its tree, then on to the right edge at the newest rate. False, with nothing laid out, before any
+     * accept is known.
+     */
+    private boolean layOutRates(float left, float right) {
+        ratePoints = 0;
+        int count = Math.min(entries.size(), rates.length);
+        if (count == 0 || getWidth() <= 0 || right <= left) return false;
+        int first = -1;
+        for (int i = 0; i < count && first < 0; i++) if (rates[i] != null && rates[i].known()) first = i;
+        if (first < 0) return false;
+        if (rateXs.length < count + 2) {
+            rateXs = new float[count + 2];
+            rateYs = new float[count + 2];
+        }
+        long scale = rateScaleMax();
+        float slot = slotWidth();
+        float top = plotTop(), bottom = plotBottom();
+        float lastY = Float.NaN;
+        for (int i = first; i < count; i++) {
+            if (rates[i] == null || !rates[i].known()) continue;
+            lastY = y(rates[i].centsPerHour, scale, top, bottom);
+            if (ratePoints == 0 && i == 0) addRatePoint(left, lastY);
+            addRatePoint(rateCenter(i, slot), lastY);
+        }
+        addRatePoint(right, lastY);
+        return true;
+    }
+
+    private void addRatePoint(float x, float y) {
+        rateXs[ratePoints] = x;
+        rateYs[ratePoints] = y;
+        ratePoints++;
+    }
+
+    /** Where an offer's point on the blue line stands across: between its building and its tree. */
+    private float rateCenter(int index, float slot) {
+        return ui.dp(SIDE_DP) + slot * (SLOTS - entries.size() + index + 0.58f);
+    }
+
+    /**
+     * Pay per active hour, a solid blue line over the buildings and trees (0.6.69), with a dot where an accept moved it
+     * ({@link ActiveHourPay.Point#moved}).
+     */
+    private void drawRateLine(Canvas canvas, float left, float right) {
+        if (!layOutRates(left, right)) return;
+        line.setColor(rateColor());
+        line.setStrokeWidth(Math.max(1, ui.dp(2)));
+        line.setStrokeCap(Paint.Cap.ROUND);
+        line.setStrokeJoin(Paint.Join.ROUND);
+        path.reset();
+        path.moveTo(rateXs[0], rateYs[0]);
+        for (int k = 1; k < ratePoints; k++) path.lineTo(rateXs[k], rateYs[k]);
+        canvas.drawPath(path, line);
+        line.setStrokeJoin(Paint.Join.MITER);
+        line.setStrokeCap(Paint.Cap.BUTT);
+        fill.setColor(rateColor());
+        long scale = rateScaleMax();
+        float slot = slotWidth();
+        for (int i = 0; i < Math.min(entries.size(), rates.length); i++) {
+            ActiveHourPay.Point point = rates[i];
+            if (point == null || !point.known() || !point.moved) continue;
+            canvas.drawCircle(rateCenter(i, slot), y(point.centsPerHour, scale, plotTop(), plotBottom()),
+                    ui.dp(RATE_DOT_DP), fill);
+        }
+    }
+
+    /** The blue line's height at {@code x} across, as last laid out; NaN off its ends or with none. */
+    private float rateYAt(float x) {
+        if (ratePoints == 0 || x < rateXs[0] || x > rateXs[ratePoints - 1]) return Float.NaN;
+        for (int k = 1; k < ratePoints; k++) {
+            if (x <= rateXs[k]) {
+                float span = rateXs[k] - rateXs[k - 1];
+                float t = span <= 0 ? 1 : (x - rateXs[k - 1]) / span;
+                return rateYs[k - 1] + (rateYs[k] - rateYs[k - 1]) * t;
+            }
+        }
+        return rateYs[ratePoints - 1];
+    }
+
+    /**
+     * The blue line's highest point ({@code highest}: the least y) or its lowest between {@code from} and {@code to}
+     * across, as last laid out; NaN where it does not run there.
+     */
+    private float rateWithin(float from, float to, boolean highest) {
+        if (ratePoints == 0) return Float.NaN;
+        float a = Math.max(from, rateXs[0]);
+        float b = Math.min(to, rateXs[ratePoints - 1]);
+        if (a > b) return Float.NaN;
+        float atA = rateYAt(a), atB = rateYAt(b);
+        float best = highest ? Math.min(atA, atB) : Math.max(atA, atB);
+        for (int k = 0; k < ratePoints; k++) {
+            if (rateXs[k] < a || rateXs[k] > b) continue;
+            best = highest ? Math.min(best, rateYs[k]) : Math.max(best, rateYs[k]);
+        }
+        return best;
+    }
+
+    /**
+     * Whether the blue line, its dots included, passes through the box from {@code l} to {@code r} across and from
+     * {@code t} to {@code b} down.
+     */
+    private boolean rateRunsThrough(float l, float r, float t, float b) {
+        float high = rateWithin(l, r, true);
+        if (Float.isNaN(high)) return false;
+        float low = rateWithin(l, r, false);
+        float reach = ui.dp(RATE_DOT_DP);
+        return high - reach <= b && low + reach >= t;
+    }
+
+    /**
+     * The blue line's name at its newest level ({@link ActiveHourPay#label}, "$31/active hr"): at the right end over the
+     * line, else under it, then sliding inward past what is in the way, over (or under) every point of its own line
+     * beneath it, never where another of {@code lines} runs through it; left out where nothing is clear (screen readers
+     * still hear it). Placed last, after the other lines' names.
+     */
+    private void placeRateLabel(Canvas canvas, float left, float right, List<RectF> taken, float[] lines) {
+        ActiveHourPay.Point newest = newestRate();
+        if (ratePoints == 0 || !newest.known()) return;
+        String text = ActiveHourPay.label(newest.centsPerHour);
+        useLineLabelPaint();
+        float wide = label.measureText(text);
+        for (int tries = 0; tries < 4; tries++) {
+            boolean under = tries % 2 == 1;
+            int steps = tries < 2 ? 1 : 6;
+            float x = right - ui.dp(2);
+            for (int step = 0; step < steps; step++) {
+                float edge = rateWithin(x - wide - ui.dp(3), x + ui.dp(3), !under);
+                if (Float.isNaN(edge)) break;
+                float lineY = under ? edge + ui.dp(RATE_DOT_DP) : edge - ui.dp(RATE_DOT_DP);
+                RectF box = lineLabelBox(text, x, lineY, true, under);
+                if (box.left < left - ui.dp(2) || box.right > right + ui.dp(2) || box.top < 0
+                        || box.bottom > plotBottom() + ui.dp(2)) {
+                    break;
+                }
+                boolean crossed = false;
+                for (float other : lines) crossed |= crosses(box, other);
+                if (crossed) break;
+                RectF hit = firstHit(box, taken);
+                if (hit == null) {
+                    taken.add(box);
+                    labelBoxes.add(box);
+                    rateLabelShown = text;
+                    drawLineLabel(canvas, text, x, lineY, true, under, rateColor());
+                    return;
+                }
+                x = hit.left - ui.dp(4);
+            }
+        }
+    }
+
+    /** The blue line's name as last drawn ("$31/active hr"), null where it was left out (for tests). */
+    private String rateLabelShown;
+
+    String rateLabelShown() {
+        return rateLabelShown;
+    }
+
+    /**
+     * The blue line said: "pay per active hour of the offers you accepted, by Dasher's time estimates, over your last 10
+     * accepts: $31.40 an hour as of the newest offer, from $28.10 at the oldest shown"; null before any accept.
+     */
+    private String rateSaid() {
+        ActiveHourPay.Point newest = newestRate();
+        if (!newest.known()) return null;
+        ActiveHourPay.Point oldest = null;
+        for (ActiveHourPay.Point point : rates) {
+            if (point != null && point.known()) {
+                oldest = point;
+                break;
+            }
+        }
+        String said = "pay per active hour of the offers you accepted, by Dasher's time estimates, "
+                + (newest.accepts == 1 ? "over your last accept" : "over your last " + newest.accepts + " accepts")
+                + ": " + DecisionLog.money(newest.centsPerHour) + " an hour as of the newest offer";
+        if (oldest != null && oldest.centsPerHour != newest.centsPerHour) {
+            said += ", from " + DecisionLog.money(oldest.centsPerHour) + " at the oldest shown";
+        }
+        return said;
+    }
+
     /**
      * One level of the bar line: from {@code from} to {@code to} across, at {@code bar}; {@code at} the offer's time
      * whose recorded bar it is, or {@link Long#MAX_VALUE} for today's bar after the newest offer.
@@ -898,6 +1125,8 @@ final class DecisionChartView extends View {
         if (!Float.isNaN(barY)) {
             placeLineLabel(canvas, barLabel(), barY, barLineColor(), left, right, taken, lines, false, true);
         }
+        rateLabelShown = null;
+        placeRateLabel(canvas, left, right, taken, lines);
         resetLabelPaint();
     }
 
@@ -1035,7 +1264,10 @@ final class DecisionChartView extends View {
         float baseline = under ? lineY + ui.dp(3) - label.ascent() : lineY - ui.dp(3) - label.descent();
         float wide = label.measureText(text);
         float textLeft = end ? x - wide : x;
-        if (barReaches(textLeft - ui.dp(3), textLeft + wide + ui.dp(3), baseline + label.descent())) {
+        // A backdrop where a building or tree rises through the words, or the blue line runs through them (0.6.69).
+        if (barReaches(textLeft - ui.dp(3), textLeft + wide + ui.dp(3), baseline + label.descent())
+                || rateRunsThrough(textLeft - ui.dp(3), textLeft + wide + ui.dp(3), baseline + label.ascent() - ui.dp(1),
+                baseline + label.descent() + ui.dp(1))) {
             fill.setColor((ui.page & 0x00FFFFFF) | 0xE0000000);
             float pad = ui.dp(3);
             canvas.drawRoundRect(textLeft - pad, baseline + label.ascent() - ui.dp(1), textLeft + wide + pad,
@@ -1241,6 +1473,14 @@ final class DecisionChartView extends View {
         if (topPayCents > 0) {
             highest = Math.min(highest, topPayY() - ui.dp(1));
             if (labelBoxes.isEmpty() && from <= left + ui.dp(90)) highest = Math.min(highest, topPayY() - labelHigh);
+        }
+        // The blue line (0.6.69) and its dots; before the first drawing, its name over its newest level at the right end.
+        if (layOutRates(left, right)) {
+            float rate = rateWithin(from, to, true);
+            if (!Float.isNaN(rate)) highest = Math.min(highest, rate - ui.dp(RATE_DOT_DP));
+            if (labelBoxes.isEmpty() && to >= right - ui.dp(90)) {
+                highest = Math.min(highest, rateYs[ratePoints - 1] - ui.dp(RATE_DOT_DP) - labelHigh);
+            }
         }
         int marked = badged();
         for (int i = 0; i < entries.size(); i++) {
@@ -1460,9 +1700,11 @@ final class DecisionChartView extends View {
             else if (entry.scorePercent > SCORE_DISPLAY_CAP) clipped++;
         }
         String bar = barSaid();
+        String rate = rateSaid();
         return summary + selectedDescription() + " " + AutopilotText.skylineDescription(independentScores, currentRules)
                 + (bar != null ? " Purple dashed line: " + bar + "." : "")
-                + (topPayCents > 0 ? " Solid line: the top pay among these offers, " + DecisionLog.money(topPayCents)
+                + (rate != null ? " Blue line: " + rate + "." : "")
+                + (topPayCents > 0 ? " Tan line: the top pay among these offers, " + DecisionLog.money(topPayCents)
                 + "." : "")
                 + (unknown > 0 ? " " + unknown + " recorded scores unavailable: no tree." : "")
                 + (addOns > 0 ? " " + addOns + " add-ons are checked against added travel and the whole route, "
@@ -1492,6 +1734,14 @@ final class DecisionChartView extends View {
                         : ", score " + entry.scorePercent + "% of " + AutopilotText.hundred(entry.scoringRules) + "."
                 : entry.addOn && entry.scorePercent < 0 ? ", add-on: no standalone score."
                 : entry.scorePercent >= 0 ? ", score from earlier area rules." : ", score unknown.")
-                + (selected == routed ? " On a route." : "");
+                + (selected == routed ? " On a route." : "")
+                + rateThen(selected);
+    }
+
+    /** " Pay per active hour as of it: $31.40." for the offer at {@code index}; empty before any accept (0.6.69). */
+    private String rateThen(int index) {
+        ActiveHourPay.Point point = index >= 0 && index < rates.length ? rates[index] : null;
+        if (point == null || !point.known()) return "";
+        return " Pay per active hour as of it: " + DecisionLog.money(point.centsPerHour) + ".";
     }
 }
